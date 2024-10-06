@@ -2,18 +2,18 @@
 
 # Shell script to check IP contry code from various sources
 # curl and jq are required to run this script
-#
+
 # Currently supported sources:
-#   - https://rdap.db.ripe.net
-#   - https://ipinfo.io
-#   - https://ipregistry.co
-#   - https://ipapi.com
-#   - https://db-ip.com
-#   - https://ipdata.co
-#   - https://ipwhois.io
-#   - https://ifconfig.co
-#   - https://whoer.net
-#   - https://ipquery.io
+#   https://rdap.db.ripe.net
+#   https://ipinfo.io
+#   https://ipregistry.co
+#   https://ipapi.com
+#   https://db-ip.com
+#   https://ipdata.co
+#   https://ipwhois.io
+#   https://ifconfig.co
+#   https://whoer.net
+#   https://ipquery.io
 
 RATE_LIMIT_EXCEEDED_MSG="Rate limit exceeded, try again later"
 
