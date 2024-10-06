@@ -2,7 +2,7 @@
 
 # Shell script to check IP contry code from various sources
 # curl and jq are required to run this script
-# 
+#
 # Currently supported sources:
 #   - https://rdap.db.ripe.net
 #   - https://ipinfo.io
@@ -41,10 +41,9 @@ ipapi_com_lookup() {
 
 db_ip_com_lookup() {
   ip="$1"
-  # TODO: Add success check
   response=$(curl -s "https://db-ip.com/demo/home.php?s=$ip")
   error_message=$(echo "$response" | jq -r ".demoInfo.error")
-  
+
   if [ -n "$error_message" ]; then
     echo "$RATE_LIMIT_EXCEEDED_MSG"
   else
@@ -59,10 +58,10 @@ ipdata_co_lookup() {
   response=$(curl -s -H "Referer: https://ipdata.co" "https://api.ipdata.co/$ip?api-key=$api_key")
   error_message=$(echo "$response" | jq -r ".message")
 
-  if [ "$error_message" = "IP or domain not in whitelist." ]; then
+  if [ -n "$error_message" ]; then
     echo "$RATE_LIMIT_EXCEEDED_MSG"
   else
-    echo "$response" | jq -r ".country.code"
+    echo "$response" | jq -r ".country_code"
   fi
 }
 
