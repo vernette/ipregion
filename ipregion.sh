@@ -10,6 +10,7 @@
 #   - https://ipapi.com
 #   - https://db-ip.com
 #   - https://ipdata.co
+#   - https://ipwhois.io
 
 ripe_rdap_lookup() {
   ip="$1"
@@ -53,9 +54,15 @@ ipdata_co_lookup() {
   fi
 }
 
+ipwhois_io_lookup() {
+  ip="$1"
+  curl -s -H "Referer: https://ipwhois.io" "https://ipwhois.io/widget?ip=$ip&lang=en" | jq -r ".country_code"
+}
+
 ripe_rdap_lookup "$1"
 ipinfo_io_lookup "$1"
 ipregistry_co_lookup "$1"
 ipapi_com_lookup "$1"
 db_ip_com_lookup "$1"
 ipdata_co_lookup "$1"
+ipwhois_io_lookup "$1"
