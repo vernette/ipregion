@@ -19,6 +19,7 @@
 #   https://ip-api.com
 #   https://ipgeolocation.io
 #   https://ipapi.co
+#   https://findip.net
 
 RATE_LIMIT_EXCEEDED_MSG="Rate limit exceeded, try again later"
 
@@ -115,6 +116,19 @@ ipapi_co_lookup() {
   curl -s "https://ipapi.co/$ip/json" | jq -r ".country"
 }
 
+findip_net_lookup() {
+  ip="$1"
+  cookie_file=$(mktemp)
+  html=$(curl -s -c "$cookie_file" "https://findip.net")
+  request_verification_token=$(echo "$html" | grep "__RequestVerificationToken" | grep -oP 'value="\K[^"]+')
+  response=$(curl -s -X POST "https://findip.net" \
+    --data-urlencode "__RequestVerificationToken=$request_verification_token" \
+    --data-urlencode "ip=$ip" \
+    -b "$cookie_file")
+  rm "$cookie_file"
+  echo "$response" | grep -oP 'ISO Code: <span class="text-success">\K[^<]+'
+}
+
 ip="$1"
 
 echo "RIPE (rdap.db.ripe.net): $(ripe_rdap_lookup "$ip")"
@@ -132,3 +146,4 @@ echo "CleanTalk (cleantalk.org): $(cleantalk_org_lookup "$ip")"
 echo "IP-API (ip-api.com): $(ip_api_com_lookup "$ip")"
 echo "IPGeolocation (ipgeolocation.io): $(ipgeolocation_io_lookup "$ip")"
 echo "IPAPI (ipapi.co): $(ipapi_co_lookup "$ip")"
+echo "FindIP (findip.net): $(findip_net_lookup "$ip")"
