@@ -12,6 +12,7 @@
 #   - https://ipdata.co
 #   - https://ipwhois.io
 #   - https://ifconfig.co
+#   - https://whoer.net
 
 ripe_rdap_lookup() {
   ip="$1"
@@ -65,6 +66,11 @@ ifconfig_co_lookup() {
   curl -s "https://ifconfig.co/country-iso?ip=$ip"
 }
 
+whoer_net_lookup() {
+  ip="$1"
+  curl -s "https://whoer.net/whois?host=$ip" | grep "country" | awk '{print $2}'
+}
+
 ripe_rdap_lookup "$1"
 ipinfo_io_lookup "$1"
 ipregistry_co_lookup "$1"
@@ -73,3 +79,4 @@ db_ip_com_lookup "$1"
 ipdata_co_lookup "$1"
 ipwhois_io_lookup "$1"
 ifconfig_co_lookup "$1"
+whoer_net_lookup "$1"
