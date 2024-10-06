@@ -22,6 +22,7 @@
 #   https://findip.net
 #   https://geojs.io
 #   https://iplocation.com
+#   https://geoapify.com
 
 RATE_LIMIT_EXCEEDED_MSG="Rate limit exceeded, try again later"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
@@ -142,6 +143,13 @@ iplocation_com_lookup() {
   curl -s -X POST "https://iplocation.com" -H "User-Agent: $USER_AGENT" --form "ip=$ip" | jq -r ".country_code"
 }
 
+geoapify_com_lookup() {
+  ip="$1"
+  # TODO: Add automatic API key parsing
+  api_key="b8568cb9afc64fad861a69edbddb2658"
+  curl -s "https://api.geoapify.com/v1/ipinfo?&ip=$ip&apiKey=$api_key" | jq -r ".country.iso_code"
+}
+
 ip="$1"
 
 echo "RIPE (rdap.db.ripe.net): $(ripe_rdap_lookup "$ip")"
@@ -162,3 +170,4 @@ echo "IPAPI (ipapi.co): $(ipapi_co_lookup "$ip")"
 echo "FindIP (findip.net): $(findip_net_lookup "$ip")"
 echo "GeoJS (geojs.io): $(geojs_io_lookup "$ip")"
 echo "IPLocation (iplocation.com): $(iplocation_com_lookup "$ip")"
+echo "Geoapify (geoapify.com): $(geoapify_com_lookup "$ip")"
