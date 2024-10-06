@@ -16,6 +16,7 @@
 #   https://ipquery.io
 #   https://country.is
 #   https://cleantalk.org
+#   https://ip-api.com
 
 RATE_LIMIT_EXCEEDED_MSG="Rate limit exceeded, try again later"
 
@@ -97,13 +98,18 @@ cleantalk_org_lookup() {
   curl -s "https://api.cleantalk.org/?method_name=ip_info&ip=$ip" | jq -r --arg ip "$ip" '.data[$ip | tostring].country_code'
 }
 
+ip_api_com_lookup() {
+  ip="$1"
+  curl -s "https://demo.ip-api.com/json/$ip" -H "Origin: https://ip-api.com" | jq -r ".countryCode"
+}
+
 ip="$1"
 
 echo "RIPE: $(ripe_rdap_lookup "$ip")"
 echo "IPInfo: $(ipinfo_io_lookup "$ip")"
 echo "IPRegistry: $(ipregistry_co_lookup "$ip")"
 echo "IPAPI: $(ipapi_com_lookup "$ip")"
-echo "DB IP: $(db_ip_com_lookup "$ip")"
+echo "DB-IP: $(db_ip_com_lookup "$ip")"
 echo "IPData: $(ipdata_co_lookup "$ip")"
 echo "IPWhois: $(ipwhois_io_lookup "$ip")"
 echo "Ifconfig: $(ifconfig_co_lookup "$ip")"
@@ -111,3 +117,4 @@ echo "Whoer: $(whoer_net_lookup "$ip")"
 echo "IPQuery: $(ipquery_io_lookup "$ip")"
 echo "Country.Is: $(country_is_lookup "$ip")"
 echo "CleanTalk: $(cleantalk_org_lookup "$ip")"
+echo "IP-API: $(ip_api_com_lookup "$ip")"
