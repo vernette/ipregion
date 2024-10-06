@@ -15,6 +15,8 @@
 #   - https://whoer.net
 #   - https://ipquery.io
 
+RATE_LIMIT_EXCEEDED_MSG="Rate limit exceeded, try again later"
+
 ripe_rdap_lookup() {
   ip="$1"
   curl -s https://rdap.db.ripe.net/ip/"$ip" | jq -r ".country"
@@ -40,7 +42,14 @@ ipapi_com_lookup() {
 db_ip_com_lookup() {
   ip="$1"
   # TODO: Add success check
-  curl -s "https://db-ip.com/demo/home.php?s=$ip" | jq -r ".demoInfo.countryCode"
+  response=$(curl -s "https://db-ip.com/demo/home.php?s=$ip")
+  error_message=$(echo "$response" | jq -r ".demoInfo.error")
+  
+  if [ -n "$error_message" ]; then
+    echo "$RATE_LIMIT_EXCEEDED_MSG"
+  else
+    echo "$response" | jq -r ".demoInfo.countryCode"
+  fi
 }
 
 ipdata_co_lookup() {
@@ -51,7 +60,7 @@ ipdata_co_lookup() {
   error_message=$(echo "$response" | jq -r ".message")
 
   if [ "$error_message" = "IP or domain not in whitelist." ]; then
-    echo "Rate limit exceeded"
+    echo "$RATE_LIMIT_EXCEEDED_MSG"
   else
     echo "$response" | jq -r ".country.code"
   fi
