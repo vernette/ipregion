@@ -20,6 +20,7 @@
 #   https://ipgeolocation.io
 #   https://ipapi.co
 #   https://findip.net
+#   https://geojs.io
 
 RATE_LIMIT_EXCEEDED_MSG="Rate limit exceeded, try again later"
 
@@ -129,6 +130,11 @@ findip_net_lookup() {
   echo "$response" | grep -oP 'ISO Code: <span class="text-success">\K[^<]+'
 }
 
+geojs_io_lookup() {
+  ip="$1"
+  curl -s "https://get.geojs.io/v1/ip/country.json?ip=$ip" | jq -r ".[0].country"
+}
+
 ip="$1"
 
 echo "RIPE (rdap.db.ripe.net): $(ripe_rdap_lookup "$ip")"
@@ -147,3 +153,4 @@ echo "IP-API (ip-api.com): $(ip_api_com_lookup "$ip")"
 echo "IPGeolocation (ipgeolocation.io): $(ipgeolocation_io_lookup "$ip")"
 echo "IPAPI (ipapi.co): $(ipapi_co_lookup "$ip")"
 echo "FindIP (findip.net): $(findip_net_lookup "$ip")"
+echo "GeoJS (geojs.io): $(geojs_io_lookup "$ip")"
