@@ -19,5 +19,13 @@ ipinfo_io_lookup() {
   curl -s https://ipinfo.io/widget/demo/"$ip" | jq ".data.country"
 }
 
+ipregistry_co_lookup() {
+  ip="$1"
+  # TODO: Add automatic API key parsing
+  api_key="sb69ksjcajfs4c"
+  curl -s "https://api.ipregistry.co/$ip?hostname=true&key=$api_key" -H "Origin: https://ipregistry.co" | jq ".location.country.code"
+}
+
 ripe_rdap_lookup "$1"
 ipinfo_io_lookup "$1"
+ipregistry_co_lookup "$1"
