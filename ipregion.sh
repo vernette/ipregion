@@ -14,6 +14,7 @@
 #   https://ifconfig.co
 #   https://whoer.net
 #   https://ipquery.io
+#   https://country.is
 
 RATE_LIMIT_EXCEEDED_MSG="Rate limit exceeded, try again later"
 
@@ -85,6 +86,11 @@ ipquery_io_lookup() {
   curl -s "https://api.ipquery.io/$ip" | jq -r ".location.country_code"
 }
 
+country_is_lookup() {
+  ip="$1"
+  curl -s "https://api.country.is/$ip" | jq -r ".country"
+}
+
 ip="$1"
 
 echo "RIPE: $(ripe_rdap_lookup "$ip")"
@@ -97,3 +103,4 @@ echo "IPWhois: $(ipwhois_io_lookup "$ip")"
 echo "Ifconfig: $(ifconfig_co_lookup "$ip")"
 echo "Whoer: $(whoer_net_lookup "$ip")"
 echo "IPQuery: $(ipquery_io_lookup "$ip")"
+echo "Country.Is: $(country_is_lookup "$ip")"
