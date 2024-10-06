@@ -68,7 +68,7 @@ ifconfig_co_lookup() {
 
 whoer_net_lookup() {
   ip="$1"
-  curl -s "https://whoer.net/whois?host=$ip" | grep "country" | awk '{print $2}'
+  curl -s "https://whoer.net/whois?host=$ip" | grep "country" | awk 'NR==1 {print $2}'
 }
 
 ripe_rdap_lookup "$1"
