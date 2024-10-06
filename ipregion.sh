@@ -17,6 +17,7 @@
 #   https://country.is
 #   https://cleantalk.org
 #   https://ip-api.com
+#   https://ipgeolocation.io
 
 RATE_LIMIT_EXCEEDED_MSG="Rate limit exceeded, try again later"
 
@@ -103,6 +104,11 @@ ip_api_com_lookup() {
   curl -s "https://demo.ip-api.com/json/$ip" -H "Origin: https://ip-api.com" | jq -r ".countryCode"
 }
 
+ipgeolocation_io_lookup() {
+  ip="$1"
+  curl -s "https://api.ipgeolocation.io/ipgeo?ip=$ip" -H "Referer: https://ipgeolocation.io" | jq -r ".country_code2"
+}
+
 ip="$1"
 
 echo "RIPE: $(ripe_rdap_lookup "$ip")"
@@ -118,3 +124,4 @@ echo "IPQuery: $(ipquery_io_lookup "$ip")"
 echo "Country.Is: $(country_is_lookup "$ip")"
 echo "CleanTalk: $(cleantalk_org_lookup "$ip")"
 echo "IP-API: $(ip_api_com_lookup "$ip")"
+echo "IPGeolocation: $(ipgeolocation_io_lookup "$ip")"
