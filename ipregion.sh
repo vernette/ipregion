@@ -26,6 +26,7 @@
 #   https://ipapi.is
 #   https://freeipapi.com
 #   https://ipbase.com
+#   https://ip.sb
 
 RATE_LIMIT_EXCEEDED_MSG="Rate limit exceeded, try again later"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
@@ -143,7 +144,7 @@ geojs_io_lookup() {
 
 iplocation_com_lookup() {
   ip="$1"
-  curl -s -X POST "https://iplocation.com" -H "User-Agent: $USER_AGENT" --form "ip=$ip" | jq -r ".country_code"
+  curl -s -X POST "https://iplocation.com" -A "$USER_AGENT" --form "ip=$ip" | jq -r ".country_code"
 }
 
 geoapify_com_lookup() {
@@ -166,6 +167,11 @@ freeipapi_com_lookup() {
 ipbase_com_lookup() {
   ip="$1"
   curl -s "https://api.ipbase.com/v2/info?ip=$ip" | jq -r ".data.location.country.alpha2"
+}
+
+ip_sb_lookup() {
+  ip="$1"
+  curl -s "https://api.ip.sb/geoip/$ip" -A "$USER_AGENT" | jq -r ".country_code"
 }
 
 ip="$1"
@@ -192,3 +198,4 @@ echo "Geoapify (geoapify.com): $(geoapify_com_lookup "$ip")"
 echo "IPAPI (ipapi.is): $(ipapi_is_lookup "$ip")"
 echo "FreeIPAPI (freeipapi.com): $(freeipapi_com_lookup "$ip")"
 echo "IPBase (ipbase.com): $(ipbase_com_lookup "$ip")"
+echo "IP.SB (ip.sb): $(ip_sb_lookup "$ip")"
