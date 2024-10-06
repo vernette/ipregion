@@ -21,8 +21,10 @@
 #   https://ipapi.co
 #   https://findip.net
 #   https://geojs.io
+#   https://iplocation.com
 
 RATE_LIMIT_EXCEEDED_MSG="Rate limit exceeded, try again later"
+USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
 
 ripe_rdap_lookup() {
   ip="$1"
@@ -135,6 +137,11 @@ geojs_io_lookup() {
   curl -s "https://get.geojs.io/v1/ip/country.json?ip=$ip" | jq -r ".[0].country"
 }
 
+iplocation_com_lookup() {
+  ip="$1"
+  curl -s -X POST "https://iplocation.com" -H "User-Agent: $USER_AGENT" --form "ip=$ip" | jq -r ".country_code"
+}
+
 ip="$1"
 
 echo "RIPE (rdap.db.ripe.net): $(ripe_rdap_lookup "$ip")"
@@ -154,3 +161,4 @@ echo "IPGeolocation (ipgeolocation.io): $(ipgeolocation_io_lookup "$ip")"
 echo "IPAPI (ipapi.co): $(ipapi_co_lookup "$ip")"
 echo "FindIP (findip.net): $(findip_net_lookup "$ip")"
 echo "GeoJS (geojs.io): $(geojs_io_lookup "$ip")"
+echo "IPLocation (iplocation.com): $(iplocation_com_lookup "$ip")"
