@@ -74,7 +74,7 @@ whoer_net_lookup() {
 
 ipquery_io_lookup() {
   ip="$1"
-  curl -s "https://ipquery.io/$ip" | jq -r ".location.country_code"
+  curl -s "https://api.ipquery.io/$ip" | jq -r ".location.country_code"
 }
 
 ripe_rdap_lookup "$1"
