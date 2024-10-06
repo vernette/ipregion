@@ -11,6 +11,7 @@
 #   - https://db-ip.com
 #   - https://ipdata.co
 #   - https://ipwhois.io
+#   - https://ifconfig.co
 
 ripe_rdap_lookup() {
   ip="$1"
@@ -59,6 +60,11 @@ ipwhois_io_lookup() {
   curl -s -H "Referer: https://ipwhois.io" "https://ipwhois.io/widget?ip=$ip&lang=en" | jq -r ".country_code"
 }
 
+ifconfig_co_lookup() {
+  ip="$1"
+  curl -s "https://ifconfig.co/country-iso?ip=$ip"
+}
+
 ripe_rdap_lookup "$1"
 ipinfo_io_lookup "$1"
 ipregistry_co_lookup "$1"
@@ -66,3 +72,4 @@ ipapi_com_lookup "$1"
 db_ip_com_lookup "$1"
 ipdata_co_lookup "$1"
 ipwhois_io_lookup "$1"
+ifconfig_co_lookup "$1"
