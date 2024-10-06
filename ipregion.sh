@@ -18,6 +18,7 @@
 #   https://cleantalk.org
 #   https://ip-api.com
 #   https://ipgeolocation.io
+#   https://ipapi.co
 
 RATE_LIMIT_EXCEEDED_MSG="Rate limit exceeded, try again later"
 
@@ -109,19 +110,25 @@ ipgeolocation_io_lookup() {
   curl -s "https://api.ipgeolocation.io/ipgeo?ip=$ip" -H "Referer: https://ipgeolocation.io" | jq -r ".country_code2"
 }
 
+ipapi_co_lookup() {
+  ip="$1"
+  curl -s "https://ipapi.co/$ip/json" | jq -r ".country"
+}
+
 ip="$1"
 
-echo "RIPE: $(ripe_rdap_lookup "$ip")"
-echo "IPInfo: $(ipinfo_io_lookup "$ip")"
-echo "IPRegistry: $(ipregistry_co_lookup "$ip")"
-echo "IPAPI: $(ipapi_com_lookup "$ip")"
-echo "DB-IP: $(db_ip_com_lookup "$ip")"
-echo "IPData: $(ipdata_co_lookup "$ip")"
-echo "IPWhois: $(ipwhois_io_lookup "$ip")"
-echo "Ifconfig: $(ifconfig_co_lookup "$ip")"
-echo "Whoer: $(whoer_net_lookup "$ip")"
-echo "IPQuery: $(ipquery_io_lookup "$ip")"
-echo "Country.Is: $(country_is_lookup "$ip")"
-echo "CleanTalk: $(cleantalk_org_lookup "$ip")"
-echo "IP-API: $(ip_api_com_lookup "$ip")"
-echo "IPGeolocation: $(ipgeolocation_io_lookup "$ip")"
+echo "RIPE (rdap.db.ripe.net): $(ripe_rdap_lookup "$ip")"
+echo "IPInfo (ipinfo.io): $(ipinfo_io_lookup "$ip")"
+echo "IPRegistry (ipregistry.co): $(ipregistry_co_lookup "$ip")"
+echo "IPAPI (ipapi.com): $(ipapi_com_lookup "$ip")"
+echo "DB-IP (db-ip.com): $(db_ip_com_lookup "$ip")"
+echo "IPData (ipdata.co): $(ipdata_co_lookup "$ip")"
+echo "IPWhois (ipwhois.io): $(ipwhois_io_lookup "$ip")"
+echo "Ifconfig (ifconfig.co): $(ifconfig_co_lookup "$ip")"
+echo "Whoer (whoer.net): $(whoer_net_lookup "$ip")"
+echo "IPQuery (ipquery.io): $(ipquery_io_lookup "$ip")"
+echo "Country.Is (country.is): $(country_is_lookup "$ip")"
+echo "CleanTalk (cleantalk.org): $(cleantalk_org_lookup "$ip")"
+echo "IP-API (ip-api.com): $(ip_api_com_lookup "$ip")"
+echo "IPGeolocation (ipgeolocation.io): $(ipgeolocation_io_lookup "$ip")"
+echo "IPAPI (ipapi.co): $(ipapi_co_lookup "$ip")"
