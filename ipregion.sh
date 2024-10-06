@@ -14,4 +14,10 @@ ripe_rdap_lookup() {
   curl -s https://rdap.db.ripe.net/ip/"$ip" | jq ".country"
 }
 
+ipinfo_io_lookup() {
+  ip="$1"
+  curl -s https://ipinfo.io/widget/demo/"$ip" | jq ".data.country"
+}
+
 ripe_rdap_lookup "$1"
+ipinfo_io_lookup "$1"
