@@ -8,6 +8,7 @@
 #   - https://ipinfo.io
 #   - https://ipregistry.co
 #   - https://ipapi.com
+#   - https://db-ip.com
 
 ripe_rdap_lookup() {
   ip="$1"
@@ -31,7 +32,13 @@ ipapi_com_lookup() {
   curl -s "https://ipapi.com/ip_api.php?ip=$ip" | jq ".country_code"
 }
 
+db_ip_com_lookup() {
+  ip="$1"
+  curl -s "https://db-ip.com/demo/home.php?s=$ip" | jq ".demoInfo.countryCode"
+}
+
 ripe_rdap_lookup "$1"
 ipinfo_io_lookup "$1"
 ipregistry_co_lookup "$1"
 ipapi_com_lookup "$1"
+db_ip_com_lookup "$1"
