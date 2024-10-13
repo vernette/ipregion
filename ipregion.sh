@@ -62,12 +62,12 @@ COLOR_BOLD_CYAN="\033[1;36m"
 counter=0
 
 get_random_identity_service() {
-  echo "$INDENTITY_SERVICES" | tr ' ' '\n' | shuf -n 1
+  printf "%s" "$IDENTITY_SERVICES" | tr ' ' '\n' | shuf -n 1
 }
 
 get_ipv4() {
   external_ip=$(curl -qs "$(get_random_identity_service)" 2>/dev/null)
-  hidden_ip="$(echo "$external_ip" | cut -d'.' -f1-2).***.***"
+  hidden_ip="$(printf "%s" "$external_ip" | cut -d'.' -f1-2).***.***"
 }
 
 check_service() {
@@ -114,7 +114,7 @@ db_ip_com_lookup() {
 
 ipdata_co_lookup() {
   html=$(curl -s "https://ipdata.co")
-  api_key=$(echo "$html" | grep -oP '(?<=api-key=)[a-zA-Z0-9]+')
+  api_key=$(printf "%s" "$html" | grep -oP '(?<=api-key=)[a-zA-Z0-9]+')
   curl -s -H "Referer: https://ipdata.co" "https://api.ipdata.co/?api-key=$api_key" | jq -r ".country_code"
 }
 
@@ -157,13 +157,13 @@ ipapi_co_lookup() {
 findip_net_lookup() {
   cookie_file=$(mktemp)
   html=$(curl -s -c "$cookie_file" "https://findip.net")
-  request_verification_token=$(echo "$html" | grep "__RequestVerificationToken" | grep -oP 'value="\K[^"]+')
+  request_verification_token=$(printf "%s" "$html" | grep "__RequestVerificationToken" | grep -oP 'value="\K[^"]+')
   response=$(curl -s -X POST "https://findip.net" \
     --data-urlencode "__RequestVerificationToken=$request_verification_token" \
     --data-urlencode "ip=$external_ip" \
     -b "$cookie_file")
   rm "$cookie_file"
-  echo "$response" | grep -oP 'ISO Code: <span class="text-success">\K[^<]+'
+  printf "%s" "$response" | grep -oP 'ISO Code: <span class="text-success">\K[^<]+'
 }
 
 geojs_io_lookup() {
