@@ -17,11 +17,6 @@ This is a shell script designed to check how your public IP address is identifie
 
 - **Lightweight**: Written in Bash, the script has minimal dependencies, primarily requiring `curl` and `jq` for network requests and JSON parsing.
 
-## Requirements
-
-- `curl`: A command-line tool for transferring data with URLs.
-- `jq`: A lightweight and flexible command-line JSON processor.
-
 ## Usage
 
 With curl:
