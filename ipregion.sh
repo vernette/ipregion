@@ -55,13 +55,16 @@ IP_SB_DOMAIN="ip.sb"
 INDENTITY_SERVICES="https://ident.me https://ifconfig.co https://ifconfig.me https://icanhazip.com https://api64.ipify.org"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
 
+COLOR_RESET="\033[0m"
+COLOR_BOLD_GREEN="\033[1;32m"
+
 check_service() {
   local domain="$1"
   local lookup_function="$2"
 
   echo "Checking $domain"
   result="$($lookup_function)"
-  results+=("$domain: $result")
+  results+=("${COLOR_BOLD_GREEN}[$domain]${COLOR_RESET}: $result")
 }
 
 get_random_identity_service() {
@@ -69,7 +72,7 @@ get_random_identity_service() {
 }
 
 get_ipv4() {
-  external_ip=$(curl -qs $(get_random_identity_service) 2>/dev/null)
+  external_ip=$(curl -qs "$(get_random_identity_service)" 2>/dev/null)
 }
 
 ripe_rdap_lookup() {
@@ -207,8 +210,12 @@ main() {
   check_service "$FREEIPAPI_DOMAIN" freeipapi_com_lookup
   check_service "$IPBASE_DOMAIN" ipbase_com_lookup
   check_service "$IP_SB_DOMAIN" ip_sb_lookup
-  printf "\nResults:\n"
-  printf "%s\n" "${results[@]}" | column -s ":" -t
+
+  clear
+
+  for result in "${results[@]}"; do
+    printf "%b\n" "$result"
+  done
 }
 
 main
