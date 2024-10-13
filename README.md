@@ -46,3 +46,5 @@ chmod +x ipregion.sh
 ## TODO
 
 - [ ] Add more IP services
+- [ ] Handle errors when doing network requests
+- [ ] Handle service rate limit errors
