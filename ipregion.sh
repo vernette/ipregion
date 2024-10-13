@@ -57,15 +57,9 @@ USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130
 
 COLOR_RESET="\033[0m"
 COLOR_BOLD_GREEN="\033[1;32m"
+COLOR_BOLD_CYAN="\033[1;36m"
 
-check_service() {
-  local domain="$1"
-  local lookup_function="$2"
-
-  echo "Checking $domain"
-  result="$($lookup_function)"
-  results+=("${COLOR_BOLD_GREEN}[$domain]${COLOR_RESET}: $result")
-}
+counter=0
 
 get_random_identity_service() {
   echo "$INDENTITY_SERVICES" | tr ' ' '\n' | shuf -n 1
@@ -73,6 +67,24 @@ get_random_identity_service() {
 
 get_ipv4() {
   external_ip=$(curl -qs "$(get_random_identity_service)" 2>/dev/null)
+  hidden_ip="$(echo "$external_ip" | cut -d'.' -f1-2).***.***"
+}
+
+check_service() {
+  local domain="$1"
+  local lookup_function="$2"
+
+  ((counter++))
+  printf "\r\033[KChecking: %s" "$counter" "[$domain]"
+  result="$($lookup_function)"
+  results+=("[$COLOR_BOLD_GREEN$domain$COLOR_RESET]${COLOR_RESET}: $result")
+}
+
+print_results() {
+  printf "%bResults for IP %b%s%b\n\n" "${COLOR_BOLD_GREEN}" "${COLOR_BOLD_CYAN}" "$hidden_ip" "${COLOR_RESET}"
+  for result in "${results[@]}"; do
+    printf "%b\n" "$result"
+  done
 }
 
 ripe_rdap_lookup() {
@@ -186,7 +198,9 @@ ip_sb_lookup() {
 
 main() {
   declare -a results
+
   get_ipv4
+
   check_service "$RIPE_DOMAIN" ripe_rdap_lookup
   check_service "$IPINFO_DOMAIN" ipinfo_io_lookup
   check_service "$IPREGISTRY_DOMAIN" ipregistry_co_lookup
@@ -213,9 +227,7 @@ main() {
 
   clear
 
-  for result in "${results[@]}"; do
-    printf "%b\n" "$result"
-  done
+  print_results
 }
 
 main
