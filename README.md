@@ -50,3 +50,4 @@ chmod +x ipregion.sh
 - [ ] Add more IP services
 - [ ] Handle errors when doing network requests
 - [ ] Handle service rate limit errors
+- [ ] Add IP identification by various sites (Google, TikTok, OpenAI, etc.)
