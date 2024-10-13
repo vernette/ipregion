@@ -52,7 +52,7 @@ FREEIPAPI_DOMAIN="freeipapi.com"
 IPBASE_DOMAIN="ipbase.com"
 IP_SB_DOMAIN="ip.sb"
 
-INDENTITY_SERVICES="https://ident.me https://ifconfig.co https://ifconfig.me https://icanhazip.com https://api64.ipify.org"
+IDENTITY_SERVICES="https://ident.me https://ifconfig.co https://ifconfig.me https://icanhazip.com https://api64.ipify.org"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
 
 COLOR_RESET="\033[0m"
