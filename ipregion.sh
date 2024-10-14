@@ -27,6 +27,7 @@
 #   https://freeipapi.com
 #   https://ipbase.com
 #   https://ip.sb
+#   https://maxmind.com
 
 RIPE_DOMAIN="rdap.db.ripe.net"
 IPINFO_DOMAIN="ipinfo.io"
@@ -51,6 +52,7 @@ IPAPI_IS_DOMAIN="ipapi.is"
 FREEIPAPI_DOMAIN="freeipapi.com"
 IPBASE_DOMAIN="ipbase.com"
 IP_SB_DOMAIN="ip.sb"
+MAXMIND_COM_DOMAIN="maxmind.com"
 
 IDENTITY_SERVICES="https://ident.me https://ifconfig.co https://ifconfig.me https://icanhazip.com https://api64.ipify.org"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
@@ -75,7 +77,7 @@ check_service() {
   local lookup_function="$2"
 
   ((counter++))
-  printf "\r\033[KChecking: %s" "$counter" "[$domain]"
+  printf "\r\033[KChecking: %s" "[$domain]"
   result="$($lookup_function)"
   results+=("[$COLOR_BOLD_GREEN$domain$COLOR_RESET]${COLOR_RESET}: $result")
 }
@@ -196,6 +198,10 @@ ip_sb_lookup() {
   curl -s "https://api.ip.sb/geoip/$external_ip" -A "$USER_AGENT" | jq -r ".country_code"
 }
 
+maxind_com_lookup() {
+  curl -s "https://geoip.maxmind.com/geoip/v2.1/city/me" -H "Referer: https://www.maxmind.com" | jq -r ".country.iso_code"
+}
+
 main() {
   declare -a results
 
@@ -224,6 +230,7 @@ main() {
   check_service "$FREEIPAPI_DOMAIN" freeipapi_com_lookup
   check_service "$IPBASE_DOMAIN" ipbase_com_lookup
   check_service "$IP_SB_DOMAIN" ip_sb_lookup
+  check_service "$MAXMIND_COM_DOMAIN" maxind_com_lookup
 
   clear
 
