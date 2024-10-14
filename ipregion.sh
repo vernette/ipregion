@@ -198,7 +198,7 @@ ip_sb_lookup() {
   curl -s "https://api.ip.sb/geoip/$external_ip" -A "$USER_AGENT" | jq -r ".country_code"
 }
 
-maxind_com_lookup() {
+maxmind_com_lookup() {
   curl -s "https://geoip.maxmind.com/geoip/v2.1/city/me" -H "Referer: https://www.maxmind.com" | jq -r ".country.iso_code"
 }
 
@@ -230,7 +230,7 @@ main() {
   check_service "$FREEIPAPI_DOMAIN" freeipapi_com_lookup
   check_service "$IPBASE_DOMAIN" ipbase_com_lookup
   check_service "$IP_SB_DOMAIN" ip_sb_lookup
-  check_service "$MAXMIND_COM_DOMAIN" maxind_com_lookup
+  check_service "$MAXMIND_COM_DOMAIN" maxmind_com_lookup
 
   clear
 
