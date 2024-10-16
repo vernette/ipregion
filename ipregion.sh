@@ -68,7 +68,7 @@ get_random_identity_service() {
 }
 
 get_ipv4() {
-  external_ip=$(curl -qs "$(get_random_identity_service)" 2>/dev/null)
+  external_ip=$(curl -4 -qs "$(get_random_identity_service)" 2>/dev/null)
   hidden_ip="$(printf "%s" "$external_ip" | cut -d'.' -f1-2).***.***"
 }
 
