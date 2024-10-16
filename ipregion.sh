@@ -29,6 +29,8 @@
 #   https://ip.sb
 #   https://maxmind.com
 
+DEPENDENCIES=("jq" "curl")
+
 RIPE_DOMAIN="rdap.db.ripe.net"
 IPINFO_DOMAIN="ipinfo.io"
 IPREGISTRY_DOMAIN="ipregistry.co"
@@ -57,9 +59,59 @@ MAXMIND_COM_DOMAIN="maxmind.com"
 IDENTITY_SERVICES="https://ident.me https://ifconfig.co https://ifconfig.me https://icanhazip.com https://api64.ipify.org"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
 
+INSTALLING_MSG_TEMPLATE="Detected %s. Installing dependencies..."
+
 COLOR_RESET="\033[0m"
 COLOR_BOLD_GREEN="\033[1;32m"
 COLOR_BOLD_CYAN="\033[1;36m"
+
+# TODO: Change logic to check for separate dependencies instead of all at once
+check_dependencies() {
+  for dependency in "${DEPENDENCIES[@]}"; do
+    if ! command -v "$dependency" &>/dev/null; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+# TODO: Add support for other package managers
+get_package_manager() {
+  if command -v apt &>/dev/null; then
+    echo "apt"
+  elif command -v pacman &>/dev/null; then
+    echo "pacman"
+  else
+    echo "unsupported"
+  fi
+}
+
+print_installing_msg() {
+  local template="$1"
+  local os="$2"
+  printf "$template" "$os"
+}
+
+install_dependencies() {
+  local package_manager
+  package_manager=$(get_package_manager)
+
+  case "$package_manager" in
+    apt)
+      print_installing_msg "$INSTALLING_MSG_TEMPLATE" "Debian/Ubuntu"
+      sudo apt update
+      sudo apt install -y "${DEPENDENCIES[@]}" >/dev/null
+      ;;
+    pacman)
+      print_installing_msg "$INSTALLING_MSG_TEMPLATE" "Arch Linux"
+      sudo pacman -Sy --noconfirm "${DEPENDENCIES[@]}" >/dev/null
+      ;;
+    *)
+      printf "Unsupported operating system. Please install '%s' manually." "${DEPENDENCIES[*]}"
+      exit 1
+      ;;
+  esac
+}
 
 get_random_identity_service() {
   printf "%s" "$IDENTITY_SERVICES" | tr ' ' '\n' | shuf -n 1
@@ -199,6 +251,11 @@ maxmind_com_lookup() {
 }
 
 main() {
+  if ! check_dependencies; then
+    install_dependencies
+    clear
+  fi
+
   declare -a results
 
   get_ipv4
