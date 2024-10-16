@@ -11,7 +11,7 @@ This is a shell script designed to check how your public IP address is identifie
   - `ipapi.com`
   - `ipregistry.co`
   - `db-ip.com`
-  - and [many](https://github.com/vernette/ipregion/blob/03793fddc68e118424c17469c24376e91e6b6a03/ipregion.sh#L6) more!
+  - and [many](https://github.com/vernette/ipregion/blob/master/ipregion.sh#L6) more!
 
 - **User-Friendly Output**: Displays the results in a clean and formatted manner, showing how each service identifies your IP.
 
