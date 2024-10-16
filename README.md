@@ -17,6 +17,15 @@ This is a shell script designed to check how your public IP address is identifie
 
 - **Lightweight**: Written in Bash, the script has minimal dependencies, primarily requiring `curl` and `jq` for network requests and JSON parsing.
 
+## Dependencies
+
+Currently script supports automatic installation for the following OSes:
+
+- Debian/Ubuntu
+- Arch Linux
+
+For other systems, please install `curl` and `jq` manually.
+
 ## Usage
 
 With curl:
@@ -43,6 +52,7 @@ chmod +x ipregion.sh
 ## TODO
 
 - [ ] Add more IP services
+- [ ] Add more supported OSes
 - [ ] Handle errors when doing network requests
 - [ ] Handle service rate limit errors
 - [ ] Add IP identification by various sites (Google, TikTok, OpenAI, etc.)
