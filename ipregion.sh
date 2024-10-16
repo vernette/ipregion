@@ -61,8 +61,6 @@ COLOR_RESET="\033[0m"
 COLOR_BOLD_GREEN="\033[1;32m"
 COLOR_BOLD_CYAN="\033[1;36m"
 
-counter=0
-
 get_random_identity_service() {
   printf "%s" "$IDENTITY_SERVICES" | tr ' ' '\n' | shuf -n 1
 }
@@ -75,8 +73,6 @@ get_ipv4() {
 check_service() {
   local domain="$1"
   local lookup_function="$2"
-
-  ((counter++))
   printf "\r\033[KChecking: %s" "[$domain]"
   result="$($lookup_function)"
   results+=("[$COLOR_BOLD_GREEN$domain$COLOR_RESET]${COLOR_RESET}: $result")
