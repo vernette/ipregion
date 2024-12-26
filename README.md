@@ -37,7 +37,7 @@ curl -s "https://raw.githubusercontent.com/vernette/ipregion/refs/heads/master/i
 With wget:
 
 ```bash
-wget -qO - "https://raw.githubusercontent.com/verrette/ipregion/refs/heads/master/ipregion.sh" | bash
+wget -qO - "https://raw.githubusercontent.com/vernette/ipregion/refs/heads/master/ipregion.sh" | bash
 ```
 
 Or clone the repository and run the script manually:
