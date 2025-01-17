@@ -270,9 +270,11 @@ main() {
   check_service "$COUNTRY_IS_DOMAIN" country_is_lookup
   check_service "$CLEANTALK_DOMAIN" cleantalk_org_lookup
   check_service "$IP_API_DOMAIN" ip_api_com_lookup
-  check_service "$IPGEOLOCATION_DOMAIN" ipgeolocation_io_lookup
+  # NOTE: Disabled due to captcha
+  # check_service "$IPGEOLOCATION_DOMAIN" ipgeolocation_io_lookup
   check_service "$IPAPI_CO_DOMAIN" ipapi_co_lookup
-  check_service "$FINDIP_DOMAIN" findip_net_lookup
+  # NOTE: Disabled due to captcha
+  # check_service "$FINDIP_DOMAIN" findip_net_lookup
   check_service "$GEOJS_DOMAIN" geojs_io_lookup
   check_service "$IPLOCATION_DOMAIN" iplocation_com_lookup
   check_service "$GEOAPIFY_DOMAIN" geoapify_com_lookup
