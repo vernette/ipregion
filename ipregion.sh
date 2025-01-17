@@ -156,10 +156,7 @@ ipapi_com_lookup() {
 }
 
 db_ip_com_lookup() {
-  # TODO: Add automatic API key parsing
-  # NOTE: Sometimes returns wrong country code
-  api_key="p31e4d59ee6ad1a0b5cc80695a873e43a8fbca06"
-  curl -s "https://api.db-ip.com/v2/$api_key/self" -H "Origin: https://db-ip.com" | jq -r ".countryCode"
+  curl -s "https://db-ip.com/demo/home.php?s=$external_ip" | jq -r ".countryCode"
 }
 
 ipdata_co_lookup() {
