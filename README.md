@@ -28,6 +28,9 @@ For other systems, please install `curl` and `jq` manually.
 
 ## Usage
 
+> [!TIP]
+> If you see that any of the services stopped working (returning the country code), please create an [issues](https://github.com/vernette/ipregion/issues)
+
 With curl:
 
 ```bash
