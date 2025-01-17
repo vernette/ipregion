@@ -156,7 +156,7 @@ ipapi_com_lookup() {
 }
 
 db_ip_com_lookup() {
-  curl -s "https://db-ip.com/demo/home.php?s=$external_ip" | jq -r ".countryCode"
+  curl -s "https://db-ip.com/demo/home.php?s=$external_ip" | jq -r ".demoInfo.countryCode"
 }
 
 ipdata_co_lookup() {
