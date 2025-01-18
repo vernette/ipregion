@@ -36,13 +36,13 @@ For other systems, please install `curl` and `jq` manually.
 With curl:
 
 ```bash
-curl -s "https://raw.githubusercontent.com/vernette/ipregion/refs/heads/master/ipregion.sh" | bash
+curl -s "https://raw.githubusercontent.com/vernette/ipregion/master/ipregion.sh" | bash
 ```
 
 With wget:
 
 ```bash
-wget -qO - "https://raw.githubusercontent.com/vernette/ipregion/refs/heads/master/ipregion.sh" | bash
+wget -qO - "https://raw.githubusercontent.com/vernette/ipregion/master/ipregion.sh" | bash
 ```
 
 Or clone the repository and run the script manually:
