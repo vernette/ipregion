@@ -23,6 +23,7 @@ Currently script supports automatic installation for the following OSes:
 
 - Debian/Ubuntu
 - Arch Linux
+- Fedora
 
 For other systems, please install `curl` and `jq` manually.
 
