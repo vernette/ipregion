@@ -29,7 +29,7 @@
 #   https://ip.sb
 #   https://maxmind.com
 
-DEPENDENCIES=("jq" "curl")
+DEPENDENCIES="jq curl"
 
 RIPE_DOMAIN="rdap.db.ripe.net"
 IPINFO_DOMAIN="ipinfo.io"
@@ -59,58 +59,88 @@ MAXMIND_COM_DOMAIN="maxmind.com"
 IDENTITY_SERVICES="https://ident.me https://ifconfig.co https://ifconfig.me https://icanhazip.com https://api64.ipify.org"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
 
-INSTALLING_MSG_TEMPLATE="Detected %s. Installing dependencies..."
-
 COLOR_RESET="\033[0m"
 COLOR_BOLD_GREEN="\033[1;32m"
 COLOR_BOLD_CYAN="\033[1;36m"
 
-# TODO: Change logic to check for separate dependencies instead of all at once
-check_dependencies() {
-  for dependency in "${DEPENDENCIES[@]}"; do
-    if ! command -v "$dependency" &>/dev/null; then
-      return 1
-    fi
-  done
-  return 0
+clear_screen() {
+  clear
 }
 
-# TODO: Add support for other package managers
-get_package_manager() {
-  if command -v apt &>/dev/null; then
-    echo "apt"
-  elif command -v pacman &>/dev/null; then
-    echo "pacman"
-  else
-    echo "unsupported"
-  fi
+get_timestamp() {
+  local format="$1"
+  date +"$format"
 }
 
-print_installing_msg() {
-  local template="$1"
-  local os="$2"
-  printf "$template" "$os"
+log_message() {
+  local log_level="$1"
+  local message="${*:2}"
+  local timestamp
+  timestamp=$(get_timestamp "%d.%m.%Y %H:%M:%S")
+  echo "[$timestamp] [$log_level]: $message"
+}
+
+is_installed() {
+  command -v "$1" >/dev/null 2>&1
 }
 
 install_dependencies() {
-  local package_manager
-  package_manager=$(get_package_manager)
+  local use_sudo=""
+  local missing_packages=()
 
-  case "$package_manager" in
-    apt)
-      print_installing_msg "$INSTALLING_MSG_TEMPLATE" "Debian/Ubuntu"
-      sudo apt update
-      sudo apt install -y "${DEPENDENCIES[@]}" >/dev/null
-      ;;
-    pacman)
-      print_installing_msg "$INSTALLING_MSG_TEMPLATE" "Arch Linux"
-      sudo pacman -Sy --noconfirm "${DEPENDENCIES[@]}" >/dev/null
-      ;;
-    *)
-      printf "Unsupported operating system. Please install '%s' manually." "${DEPENDENCIES[*]}"
-      exit 1
-      ;;
-  esac
+  if [ "$(id -u)" -ne 0 ]; then
+    use_sudo="sudo"
+  fi
+
+  for pkg in $DEPENDENCIES; do
+    if ! is_installed "$pkg"; then
+      missing_packages+=("$pkg")
+    fi
+  done
+
+  if [ ${#missing_packages[@]} -eq 0 ]; then
+    return 0
+  fi
+
+  log_message "INFO" "Missing dependencies: ${missing_packages[*]}. Do you want to install them?"
+  select option in "Yes" "No"; do
+    case "$option" in
+      "Yes")
+        log_message "INFO" "Installing missing dependencies"
+        break
+        ;;
+      "No")
+        log_message "INFO" "Exiting script"
+        exit 0
+        ;;
+    esac
+  done </dev/tty
+
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+
+    case "$ID" in
+      debian | ubuntu)
+        $use_sudo apt update
+        NEEDRESTART_MODE=a $use_sudo apt install -y "${missing_packages[@]}"
+        ;;
+      arch)
+        $use_sudo pacman -Syy --noconfirm "${missing_packages[@]}"
+        ;;
+      fedora)
+        $use_sudo dnf install -y "${missing_packages[@]}"
+        ;;
+      *)
+        log_message "ERROR" "Unknown or unsupported distribution: $ID"
+        exit 1
+        ;;
+    esac
+
+    clear_screen
+  else
+    log_message "ERROR" "File /etc/os-release not found, unable to determine distribution"
+    exit 1
+  fi
 }
 
 get_random_identity_service() {
@@ -248,10 +278,7 @@ maxmind_com_lookup() {
 }
 
 main() {
-  if ! check_dependencies; then
-    install_dependencies
-    clear
-  fi
+  install_dependencies
 
   declare -a results
 
@@ -284,7 +311,7 @@ main() {
   check_service "$IP_SB_DOMAIN" ip_sb_lookup
   check_service "$MAXMIND_COM_DOMAIN" maxmind_com_lookup
 
-  clear
+  clear_screen
 
   print_results
 }
