@@ -116,6 +116,15 @@ install_dependencies() {
     esac
   done </dev/tty
 
+  # Check if the script is running in Termux
+  if [ -d /data/data/com.termux ]; then
+    log_message "INFO" "Detected Termux environment"
+    apt update
+    apt install -y "${missing_packages[@]}"
+    clear_screen
+    return
+  fi
+
   if [ -f /etc/os-release ]; then
     . /etc/os-release
 
