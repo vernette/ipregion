@@ -31,25 +31,16 @@ For other systems, please install `curl` and `jq` manually.
 ## Usage
 
 > [!TIP]
-> If you see that any of the services stopped working (returning the country code), please create an [issue](https://github.com/vernette/ipregion/issues)
+> If you notice that any of the services have stopped working, please create an [issue](https://github.com/vernette/ipregion/issues)
 
-With curl:
-
-```bash
-curl -s "https://raw.githubusercontent.com/vernette/ipregion/master/ipregion.sh" | bash
+```
+bash <(wget -qO - https://github.com/vernette/ipregion/raw/master/ipregion.sh)
 ```
 
-With wget:
+Or download the script and run it manually:
 
 ```bash
-wget -qO - "https://raw.githubusercontent.com/vernette/ipregion/master/ipregion.sh" | bash
-```
-
-Or clone the repository and run the script manually:
-
-```bash
-git clone https://github.com/vernette/ipregion.git
-cd ipregion
+wget -O https://github.com/vernette/ipregion/raw/master/ipregion.sh
 chmod +x ipregion.sh
 ./ipregion.sh
 ```
