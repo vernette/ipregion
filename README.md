@@ -1,6 +1,11 @@
 # IPRegion 🌍
 
-This is a shell script designed to check how your public IP address is identified by various IP databases. The script queries multiple sources to retrieve the country code associated with your IP, providing a comprehensive overview of how different services interpret your location.
+This is a fork of [vernette/ipregion](https://github.com/vernette/ipregion). This shell script is designed to check how your public IP address is identified by various IP databases. The script queries multiple sources to retrieve the country code associated with your IP, providing a comprehensive overview of how different services interpret your location.
+
+## Improvements in this fork
+- **IPv6 support** added.
+- **Graceful handling of unreachable services** – if a service fails to retrieve an IP, it is simply skipped without causing an error.
+- **Additional services included**: YouTube and Cloudflare CDN.
 
 ![image](https://github.com/Davoyan/ipregion/blob/master/test_example.jpg?raw=true)
 
@@ -34,21 +39,14 @@ For other systems, please install `curl` and `jq` manually.
 > If you notice that any of the services have stopped working, please create an [issue](https://github.com/vernette/ipregion/issues)
 
 ```
-bash <(wget -qO - https://github.com/vernette/ipregion/raw/master/ipregion.sh)
+bash <(wget -qO - https://github.com/Davoyan/ipregion/raw/master/ipregion.sh)
 ```
 
 Or download the script and run it manually:
 
 ```bash
-wget -O https://github.com/vernette/ipregion/raw/master/ipregion.sh
+wget -O https://github.com/Davoyan/ipregion/raw/master/ipregion.sh
 chmod +x ipregion.sh
 ./ipregion.sh
 ```
 
-## TODO
-
-- [ ] Add more IP services
-- [ ] Add more supported OSes
-- [ ] Handle errors when doing network requests
-- [ ] Handle service rate limit errors
-- [ ] Add IP identification by various sites (Google, TikTok, OpenAI, etc.)
