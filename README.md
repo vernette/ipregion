@@ -2,7 +2,7 @@
 
 This is a shell script designed to check how your public IP address is identified by various IP databases. The script queries multiple sources to retrieve the country code associated with your IP, providing a comprehensive overview of how different services interpret your location.
 
-![image](https://i.imgur.com/7Tj4Usc.png)
+![image](https://github.com/Davoyan/ipregion/blob/master/test_example.jpg?raw=true)
 
 ## Features
 
@@ -11,7 +11,7 @@ This is a shell script designed to check how your public IP address is identifie
   - `ipapi.com`
   - `ipregistry.co`
   - `db-ip.com`
-  - and [many](https://github.com/vernette/ipregion/blob/master/ipregion.sh#L6) more!
+  - and [many](https://github.com/Davoyan/ipregion/blob/master/ipregion.sh#L6) more!
 
 - **User-Friendly Output**: Displays the results in a clean and formatted manner, showing how each service identifies your IP.
 
