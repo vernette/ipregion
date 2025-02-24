@@ -6,7 +6,8 @@ This is a fork of [vernette/ipregion](https://github.com/vernette/ipregion). Thi
 - **IPv6 support** added.
 - **Graceful handling of unreachable services** – if a service fails to retrieve an IP, it is simply skipped without causing an error.
 - **Additional services included**: YouTube and Cloudflare CDN.
-
+- **Support for SOCKS proxy** – allows running the script through a local SOCKS proxy.
+  
 ![image](https://github.com/Davoyan/ipregion/blob/master/test_example.jpg?raw=true)
 
 ## Features
@@ -42,11 +43,18 @@ For other systems, please install `curl` and `jq` manually.
 bash <(wget -qO - https://github.com/Davoyan/ipregion/raw/master/ipregion.sh)
 ```
 
-Or download the script and run it manually:
+To run the script through a SOCKS5 proxy on port 40000:
+```
+bash <(wget -qO - https://github.com/Davoyan/ipregion/raw/master/ipregion.sh) --socks-port 40000
+```
+
+You can download the script and run it manually:
 
 ```bash
 wget -O https://github.com/Davoyan/ipregion/raw/master/ipregion.sh
 chmod +x ipregion.sh
 ./ipregion.sh
 ```
+
+
 
