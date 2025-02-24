@@ -43,7 +43,7 @@ For other systems, please install `curl` and `jq` manually.
 bash <(wget -qO - https://github.com/Davoyan/ipregion/raw/master/ipregion.sh)
 ```
 
-To run the script through a SOCKS proxy on port 40000 (example):
+To run the script through a local SOCKS proxy on port 40000 (example):
 ```
 bash <(wget -qO - https://github.com/Davoyan/ipregion/raw/master/ipregion.sh) --socks-port 40000
 ```
