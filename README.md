@@ -37,7 +37,7 @@ For other systems, please install `curl` and `jq` manually.
 ## Usage
 
 > [!TIP]
-> If you notice that any of the services have stopped working, please create an [issue](https://github.com/vernette/ipregion/issues)
+> If you notice that any of the services have stopped working, please create an [issue](https://github.com/Davoyan/ipregion/issues)
 
 ```
 bash <(wget -qO - https://github.com/Davoyan/ipregion/raw/master/ipregion.sh)
