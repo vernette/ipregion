@@ -245,7 +245,7 @@ check_service() {
 
 print_results() {
   
-if [[ -n "$external_ipv6" ]]; then
+if IPV6_ADDR=$(ip -o -6 addr show scope global | awk '{split($4, a, "/"); print a[1]; exit}'); [ -n "$IPV6_ADDR" ]; then
     printf "\n\n%bResults for IP %b%s %s %s%b\n\n" \
         "${COLOR_BOLD_GREEN}" "${COLOR_BOLD_CYAN}" "$hidden_ip" "and" "$hidden_ipv6" "${COLOR_RESET}"
     printf "                  Ipv4      Ipv6\n\n"
@@ -371,7 +371,7 @@ cloudflare_lookup_v6() {
 }
 
 youtube_lookup() {
-  result=$(timeout 3 curl -4 -s "https://www.youtube.com" | grep -oP '"countryCode":"\K\w+')
+  result=$(timeout 3 curl -4 -s "https://www.youtube.com" | grep -oP '"GL":"\K\w+')
   if [ $? -eq 124 ]; then
       echo ""
   elif [ "$result" == "null" ]; then
@@ -384,7 +384,7 @@ youtube_lookup() {
 }
 
 youtube_lookup_v6() {
-  result=$(timeout 3 curl -6 -s "https://www.youtube.com" | grep -oP '"countryCode":"\K\w+')
+  result=$(timeout 3 curl -6 -s "https://www.youtube.com" | grep -oP '"GL":"\K\w+')
   if [ $? -eq 124 ]; then
       echo ""
   elif [ "$result" == "null" ]; then
@@ -947,7 +947,7 @@ main() {
 
   get_ipv4
  
-  if IPV6_ADDR=$(ip -6 addr show scope global | awk '/inet6/ {print $2}' | cut -d'/' -f1) && [ -n "$IPV6_ADDR" ]; then
+  if IPV6_ADDR=$(ip -o -6 addr show scope global | awk '{split($4, a, "/"); print a[1]; exit}'); [ -n "$IPV6_ADDR" ]; then
     get_ipv6
     check_service "$CLOUDFLARE_DOMAIN" cloudflare_lookup cloudflare_lookup_v6
     check_service "$COUNTRY_IS_DOMAIN" country_is_lookup country_is_lookup_v6
