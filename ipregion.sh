@@ -1147,7 +1147,7 @@ else
     check_service "$WHOER_DOMAIN" whoer_net_lookup
 	check_service "$STEAM_DOMAIN" steam_lookup
 	check_service "$APPLE_DOMAIN" apple_lookup
-	check_service "$SPOTIFY_DOMAIN" spotify_lookup spotify_lookup_v6
+	check_service "$SPOTIFY_DOMAIN" spotify_lookup
 	check_service "$NETFLIX_DOMAIN" netflix_lookup
     check_service "$YOUTUBE_DOMAIN" youtube_lookup
 fi
