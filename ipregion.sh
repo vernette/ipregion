@@ -28,6 +28,13 @@
 #   https://ipbase.com
 #   https://ip.sb
 #   https://maxmind.com
+#   https://cloudflare.com
+#   https://youtube.com
+#   https://ipbase.com
+#   https://apple.com
+#   https://netflix.com
+#   https://store.steampowered.com
+#   https://spotify.com
 
 DEPENDENCIES="jq curl"
 
@@ -47,7 +54,7 @@ done
 if [ -n "$SOCKS_PORT" ]; then
   # Устанавливаем прокси для всех запросов curl
   export ALL_PROXY="socks5://127.0.0.1:$SOCKS_PORT"
-  echo "Используем SOCKS-прокси 127.0.0.1:$SOCKS_PORT"
+  echo "Using SOCKS 127.0.0.1:$SOCKS_PORT"
 fi
 
 
@@ -80,6 +87,10 @@ CLOUDFLARE_DOMAIN="cloudflare.com"
 YOUTUBE_DOMAIN="youtube.com"
 IPWHODE4_DOMAIN="4.ipwho.de"
 CHATGPT="chatgpt.com"
+APPLE_DOMAIN="apple.com"
+NETFLIX_DOMAIN="netflix.com"
+STEAM_DOMAIN="store.steampowered.com"
+SPOTIFY_DOMAIN="spotify.com"
 
 IDENTITY_SERVICES="https://ident.me https://ifconfig.me https://api64.ipify.org https://4.ipwho.de/ip"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
@@ -222,8 +233,8 @@ check_service() {
       domain_str="$COLOR_BOLD_GREEN$domain$COLOR_RESET${COLOR_RESET}"
 
 
-    # Рассчитываем, сколько пробелов нужно добавить, чтобы длина строки была 20
-    padding_length=$((23 - ${#domain} - ${#result} - 2))  # 2 — это для ": " между domain и result
+    # Рассчитываем, сколько пробелов нужно добавить, чтобы длина строки была 29
+    padding_length=$((29 - ${#domain} - ${#result} - 2))  # 2 — это для ": " между domain и result
     padding=$(printf '%*s' "$padding_length" | tr ' ' '.')
     padding="${COLOR_BOLD_GRAY}${padding}${COLOR_RESET}"
   
@@ -245,14 +256,14 @@ check_service() {
 
 print_results() {
   
-if [[ -n "$external_ipv6" ]]; then
+if IPV6_ADDR=$(ip -o -6 addr show scope global | awk '{split($4, a, "/"); print a[1]; exit}'); [ -n "$IPV6_ADDR" ]; then
     printf "\n\n%bResults for IP %b%s %s %s%b\n\n" \
         "${COLOR_BOLD_GREEN}" "${COLOR_BOLD_CYAN}" "$hidden_ip" "and" "$hidden_ipv6" "${COLOR_RESET}"
-    printf "                  Ipv4      Ipv6\n\n"
+    printf "                        IPv4      IPv6\n\n"
 else
     printf "\n\n%bResults for IP %b%s%b\n\n" \
         "${COLOR_BOLD_GREEN}" "${COLOR_BOLD_CYAN}" "$hidden_ip" "${COLOR_RESET}"
-    printf "                  Ipv4\n\n"
+    printf "                        IPv4\n\n"
 fi
   for result in "${results[@]}"; do
     printf "%b\n" "$result"
@@ -370,8 +381,69 @@ cloudflare_lookup_v6() {
   fi
 }
 
+spotify_lookup() {
+  result=$(curl -4 -s 'https://spclient.wg.spotify.com/signup/public/v1/account' -d "birth_day=11&birth_month=11&birth_year=2000&collect_personal_info=undefined&creation_flow=&creation_point=https%3A%2F%2Fwww.spotify.com%2Fhk-en%2F&displayname=Gay%20Lord&gender=male&iagree=1&key=a1e486e2729f46d6bb368d6b2bcda326&platform=www&referrer=&send-email=0&thirdpartyemail=0&identifier_token=AgE6YTvEzkReHNfJpO114514" -X POST -H "Accept-Language: en" --user-agent "${USER_AGENT}" | jq -r ".country")
+  if [ $? -eq 124 ]; then
+      echo ""
+  elif [ "$result" == "null" ]; then
+      echo ""
+  elif [ ${#result} -gt 7 ]; then
+      echo ""
+  else
+      echo "$result"
+  fi
+}
+
+spotify_lookup_v6() {
+  result=$(curl -6 -s 'https://spclient.wg.spotify.com/signup/public/v1/account' -d "birth_day=11&birth_month=11&birth_year=2000&collect_personal_info=undefined&creation_flow=&creation_point=https%3A%2F%2Fwww.spotify.com%2Fhk-en%2F&displayname=Gay%20Lord&gender=male&iagree=1&key=a1e486e2729f46d6bb368d6b2bcda326&platform=www&referrer=&send-email=0&thirdpartyemail=0&identifier_token=AgE6YTvEzkReHNfJpO114514" -X POST -H "Accept-Language: en" --user-agent "${USER_AGENT}" | jq -r ".country")
+  if [ $? -eq 124 ]; then
+      echo ""
+  elif [ "$result" == "null" ]; then
+      echo ""
+  elif [ ${#result} -gt 7 ]; then
+      echo ""
+  else
+      echo "$result"
+  fi
+}
+
+
+steam_lookup() {
+  result=$(timeout 3 curl -4 -s "https://store.steampowered.com/" | grep -o '"countrycode":"[^"]*"' | sed -E 's/.*:"([^"]*)"/\1/')
+  if [ $? -eq 124 ]; then
+      echo ""
+  elif [ "$result" == "null" ]; then
+      echo ""
+  elif [ ${#result} -gt 7 ]; then
+      echo ""
+  else
+      echo "$result"
+  fi
+}
+
+steam_lookup_v6() {
+  result=$(timeout 3 curl -6 -s "https://store.steampowered.com/" | grep -o '"countrycode":"[^"]*"' | sed -E 's/.*:"([^"]*)"/\1/')
+  if [ $? -eq 124 ]; then
+      echo ""
+  elif [ "$result" == "null" ]; then
+      echo ""
+  elif [ ${#result} -gt 7 ]; then
+      echo ""
+  else
+      echo "$result"
+  fi
+}
+
+get_country_code() {
+    local country="$1"
+    curl --max-time 5 -s "https://restcountries.com/v3.1/all" | jq -r --arg COUNTRY "$country" '.[] | select(.name.common == $COUNTRY) | .cca2'
+}
+
 youtube_lookup() {
-  result=$(timeout 3 curl -4 -s "https://www.youtube.com" | grep -oP '"countryCode":"\K\w+')
+  result=$(timeout 3 curl -4 -sL 'https://play.google.com/'   -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7'   -H 'accept-language: en-US;q=0.9'   -H 'priority: u=0, i'   -H 'sec-ch-ua: "Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"'   -H 'sec-ch-ua-mobile: ?0'   -H 'sec-ch-ua-platform: "Windows"'   -H 'sec-fetch-dest: document'   -H 'sec-fetch-mode: navigate'   -H 'sec-fetch-site: none'   -H 'sec-fetch-user: ?1'   -H 'upgrade-insecure-requests: 1' -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' | grep -oP '<div class="yVZQTb">\K[^<(]+')
+  result=$(echo "$result" | xargs)
+  result=$(get_country_code "$result")
+
   if [ $? -eq 124 ]; then
       echo ""
   elif [ "$result" == "null" ]; then
@@ -384,7 +456,83 @@ youtube_lookup() {
 }
 
 youtube_lookup_v6() {
-  result=$(timeout 3 curl -6 -s "https://www.youtube.com" | grep -oP '"countryCode":"\K\w+')
+  result=$(timeout 3 curl -6 -sL 'https://play.google.com/'   -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7'   -H 'accept-language: en-US;q=0.9'   -H 'priority: u=0, i'   -H 'sec-ch-ua: "Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"'   -H 'sec-ch-ua-mobile: ?0'   -H 'sec-ch-ua-platform: "Windows"'   -H 'sec-fetch-dest: document'   -H 'sec-fetch-mode: navigate'   -H 'sec-fetch-site: none'   -H 'sec-fetch-user: ?1'   -H 'upgrade-insecure-requests: 1' -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' | grep -oP '<div class="yVZQTb">\K[^<(]+')
+  result=$(echo "$result" | xargs)
+  result=$(get_country_code "$result")
+  if [ $? -eq 124 ]; then
+      echo ""
+  elif [ "$result" == "null" ]; then
+      echo ""
+  elif [ ${#result} -gt 7 ]; then
+      echo ""
+  else
+      echo "$result"
+  fi
+}
+
+netflix_lookup() {
+	# LEGO Ninjago
+	local result1=$(timeout 3 curl -4 -fsL 'https://www.netflix.com/title/81280792' -w %{http_code} -o /dev/null -H 'host: www.netflix.com' -H 'accept-language: en-US,en;q=0.9' -H 'sec-ch-ua-mobile: ?0' -H 'sec-ch-ua-platform: "Windows"' -H 'sec-fetch-site: none' -H 'sec-fetch-mode: navigate' -H 'sec-fetch-user: ?1' -H 'sec-fetch-dest: document' --user-agent "${USER_AGENT}")
+	# Breaking bad
+	local result2=$(timeout 3 curl -4 -fsL 'https://www.netflix.com/title/70143836' -w %{http_code} -o /dev/null -H 'host: www.netflix.com' -H 'accept-language: en-US,en;q=0.9' -H 'sec-ch-ua-mobile: ?0' -H 'sec-ch-ua-platform: "Windows"' -H 'sec-fetch-site: none' -H 'sec-fetch-mode: navigate' -H 'sec-fetch-user: ?1' -H 'sec-fetch-dest: document' --user-agent "${USER_AGENT}")
+
+	if [ "$result1" == '200' ] || [ "$result2" == '200' ]; then
+        local tmpresult=$(timeout 3 curl -4 -sL 'https://www.netflix.com/' -H 'accept-language: en-US,en;q=0.9' -H 'sec-ch-ua-mobile: ?0' -H 'sec-ch-ua-platform: "Windows"' -H 'sec-fetch-site: none' -H 'sec-fetch-mode: navigate' -H 'sec-fetch-user: ?1' -H 'sec-fetch-dest: document' --user-agent "${USER_AGENT}")
+        result=$(echo "$tmpresult" | grep -oP '"id":"\K[^"]+' | grep -E '^[A-Z]{2}$' | head -n 1)
+    else 
+	  echo ""
+	fi
+	
+  if [ $? -eq 124 ]; then
+      echo ""
+  elif [ "$result" == "null" ]; then
+      echo ""
+  elif [ ${#result} -gt 7 ]; then
+      echo ""
+  else
+      echo "$result"
+  fi
+}
+
+netflix_lookup_v6() {
+	# LEGO Ninjago
+	local result1=$(timeout 3 curl -6 -fsL 'https://www.netflix.com/title/81280792' -w %{http_code} -o /dev/null -H 'host: www.netflix.com' -H 'accept-language: en-US,en;q=0.9' -H "sec-ch-ua: ${UA_SEC_CH_UA}" -H 'sec-ch-ua-mobile: ?0' -H 'sec-ch-ua-platform: "Windows"' -H 'sec-fetch-site: none' -H 'sec-fetch-mode: navigate' -H 'sec-fetch-user: ?1' -H 'sec-fetch-dest: document' --user-agent "${USER_AGENT}")
+	# Breaking bad
+	local result2=$(timeout 3 curl -6 -fsL 'https://www.netflix.com/title/70143836' -w %{http_code} -o /dev/null -H 'host: www.netflix.com' -H 'accept-language: en-US,en;q=0.9' -H "sec-ch-ua: ${UA_SEC_CH_UA}" -H 'sec-ch-ua-mobile: ?0' -H 'sec-ch-ua-platform: "Windows"' -H 'sec-fetch-site: none' -H 'sec-fetch-mode: navigate' -H 'sec-fetch-user: ?1' -H 'sec-fetch-dest: document' --user-agent "${USER_AGENT}")
+
+	if [ "$result1" == '200' ] || [ "$result2" == '200' ]; then
+        local tmpresult=$(timeout 3 curl -6 -sL 'https://www.netflix.com/' -H 'accept-language: en-US,en;q=0.9' -H "sec-ch-ua: ${UA_SEC_CH_UA}" -H 'sec-ch-ua-mobile: ?0' -H 'sec-ch-ua-platform: "Windows"' -H 'sec-fetch-site: none' -H 'sec-fetch-mode: navigate' -H 'sec-fetch-user: ?1' -H 'sec-fetch-dest: document' --user-agent "${USER_AGENT}")
+        result=$(echo "$tmpresult" | grep -oP '"id":"\K[^"]+' | grep -E '^[A-Z]{2}$' | head -n 1)
+    else 
+	  echo ""
+	fi
+	
+  if [ $? -eq 124 ]; then
+      echo ""
+  elif [ "$result" == "null" ]; then
+      echo ""
+  elif [ ${#result} -gt 7 ]; then
+      echo ""
+  else
+      echo "$result"
+  fi
+}
+
+apple_lookup() {
+  result=$(timeout 3 curl -4 -sL 'https://gspe1-ssl.ls.apple.com/pep/gcc')
+  if [ $? -eq 124 ]; then
+      echo ""
+  elif [ "$result" == "null" ]; then
+      echo ""
+  elif [ ${#result} -gt 7 ]; then
+      echo ""
+  else
+      echo "$result"
+  fi
+}
+
+apple_lookup_v6() {
+  result=$(timeout 3 curl -6 -sL 'https://gspe1-ssl.ls.apple.com/pep/gcc')
   if [ $? -eq 124 ]; then
       echo ""
   elif [ "$result" == "null" ]; then
@@ -947,7 +1095,7 @@ main() {
 
   get_ipv4
  
-  if IPV6_ADDR=$(ip -6 addr show scope global | awk '/inet6/ {print $2}' | cut -d'/' -f1) && [ -n "$IPV6_ADDR" ]; then
+  if IPV6_ADDR=$(ip -o -6 addr show scope global | awk '{split($4, a, "/"); print a[1]; exit}'); [ -n "$IPV6_ADDR" ]; then
     get_ipv6
     check_service "$CLOUDFLARE_DOMAIN" cloudflare_lookup cloudflare_lookup_v6
     check_service "$COUNTRY_IS_DOMAIN" country_is_lookup country_is_lookup_v6
@@ -970,6 +1118,10 @@ main() {
     check_service "$MAXMIND_COM_DOMAIN" maxmind_com_lookup maxmind_com_lookup_v6
     check_service "$RIPE_DOMAIN" ripe_rdap_lookup ripe_rdap_lookup_v6
     check_service "$WHOER_DOMAIN" whoer_net_lookup whoer_net_lookup_v6
+	check_service "$STEAM_DOMAIN" steam_lookup steam_lookup_v6
+	check_service "$APPLE_DOMAIN" apple_lookup apple_lookup_v6
+	check_service "$SPOTIFY_DOMAIN" spotify_lookup spotify_lookup_v6
+	check_service "$NETFLIX_DOMAIN" netflix_lookup netflix_lookup_v6
     check_service "$YOUTUBE_DOMAIN" youtube_lookup youtube_lookup_v6
 else
     check_service "$CLOUDFLARE_DOMAIN" cloudflare_lookup
@@ -993,6 +1145,10 @@ else
     check_service "$MAXMIND_COM_DOMAIN" maxmind_com_lookup
     check_service "$RIPE_DOMAIN" ripe_rdap_lookup
     check_service "$WHOER_DOMAIN" whoer_net_lookup
+	check_service "$STEAM_DOMAIN" steam_lookup
+	check_service "$APPLE_DOMAIN" apple_lookup
+	check_service "$SPOTIFY_DOMAIN" spotify_lookup spotify_lookup_v6
+	check_service "$NETFLIX_DOMAIN" netflix_lookup
     check_service "$YOUTUBE_DOMAIN" youtube_lookup
 fi
 
