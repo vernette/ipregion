@@ -371,7 +371,7 @@ cloudflare_lookup_v6() {
 }
 
 youtube_lookup() {
-  result=$(timeout 3 curl -4 -s "https://www.youtube.com" | grep -oP '"countryCode":"\K\w+')
+  result=$(timeout 3 curl -4 -s "https://www.youtube.com" | grep -oP '"GL":"\K\w+')
   if [ $? -eq 124 ]; then
       echo ""
   elif [ "$result" == "null" ]; then
@@ -384,7 +384,7 @@ youtube_lookup() {
 }
 
 youtube_lookup_v6() {
-  result=$(timeout 3 curl -6 -s "https://www.youtube.com" | grep -oP '"countryCode":"\K\w+')
+  result=$(timeout 3 curl -6 -s "https://www.youtube.com" | grep -oP '"GL":"\K\w+')
   if [ $? -eq 124 ]; then
       echo ""
   elif [ "$result" == "null" ]; then
