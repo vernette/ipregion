@@ -45,7 +45,7 @@ bash <(wget -qO - https://github.com/vernette/ipregion/raw/master/ipregion.sh) -
 You can download the script and run it manually:
 
 ```bash
-wget -O https://github.com/vernette/ipregion/raw/master/ipregion.sh
+wget https://github.com/vernette/ipregion/raw/master/ipregion.sh
 chmod +x ipregion.sh
 ./ipregion.sh
 ```
