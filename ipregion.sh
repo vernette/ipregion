@@ -117,9 +117,11 @@ install_dependencies() {
   local missing_packages
   local pkg_manager
 
+  log "$LOG_INFO" "Checking for dependencies"
   read -r -a missing_packages <<<"$(check_missing_dependencies)"
 
   if [[ ${#missing_packages[@]} -eq 0 ]]; then
+    log "$LOG_INFO" "All dependencies are installed"
     return 0
   fi
 
