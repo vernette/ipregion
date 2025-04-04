@@ -111,6 +111,7 @@ install_with_package_manager() {
       apt install -y "${packages[@]}"
       ;;
   esac
+  clear
 }
 
 install_dependencies() {
