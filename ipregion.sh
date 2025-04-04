@@ -6,6 +6,8 @@ LOG_INFO="INFO"
 LOG_WARN="WARNING"
 LOG_ERROR="ERROR"
 
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+
 get_timestamp() {
   local format="$1"
   date +"$format"
@@ -143,6 +145,77 @@ check_ipv6_support() {
     log "$LOG_WARN" "IPv6 is not supported"
     return 1
   fi
+}
+
+make_request() {
+  local curl_command
+  local method="$1"
+  local url="$2"
+  shift 2
+  local user_agent=""
+  local headers=()
+  local json=""
+  local proxy=""
+  local response
+
+  while (("$#")); do
+    case "$1" in
+      --user-agent)
+        user_agent="$2"
+        shift 2
+        ;;
+      --header)
+        headers+=("$2")
+        shift 2
+        ;;
+      --json)
+        json="$2"
+        shift 2
+        ;;
+      --data)
+        data="$2"
+        shift 2
+        ;;
+      --proxy)
+        proxy="$2"
+        shift 2
+        ;;
+    esac
+  done
+
+  # TODO: Process errors and add request timeout
+  curl_command="curl --silent -X $method"
+
+  if [[ -n "$user_agent" ]]; then
+    curl_command+=" -A '$user_agent'"
+  fi
+
+  for header in "${headers[@]}"; do
+    curl_command+=" -H '$header'"
+  done
+
+  if [[ -n "$json" ]]; then
+    curl_command+=" --data '$json'"
+    if ! [[ "${headers[*]}" =~ "Content-Type" ]]; then
+      curl_command+=" -H 'Content-Type: application/json'"
+    fi
+  fi
+
+  if [[ -n "$data" ]]; then
+    curl_command+=" --data '$data'"
+    if ! [[ "${headers[*]}" =~ "Content-Type" ]]; then
+      curl_command+=" -H 'Content-Type: application/x-www-form-urlencoded'"
+    fi
+  fi
+
+  if [[ -n "$proxy" ]]; then
+    curl_command+=" --proxy $proxy --insecure"
+  fi
+
+  curl_command+=" '$url'"
+
+  response=$(eval "$curl_command")
+  echo "$response"
 }
 
 main() {
