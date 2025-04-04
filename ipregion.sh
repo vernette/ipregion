@@ -283,6 +283,9 @@ process_response() {
     IPAPI_CO)
       echo "$response" | jq '.country'
       ;;
+    DBIP)
+      echo "$response" | jq '.demoInfo.countryCode'
+      ;;
     *)
       echo "$response"
       ;;
