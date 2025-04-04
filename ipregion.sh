@@ -8,6 +8,15 @@ LOG_ERROR="ERROR"
 
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 
+# TODO: Add missing services
+declare -A DOMAIN_MAP=(
+  [RIPE]="rdap.db.ripe.net"
+  [IPINFO_IO]="ipinfo.io"
+  [IPREGISTRY]="ipregistry.co"
+  [IPAPI]="ipapi.com"
+  [DBIP]="db-ip.com"
+)
+
 get_timestamp() {
   local format="$1"
   date +"$format"
@@ -216,6 +225,12 @@ make_request() {
 
   response=$(eval "$curl_command")
   echo "$response"
+}
+
+run_all_services() {
+  for func in $(declare -F | awk '{print $3}' | grep '^lookup_'); do
+    "$func"
+  done
 }
 
 main() {
