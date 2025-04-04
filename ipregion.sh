@@ -10,11 +10,15 @@ USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 # TODO: Add missing services
 declare -A DOMAIN_MAP=(
-  [RIPE]="rdap.db.ripe.net"
-  [IPINFO_IO]="ipinfo.io"
-  [IPREGISTRY]="ipregistry.co"
-  [IPAPI]="ipapi.com"
-  [DBIP]="db-ip.com"
+  [RIPE]="rdap.db.ripe.net|/ip/{ip}"
+  [IPINFO_IO]="ipinfo.io|/widget/demo/{ip}"
+  [IPREGISTRY]="api.ipregistry.co|/{ip}?hostname=true&key=sb69ksjcajfs4c"
+  [IPAPI_CO]="ipapi.co|/{ip}/json"
+  [DBIP]="db-ip.com|/demo/home.php?s={ip}"
+)
+
+declare -A SERVICE_HEADERS=(
+  [IPREGISTRY]='("Origin: https://ipregistry.co")'
 )
 
 IDENTITY_SERVICES="ident.me ifconfig.me api64.ipify.org"
@@ -260,6 +264,88 @@ run_all_services() {
   done
 }
 
+process_response() {
+  local service="$1"
+  local response="$2"
+
+  # TODO: Process rate-limits
+
+  case "$service" in
+    RIPE)
+      echo "$response" | jq '.country'
+      ;;
+    IPINFO_IO)
+      echo "$response" | jq '.data.country'
+      ;;
+    IPREGISTRY)
+      echo "$response" | jq '.location.country.code'
+      ;;
+    IPAPI_CO)
+      echo "$response" | jq '.country'
+      ;;
+    *)
+      echo "$response"
+      ;;
+  esac
+}
+
+process_service() {
+  # TODO: Make service domain two-level and use it in log
+  local service="$1"
+  local service_config="${DOMAIN_MAP[$service]}"
+  local domain url_template response
+
+  IFS='|' read -r domain url_template <<<"$service_config"
+
+  local request_params=(
+    --user-agent "$USER_AGENT"
+  )
+
+  # TODO: Refactor this
+  if [[ -n "${SERVICE_HEADERS[$service]}" ]]; then
+    eval "local headers=${SERVICE_HEADERS[$service]}"
+    for header in "${headers[@]}"; do
+      request_params+=(--header "$header")
+    done
+  fi
+
+  # TODO: Make function to get url
+  local url_v4="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV4}"
+
+  # TODO: Make single check for both IPv4 and IPv6
+  log "$LOG_INFO" "Checking $service via IPv4: $EXTERNAL_IPV4"
+  response=$(make_request GET "$url_v4" "${request_params[@]}" --ip-version 4)
+  process_response "$service" "$response"
+
+  if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+    local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
+
+    log "$LOG_INFO" "Checking $service via IPv6: $EXTERNAL_IPV6"
+    response=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
+    process_response "$service" "$response"
+  fi
+}
+
+lookup_ripe() {
+  process_service "RIPE"
+}
+
+lookup_ipinfo_io() {
+  process_service "IPINFO_IO"
+}
+
+lookup_ipregistry() {
+  process_service "IPREGISTRY"
+}
+
+lookup_ipapi() {
+  process_service "IPAPI_CO"
+}
+
+lookup_dbip() {
+  process_service "DBIP"
+}
+
 main() {
   install_dependencies
 
@@ -267,6 +353,8 @@ main() {
   IPV6_SUPPORTED=$?
 
   get_external_ip
+
+  run_all_services
 }
 
 main
