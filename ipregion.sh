@@ -17,6 +17,8 @@ declare -A DOMAIN_MAP=(
   [DBIP]="db-ip.com"
 )
 
+IDENTITY_SERVICES="ident.me ifconfig.me api64.ipify.org"
+
 get_timestamp() {
   local format="$1"
   date +"$format"
