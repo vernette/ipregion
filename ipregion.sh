@@ -163,6 +163,7 @@ make_request() {
   local method="$1"
   local url="$2"
   shift 2
+  local ip_version=""
   local user_agent=""
   local headers=()
   local json=""
@@ -171,6 +172,10 @@ make_request() {
 
   while (("$#")); do
     case "$1" in
+      --ip-version)
+        ip_version="$2"
+        shift 2
+        ;;
       --user-agent)
         user_agent="$2"
         shift 2
@@ -196,6 +201,12 @@ make_request() {
 
   # TODO: Process errors and add request timeout
   curl_command="curl --silent -X $method"
+
+  if [[ "$ip_version" == "4" ]]; then
+    curl_command+=" -4"
+  else
+    curl_command+=" -6"
+  fi
 
   if [[ -n "$user_agent" ]]; then
     curl_command+=" -A '$user_agent'"
@@ -229,6 +240,20 @@ make_request() {
   echo "$response"
 }
 
+get_external_ip() {
+  local identity_service
+
+  log "$LOG_INFO" "Getting external IPv4 address"
+
+  identity_service=$(echo "$IDENTITY_SERVICES" | tr ' ' '\n' | shuf -n 1)
+  EXTERNAL_IPV4="$(make_request GET "https://$identity_service" --ip-version 4)"
+
+  if [[ "$IPV6_SUPPORTED" -eq 0 ]]; then
+    log "$LOG_INFO" "Getting external IPv6 address"
+    EXTERNAL_IPV6="$(make_request GET "https://$identity_service" --ip-version 6)"
+  fi
+}
+
 run_all_services() {
   for func in $(declare -F | awk '{print $3}' | grep '^lookup_'); do
     "$func"
@@ -240,6 +265,8 @@ main() {
 
   check_ipv6_support
   IPV6_SUPPORTED=$?
+
+  get_external_ip
 }
 
 main
