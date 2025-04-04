@@ -41,8 +41,7 @@ prompt_for_installation() {
   local missing_pkgs=("$@")
 
   echo "Missing dependencies: ${missing_pkgs[*]}"
-  echo "Do you want to install them?? [y/N]: "
-
+  printf "Do you want to install them? [y/N]: "
   read -r answer
 
   case "${answer,,}" in
