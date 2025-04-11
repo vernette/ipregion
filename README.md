@@ -34,12 +34,12 @@ For other systems, please install `curl` and `jq` manually.
 > If you notice that any of the services have stopped working, please create an [issue](https://github.com/vernette/ipregion/issues)
 
 ```
-bash <(wget -qO - https://github.com/vernette/ipregion/raw/master/ipregion.sh)
+bash <(wget -qO- https://github.com/vernette/ipregion/raw/master/ipregion.sh)
 ```
 
 To run the script through a local SOCKS proxy on port 40000 (example):
 ```
-bash <(wget -qO - https://github.com/vernette/ipregion/raw/master/ipregion.sh) --socks-port 40000
+bash <(wget -qO- https://github.com/vernette/ipregion/raw/master/ipregion.sh) --socks-port 40000
 ```
 
 You can download the script and run it manually:
