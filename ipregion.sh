@@ -89,6 +89,7 @@ APPLE_DOMAIN="apple.com"
 NETFLIX_DOMAIN="netflix.com"
 STEAM_DOMAIN="store.steampowered.com"
 SPOTIFY_DOMAIN="spotify.com"
+TWITCH_DOMAIN="twitch.tv"
 
 IDENTITY_SERVICES="https://ident.me https://ifconfig.me https://api64.ipify.org https://4.ipwho.de/ip"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
@@ -1095,6 +1096,40 @@ maxmind_com_lookup_v6() {
   fi
 }
 
+twitch_lookup() {
+  result=$(timeout 3 curl -4 -s -X POST \
+    --url 'https://gql.twitch.tv/gql#origin=twilight' \
+    --header 'Client-Id: kimne78kx3ncx6brgo4mv6wki5h1ko' \
+    --data '[{"operationName":"VerifyEmail_CurrentUser","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f9e7dcdf7e99c314c82d8f7f725fab5f99d1df3d7359b53c9ae122deec590198"}}}]' |
+    jq -r '.[0].data.requestInfo.countryCode')
+  if [ $? -eq 124 ]; then
+    echo ""
+  elif [ "$result" == "null" ]; then
+    echo ""
+  elif [ ${#result} -gt 7 ]; then
+    echo ""
+  else
+    echo "$result"
+  fi
+}
+
+twitch_lookup_v6() {
+  result=$(timeout 3 curl -6 -s -X POST \
+    --url 'https://gql.twitch.tv/gql#origin=twilight' \
+    --header 'Client-Id: kimne78kx3ncx6brgo4mv6wki5h1ko' \
+    --data '[{"operationName":"VerifyEmail_CurrentUser","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f9e7dcdf7e99c314c82d8f7f725fab5f99d1df3d7359b53c9ae122deec590198"}}}]' |
+    jq -r '.[0].data.requestInfo.countryCode')
+  if [ $? -eq 124 ]; then
+    echo ""
+  elif [ "$result" == "null" ]; then
+    echo ""
+  elif [ ${#result} -gt 7 ]; then
+    echo ""
+  else
+    echo "$result"
+  fi
+}
+
 main() {
   install_dependencies
 
@@ -1132,6 +1167,7 @@ main() {
     check_service "$APPLE_DOMAIN" apple_lookup apple_lookup_v6
     check_service "$SPOTIFY_DOMAIN" spotify_lookup spotify_lookup_v6
     check_service "$NETFLIX_DOMAIN" netflix_lookup netflix_lookup_v6
+    check_service "$TWITCH_DOMAIN" twitch_lookup twitch_lookup_v6
     check_service "$YOUTUBE_DOMAIN" youtube_lookup youtube_lookup_v6
   else
     check_service "$CLOUDFLARE_DOMAIN" cloudflare_lookup
@@ -1159,6 +1195,7 @@ main() {
     check_service "$APPLE_DOMAIN" apple_lookup
     check_service "$SPOTIFY_DOMAIN" spotify_lookup
     check_service "$NETFLIX_DOMAIN" netflix_lookup
+    check_service "$TWITCH_DOMAIN" twitch_lookup
     check_service "$YOUTUBE_DOMAIN" youtube_lookup
   fi
 
