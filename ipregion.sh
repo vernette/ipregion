@@ -156,9 +156,24 @@ check_ipv6_support() {
   if [[ -n $(ip -6 addr show scope global 2>/dev/null) ]]; then
     log "$LOG_INFO" "IPv6 is supported"
     return 0
-  else
-    log "$LOG_WARN" "IPv6 is not supported"
-    return 1
+  fi
+
+  log "$LOG_WARN" "IPv6 is not supported"
+  return 1
+}
+
+get_external_ip() {
+  local identity_service
+  log "$LOG_INFO" "Getting external IPv4 address"
+
+  identity_service=$(echo "$IDENTITY_SERVICES" | tr ' ' '\n' | shuf -n 1)
+  EXTERNAL_IPV4="$(make_request GET "https://$identity_service" --ip-version 4)"
+  log "$LOG_INFO" "External IPv4: $EXTERNAL_IPV4"
+
+  if [[ "$IPV6_SUPPORTED" -eq 0 ]]; then
+    log "$LOG_INFO" "Getting external IPv6 address"
+    EXTERNAL_IPV6="$(make_request GET "https://$identity_service" --ip-version 6)"
+    log "$LOG_INFO" "External IPv6: $EXTERNAL_IPV6"
   fi
 }
 
@@ -244,20 +259,6 @@ make_request() {
   echo "$response"
 }
 
-get_external_ip() {
-  local identity_service
-
-  log "$LOG_INFO" "Getting external IPv4 address"
-
-  identity_service=$(echo "$IDENTITY_SERVICES" | tr ' ' '\n' | shuf -n 1)
-  EXTERNAL_IPV4="$(make_request GET "https://$identity_service" --ip-version 4)"
-
-  if [[ "$IPV6_SUPPORTED" -eq 0 ]]; then
-    log "$LOG_INFO" "Getting external IPv6 address"
-    EXTERNAL_IPV6="$(make_request GET "https://$identity_service" --ip-version 6)"
-  fi
-}
-
 run_all_services() {
   for func in $(declare -F | awk '{print $3}' | grep '^lookup_'); do
     "$func"
@@ -316,14 +317,14 @@ process_service() {
   local url_v4="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV4}"
 
   # TODO: Make single check for both IPv4 and IPv6
-  log "$LOG_INFO" "Checking $service via IPv4: $EXTERNAL_IPV4"
+  log "$LOG_INFO" "Checking $service via IPv4"
   response=$(make_request GET "$url_v4" "${request_params[@]}" --ip-version 4)
   process_response "$service" "$response"
 
   if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
     local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
 
-    log "$LOG_INFO" "Checking $service via IPv6: $EXTERNAL_IPV6"
+    log "$LOG_INFO" "Checking $service via IPv6"
     response=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
     process_response "$service" "$response"
   fi
