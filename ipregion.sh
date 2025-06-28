@@ -17,6 +17,7 @@ EXCLUDED_SERVICES=(
 
 # TODO: Add missing services
 declare -A DOMAIN_MAP=(
+  [MAXMIND]="geoip.maxmind.com|/geoip/v2.1/city/me"
   [RIPE]="rdap.db.ripe.net|/ip/{ip}"
   [IPINFO_IO]="ipinfo.io|/widget/demo/{ip}"
   [IPREGISTRY]="api.ipregistry.co|/{ip}?hostname=true&key=sb69ksjcajfs4c"
@@ -26,6 +27,7 @@ declare -A DOMAIN_MAP=(
 
 declare -A SERVICE_HEADERS=(
   [IPREGISTRY]='("Origin: https://ipregistry.co")'
+  [MAXMIND]='("Referer: https://www.maxmind.com")'
 )
 
 IDENTITY_SERVICES="ident.me ifconfig.me api64.ipify.org"
@@ -288,6 +290,9 @@ process_response() {
   # TODO: Process rate-limits
 
   case "$service" in
+    MAXMIND)
+      echo "$response" | jq '.country.iso_code'
+      ;;
     RIPE)
       echo "$response" | jq '.country'
       ;;
@@ -344,6 +349,10 @@ process_service() {
     response=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
     process_response "$service" "$response"
   fi
+}
+
+lookup_maxmind() {
+  process_service "MAXMIND"
 }
 
 lookup_ripe() {
