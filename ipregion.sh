@@ -8,6 +8,13 @@ LOG_ERROR="ERROR"
 
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 
+EXCLUDED_SERVICES=(
+  "IPINFO_IO"
+  "IPREGISTRY"
+  "IPAPI_CO"
+  "DBIP"
+)
+
 # TODO: Add missing services
 declare -A DOMAIN_MAP=(
   [RIPE]="rdap.db.ripe.net|/ip/{ip}"
@@ -260,7 +267,16 @@ make_request() {
 }
 
 run_all_services() {
+  local service_name
+
   for func in $(declare -F | awk '{print $3}' | grep '^lookup_'); do
+    service_name=$(echo "$func" | sed 's/lookup_//' | tr '[:lower:]' '[:upper:]')
+
+    if [[ "${EXCLUDED_SERVICES[*]}" =~ ${service_name} ]]; then
+      log "$LOG_INFO" "Skipping service: $service_name"
+      continue
+    fi
+
     "$func"
   done
 }
