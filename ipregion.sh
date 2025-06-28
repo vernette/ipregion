@@ -272,10 +272,11 @@ run_all_services() {
   local service_name
 
   for func in $(declare -F | awk '{print $3}' | grep '^lookup_'); do
-    service_name=$(echo "$func" | sed 's/lookup_//' | tr '[:lower:]' '[:upper:]')
+    service_name=${func#lookup_}
+    service_name_uppercase=${service_name^^}
 
-    if [[ "${EXCLUDED_SERVICES[*]}" =~ ${service_name} ]]; then
-      log "$LOG_INFO" "Skipping service: $service_name"
+    if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep -Fxq "$service_name_uppercase"; then
+      log "$LOG_INFO" "Skipping service: $service_name_uppercase"
       continue
     fi
 
