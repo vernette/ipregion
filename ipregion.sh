@@ -387,7 +387,7 @@ lookup_ipregistry() {
   process_service "IPREGISTRY"
 }
 
-lookup_ipapi() {
+lookup_ipapi_co() {
   process_service "IPAPI_CO"
 }
 
