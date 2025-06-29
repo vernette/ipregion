@@ -87,7 +87,7 @@ prompt_for_installation() {
 
   echo "Missing dependencies: ${missing_pkgs[*]}"
   read -r -p "Do you want to install them? [y/N]: " answer
-  answer=$(echo "$answer" | tr '[:upper:]' '[:lower:]')
+  answer=${answer,,}
 
   case "${answer,,}" in
     y | yes)
