@@ -179,6 +179,7 @@ install_dependencies() {
   prompt_for_installation "${missing_packages[@]}" </dev/tty
 
   pkg_manager=$(get_package_manager)
+  log "$LOG_INFO" "Detected package manager: $pkg_manager"
 
   log "$LOG_INFO" "Installing missing dependencies"
   install_with_package_manager "$pkg_manager" "${missing_packages[@]}"
@@ -201,6 +202,8 @@ get_external_ip() {
   log "$LOG_INFO" "Getting external IPv4 address"
 
   identity_service=${IDENTITY_SERVICES[$RANDOM % ${#IDENTITY_SERVICES[@]}]}
+  log "$LOG_INFO" "Using identity service: $identity_service"
+
   EXTERNAL_IPV4="$(make_request GET "https://$identity_service" --ip-version 4)"
   log "$LOG_INFO" "External IPv4: $EXTERNAL_IPV4"
 
