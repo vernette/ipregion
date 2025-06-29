@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+VERBOSE=false
+
 DEPENDENCIES="jq curl"
 
 LOG_INFO="INFO"
@@ -42,8 +44,25 @@ log() {
   local message="${*:2}"
   local timestamp
 
-  timestamp=$(get_timestamp "%d.%m.%Y %H:%M:%S")
-  echo "[$timestamp] [$log_level]: $message"
+  if [[ "$VERBOSE" == true ]]; then
+    timestamp=$(get_timestamp "%d.%m.%Y %H:%M:%S")
+    echo "[$timestamp] [$log_level]: $message"
+  fi
+}
+
+parse_arguments() {
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      -v | --verbose)
+        VERBOSE=true
+        shift
+        ;;
+      *)
+        log "$LOG_ERROR" "Unknown option: $1"
+        exit 1
+        ;;
+    esac
+  done
 }
 
 is_installed() {
@@ -377,6 +396,8 @@ lookup_dbip() {
 }
 
 main() {
+  parse_arguments "$@"
+
   install_dependencies
 
   check_ipv6_support
@@ -387,4 +408,4 @@ main() {
   run_all_services
 }
 
-main
+main "$@"
