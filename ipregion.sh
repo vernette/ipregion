@@ -32,7 +32,13 @@ declare -A SERVICE_HEADERS=(
   [MAXMIND]='("Referer: https://www.maxmind.com")'
 )
 
-IDENTITY_SERVICES="ident.me ifconfig.me api64.ipify.org"
+IDENTITY_SERVICES=(
+  "ident.me"
+  "ifconfig.me"
+  "api64.ipify.org"
+  "ifconfig.co"
+  "ifconfig.me"
+)
 
 get_timestamp() {
   local format="$1"
@@ -194,7 +200,7 @@ get_external_ip() {
   local identity_service
   log "$LOG_INFO" "Getting external IPv4 address"
 
-  identity_service=$(echo "$IDENTITY_SERVICES" | tr ' ' '\n' | shuf -n 1)
+  identity_service=${IDENTITY_SERVICES[$RANDOM % ${#IDENTITY_SERVICES[@]}]}
   EXTERNAL_IPV4="$(make_request GET "https://$identity_service" --ip-version 4)"
   log "$LOG_INFO" "External IPv4: $EXTERNAL_IPV4"
 
