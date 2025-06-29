@@ -106,29 +106,23 @@ prompt_for_installation() {
 }
 
 get_package_manager() {
-  local use_sudo=""
-
   # Check if the script is running in Termux
   if [[ -d /data/data/com.termux ]]; then
     echo "termux"
     return
   fi
 
-  if [[ "$(id -u)" -ne 0 ]]; then
-    use_sudo="sudo"
-  fi
-
   if [[ -f /etc/os-release ]]; then
     . /etc/os-release
     case "$ID" in
       debian | ubuntu)
-        echo "$use_sudo apt"
+        echo "apt"
         ;;
       arch)
-        echo "$use_sudo pacman"
+        echo "pacman"
         ;;
       fedora)
-        echo "$use_sudo dnf"
+        echo "dnf"
         ;;
       *)
         log "$LOG_ERROR" "Unknown distribution: $ID. Please install dependencies manually."
@@ -144,24 +138,28 @@ get_package_manager() {
 install_with_package_manager() {
   local pkg_manager="$1"
   local packages=("${@:2}")
+  local use_sudo=""
+
+  if [[ "$(id -u)" -ne 0 ]]; then
+    use_sudo="sudo"
+  fi
 
   case "$pkg_manager" in
     *apt)
-      $pkg_manager update
+      $use_sudo "$pkg_manager" update
       NEEDRESTART_MODE=a $pkg_manager install -y "${packages[@]}"
       ;;
     *pacman)
-      $pkg_manager -Syy --noconfirm "${packages[@]}"
+      $use_sudo "$pkg_manager" -Syy --noconfirm "${packages[@]}"
       ;;
     *dnf)
-      $pkg_manager install -y "${packages[@]}"
+      $use_sudo "$pkg_manager" install -y "${packages[@]}"
       ;;
     termux)
       apt update
       apt install -y "${packages[@]}"
       ;;
   esac
-  clear
 }
 
 install_dependencies() {
