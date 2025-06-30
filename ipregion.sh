@@ -4,6 +4,14 @@ VERBOSE=false
 
 DEPENDENCIES="jq curl"
 
+# TODO: Make such constants readonly
+COLOR_WHITE="\033[97m"
+COLOR_RED="\033[31m"
+COLOR_GREEN="\033[32m"
+COLOR_BLUE="\033[36m"
+COLOR_ORANGE="\033[33m"
+COLOR_RESET="\033[0m"
+
 LOG_INFO="INFO"
 LOG_WARN="WARNING"
 LOG_ERROR="ERROR"
@@ -56,6 +64,13 @@ log() {
   fi
 }
 
+error_exit() {
+  local message="$1"
+  local exit_code="${2:-1}"
+  printf "[%b%s%b] %b%s%b\n" "$COLOR_RED" "ERROR" "$COLOR_RESET" "$COLOR_WHITE" "$message" "$COLOR_RESET" >&2
+  exit "$exit_code"
+}
+
 parse_arguments() {
   while [[ $# -gt 0 ]]; do
     case $1 in
@@ -64,8 +79,7 @@ parse_arguments() {
         shift
         ;;
       *)
-        log "$LOG_ERROR" "Unknown option: $1"
-        exit 1
+        error_exit "Unknown option: $1"
         ;;
     esac
   done
@@ -125,13 +139,11 @@ get_package_manager() {
         echo "dnf"
         ;;
       *)
-        log "$LOG_ERROR" "Unknown distribution: $ID. Please install dependencies manually."
-        exit 1
+        error_exit "Unknown distribution: $ID. Please install dependencies manually."
         ;;
     esac
   else
-    log "$LOG_ERROR" "File /etc/os-release not found, unable to determine distribution. Please install dependencies manually."
-    exit 1
+    error_exit "File /etc/os-release not found, unable to determine distribution. Please install dependencies manually."
   fi
 }
 
