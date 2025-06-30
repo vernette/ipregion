@@ -310,35 +310,54 @@ run_all_services() {
   done
 }
 
+is_valid_json() {
+  local json="$1"
+  jq -e . >/dev/null 2>&1 <<<"$json"
+}
+
+process_json() {
+  local json="$1"
+  local jq_filter="$2"
+  jq -r "$jq_filter" <<<"$json"
+}
+
 process_response() {
   local service="$1"
   local response="$2"
+  local jq_filter
+
+  if ! is_valid_json "$response"; then
+    log "$LOG_ERROR" "Invalid JSON response from $service: $response"
+    return 1
+  fi
 
   # TODO: Process rate-limits
 
   case "$service" in
     MAXMIND)
-      echo "$response" | jq '.country.iso_code'
+      jq_filter='.country.iso_code'
       ;;
     RIPE)
-      echo "$response" | jq '.country'
+      jq_filter='.country'
       ;;
     IPINFO_IO)
-      echo "$response" | jq '.data.country'
+      jq_filter='.data.country'
       ;;
     IPREGISTRY)
-      echo "$response" | jq '.location.country.code'
+      jq_filter='.location.country.code'
       ;;
     IPAPI_CO)
-      echo "$response" | jq '.country'
+      jq_filter='.country'
       ;;
     DBIP)
-      echo "$response" | jq '.demoInfo.countryCode'
+      jq_filter='.demoInfo.countryCode'
       ;;
     *)
       echo "$response"
       ;;
   esac
+
+  process_json "$response" "$jq_filter"
 }
 
 process_service() {
