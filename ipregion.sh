@@ -310,22 +310,6 @@ make_request() {
   echo "$response"
 }
 
-run_all_services() {
-  local service_name
-
-  for func in $(declare -F | awk '{print $3}' | grep '^lookup_'); do
-    service_name=${func#lookup_}
-    service_name_uppercase=${service_name^^}
-
-    if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep -Fxq "$service_name_uppercase"; then
-      log "$LOG_INFO" "Skipping service: $service_name_uppercase"
-      continue
-    fi
-
-    "$func"
-  done
-}
-
 is_valid_json() {
   local json="$1"
   jq -e . >/dev/null 2>&1 <<<"$json"
@@ -409,6 +393,22 @@ process_service() {
     response=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
     process_response "$service" "$response"
   fi
+}
+
+run_all_services() {
+  local service_name
+
+  for func in $(declare -F | awk '{print $3}' | grep '^lookup_'); do
+    service_name=${func#lookup_}
+    service_name_uppercase=${service_name^^}
+
+    if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep -Fxq "$service_name_uppercase"; then
+      log "$LOG_INFO" "Skipping service: $service_name_uppercase"
+      continue
+    fi
+
+    "$func"
+  done
 }
 
 lookup_maxmind() {
