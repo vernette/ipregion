@@ -203,7 +203,7 @@ check_ipv6_support() {
     return 0
   fi
 
-  log "$LOG_WARN" "IPv6 is not supported"
+  log "$LOG_WARN" "IPv6 is not supported on this system"
   return 1
 }
 
