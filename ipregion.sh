@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 VERBOSE=false
+JSON_OUTPUT=false
 
 DEPENDENCIES="jq curl"
 
@@ -19,17 +20,18 @@ LOG_ERROR="ERROR"
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 
 # TODO: Add missing services
+# TODO: Use second level domain instead of explicitly specifying domain?
 declare -A DOMAIN_MAP=(
-  [MAXMIND]="geoip.maxmind.com|/geoip/v2.1/city/me"
-  [RIPE]="rdap.db.ripe.net|/ip/{ip}"
-  [IPINFO_IO]="ipinfo.io|/widget/demo/{ip}"
-  [IPREGISTRY]="api.ipregistry.co|/{ip}?hostname=true&key=sb69ksjcajfs4c"
-  [IPAPI_CO]="ipapi.co|/{ip}/json"
-  [DBIP]="db-ip.com|/demo/home.php?s={ip}"
+  [MAXMIND]="maxmind.com|geoip.maxmind.com|/geoip/v2.1/city/me"
+  [RIPE]="rdap.db.ripe.net|rdap.db.ripe.net|/ip/{ip}"
+  [IPINFO_IO]="ipinfo.io|ipinfo.io|/widget/demo/{ip}"
+  [IPREGISTRY]="ipregistry.co|api.ipregistry.co|/{ip}?hostname=true&key=sb69ksjcajfs4c"
+  [IPAPI_CO]="ipapi.co|ipapi.co|/{ip}/json"
+  [DBIP]="db-ip.com|db-ip.com|/demo/home.php?s={ip}"
 )
 
-CUSTOM_SERVICES=(
-  "YOUTUBE"
+declare -A CUSTOM_SERVICES=(
+  [YOUTUBE]="youtube.com"
 )
 
 declare -A SERVICE_HEADERS=(
@@ -80,6 +82,10 @@ parse_arguments() {
     case $1 in
       -v | --verbose)
         VERBOSE=true
+        shift
+        ;;
+      -j | --json)
+        JSON_OUTPUT=true
         shift
         ;;
       *)
@@ -369,14 +375,14 @@ process_service() {
   local service="$1"
   local custom="${2:-false}"
   local service_config="${DOMAIN_MAP[$service]}"
-  local domain url_template response
+  local display_name domain url_template response ipv4_result ipv6_result
 
   if [[ "$custom" == true ]]; then
     process_custom_service "$service"
     return
   fi
 
-  IFS='|' read -r domain url_template <<<"$service_config"
+  IFS='|' read -r display_name domain url_template <<<"$service_config"
 
   local request_params=()
 
@@ -392,32 +398,39 @@ process_service() {
   local url_v4="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV4}"
 
   # TODO: Make single check for both IPv4 and IPv6
-  log "$LOG_INFO" "Checking $service via IPv4"
-  response=$(make_request GET "$url_v4" "${request_params[@]}" --ip-version 4)
-  process_response "$service" "$response"
+  log "$LOG_INFO" "Checking $display_name via IPv4"
+  ipv4_result=$(make_request GET "$url_v4" "${request_params[@]}" --ip-version 4)
+  ipv4_result=$(process_response "$service" "$ipv4_result")
 
   if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
     local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
 
-    log "$LOG_INFO" "Checking $service via IPv6"
-    response=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
-    process_response "$service" "$response"
+    log "$LOG_INFO" "Checking $display_name via IPv6"
+    ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
+    ipv6_result=$(process_response "$service" "$ipv6_result")
+  else
+    ipv6_result=""
   fi
+
+  add_result "$display_name" "$ipv4_result" "$ipv6_result"
 }
 
 process_custom_service() {
   local service="$1"
+  local ipv4_result ipv6_result
+  local display_name="${CUSTOM_SERVICES[$service]:-$service}"
 
   case "$service" in
     YOUTUBE)
-      log "$LOG_INFO" "Checking $service via IPv4"
-      lookup_youtube 4
-
-      # TODO: Move to function
+      log "$LOG_INFO" "Checking $display_name via IPv4"
+      ipv4_result=$(lookup_youtube 4)
       if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
-        log "$LOG_INFO" "Checking $service via IPv6"
-        lookup_youtube 6
+        log "$LOG_INFO" "Checking $display_name via IPv6"
+        ipv6_result=$(lookup_youtube 6)
+      else
+        ipv6_result=""
       fi
+      add_result "$display_name" "$ipv4_result" "$ipv6_result"
       ;;
     *)
       log "$LOG_WARN" "Unknown custom service: $service"
@@ -437,7 +450,7 @@ run_all_services() {
       continue
     fi
 
-    if printf "%s\n" "${CUSTOM_SERVICES[@]}" | grep -Fxq "$service_name_uppercase"; then
+    if [[ -n "${CUSTOM_SERVICES[$service_name_uppercase]}" ]]; then
       process_service "$service_name_uppercase" true
       continue
     fi
@@ -489,6 +502,53 @@ lookup_youtube() {
   echo "$result"
 }
 
+init_json_output() {
+  RESULT_JSON=$(jq -n \
+    --arg version "1" \
+    --arg ipv4 "$EXTERNAL_IPV4" \
+    --arg ipv6 "$EXTERNAL_IPV6" \
+    '{version: ($version|tonumber), ipv4: ($ipv4 | select(length > 0) // null), ipv6: ($ipv6 | select(length > 0) // null), results: []}')
+}
+
+add_result() {
+  local service="$1"
+  local ipv4="$2"
+  local ipv6="$3"
+
+  RESULT_JSON=$(jq \
+    --arg service "$service" \
+    --arg ipv4 "$ipv4" \
+    --arg ipv6 "$ipv6" \
+    '.results += [{
+      service: $service,
+      ipv4: ($ipv4 | select(length > 0) // null),
+      ipv6: ($ipv6 | select(length > 0) // null)
+    }]' \
+    <<<"$RESULT_JSON")
+}
+
+print_human_readable_results() {
+  local version ipv4 ipv6
+  local separator="|||"
+
+  version=$(jq -r '.version' <<<"$RESULT_JSON")
+  ipv4=$(jq -r '.ipv4' <<<"$RESULT_JSON")
+  ipv6=$(jq -r '.ipv6' <<<"$RESULT_JSON")
+
+  printf "IPv4: %s\nIPv6: %s\n\n" "$ipv4" "$ipv6"
+
+  {
+    printf "Service%sIPv4%sIPv6\n" "$separator" "$separator"
+    jq -c '.results[]' <<<"$RESULT_JSON" | while read -r item; do
+      local service ipv4_res ipv6_res
+      service=$(jq -r '.service' <<<"$item")
+      ipv4_res=$(jq -r '.ipv4 // "null"' <<<"$item")
+      ipv6_res=$(jq -r '.ipv6 // "null"' <<<"$item")
+      printf "%s%s%s%s%s\n" "$service" "$separator" "$ipv4_res" "$separator" "$ipv6_res"
+    done
+  } | column -t -s "$separator"
+}
+
 main() {
   parse_arguments "$@"
 
@@ -499,7 +559,15 @@ main() {
 
   get_external_ip
 
+  init_json_output
   run_all_services
+
+  # TODO: Refactor this
+  if [[ "$JSON_OUTPUT" == true ]]; then
+    echo "$RESULT_JSON" | jq
+  else
+    print_human_readable_results
+  fi
 }
 
 main "$@"
