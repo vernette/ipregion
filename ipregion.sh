@@ -18,13 +18,6 @@ LOG_ERROR="ERROR"
 
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 
-EXCLUDED_SERVICES=(
-  "IPINFO_IO"
-  "IPREGISTRY"
-  "IPAPI_CO"
-  "DBIP"
-)
-
 # TODO: Add missing services
 declare -A DOMAIN_MAP=(
   [MAXMIND]="geoip.maxmind.com|/geoip/v2.1/city/me"
@@ -35,9 +28,20 @@ declare -A DOMAIN_MAP=(
   [DBIP]="db-ip.com|/demo/home.php?s={ip}"
 )
 
+CUSTOM_SERVICES=(
+  "YOUTUBE"
+)
+
 declare -A SERVICE_HEADERS=(
   [IPREGISTRY]='("Origin: https://ipregistry.co")'
   [MAXMIND]='("Referer: https://www.maxmind.com")'
+)
+
+EXCLUDED_SERVICES=(
+  "IPINFO_IO"
+  "IPREGISTRY"
+  "IPAPI_CO"
+  "DBIP"
 )
 
 IDENTITY_SERVICES=(
@@ -363,8 +367,14 @@ process_response() {
 process_service() {
   # TODO: Make service domain two-level and use it in log
   local service="$1"
+  local custom="${2:-false}"
   local service_config="${DOMAIN_MAP[$service]}"
   local domain url_template response
+
+  if [[ "$custom" == true ]]; then
+    process_custom_service "$service"
+    return
+  fi
 
   IFS='|' read -r domain url_template <<<"$service_config"
 
@@ -395,6 +405,26 @@ process_service() {
   fi
 }
 
+process_custom_service() {
+  local service="$1"
+
+  case "$service" in
+    YOUTUBE)
+      log "$LOG_INFO" "Checking $service via IPv4"
+      lookup_youtube 4
+
+      # TODO: Move to function
+      if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+        log "$LOG_INFO" "Checking $service via IPv6"
+        lookup_youtube 6
+      fi
+      ;;
+    *)
+      log "$LOG_WARN" "Unknown custom service: $service"
+      ;;
+  esac
+}
+
 run_all_services() {
   local service_name
 
@@ -404,6 +434,11 @@ run_all_services() {
 
     if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep -Fxq "$service_name_uppercase"; then
       log "$LOG_INFO" "Skipping service: $service_name_uppercase"
+      continue
+    fi
+
+    if printf "%s\n" "${CUSTOM_SERVICES[@]}" | grep -Fxq "$service_name_uppercase"; then
+      process_service "$service_name_uppercase" true
       continue
     fi
 
@@ -433,6 +468,25 @@ lookup_ipapi_co() {
 
 lookup_dbip() {
   process_service "DBIP"
+}
+
+lookup_youtube() {
+  local ip_version="$1"
+  local sed_filter='s/.*"[a-z]\{2\}_\([A-Z]\{2\}\)".*/\1/p'
+  local sed_fallback_filter='s/.*"[a-z]\{2\}-\([A-Z]\{2\}\)".*/\1/p'
+  local response result
+
+  response=$(make_request GET "https://www.google.com" \
+    --user-agent "$USER_AGENT" \
+    --ip-version "$ip_version")
+
+  result=$(sed -n "$sed_filter" <<<"$response")
+
+  if [[ -z "$result" ]]; then
+    result=$(sed -n "$sed_fallback_filter" <<<"$response")
+  fi
+
+  echo "$result"
 }
 
 main() {
