@@ -152,14 +152,14 @@ install_with_package_manager() {
   local packages=("${@:2}")
   local use_sudo=""
 
-  if [[ "$(id -u)" -ne 0 ]]; then
+  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
     use_sudo="sudo"
   fi
 
   case "$pkg_manager" in
     *apt)
       $use_sudo "$pkg_manager" update
-      NEEDRESTART_MODE=a $pkg_manager install -y "${packages[@]}"
+      $use_sudo env NEEDRESTART_MODE=a "$pkg_manager" install -y "${packages[@]}"
       ;;
     *pacman)
       $use_sudo "$pkg_manager" -Syy --noconfirm "${packages[@]}"
@@ -170,6 +170,9 @@ install_with_package_manager() {
     termux)
       apt update
       apt install -y "${packages[@]}"
+      ;;
+    *)
+      error_exit "Unknown package manager: $pkg_manager"
       ;;
   esac
 }
