@@ -154,6 +154,7 @@ install_with_package_manager() {
 
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
     use_sudo="sudo"
+    log "$LOG_INFO" "Running as non-root user, using sudo"
   fi
 
   case "$pkg_manager" in
