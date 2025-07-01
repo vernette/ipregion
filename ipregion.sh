@@ -384,9 +384,7 @@ process_service() {
 
   IFS='|' read -r domain url_template <<<"$service_config"
 
-  local request_params=(
-    --user-agent "$USER_AGENT"
-  )
+  local request_params=()
 
   # TODO: Refactor this
   if [[ -n "${SERVICE_HEADERS[$service]}" ]]; then
