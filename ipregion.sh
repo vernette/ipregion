@@ -678,7 +678,10 @@ print_table_group() {
     header=("$(color TABLE_HEADER 'Service')")
     [[ $show_ipv4 -eq 1 ]] && header+=("$(color TABLE_HEADER 'IPv4')")
     [[ $show_ipv6 -eq 1 ]] && header+=("$(color TABLE_HEADER 'IPv6')")
-    printf "%s\n" "$(IFS="$separator"; echo "${header[*]}")"
+    printf "%s\n" "$(
+      IFS="$separator"
+      echo "${header[*]}"
+    )"
 
     jq -c ".results.$group[]" <<<"$RESULT_JSON" | while read -r item; do
       row=()
@@ -697,7 +700,10 @@ print_table_group() {
         row+=("$(format_value "$ipv6_res" "$not_available")")
       fi
 
-      printf "%s\n" "$(IFS="$separator"; echo "${row[*]}")"
+      printf "%s\n" "$(
+        IFS="$separator"
+        echo "${row[*]}"
+      )"
     done
   } | column -t -s "$separator"
 }
@@ -706,6 +712,16 @@ print_table() {
   print_table_group "primary" "Primary services"
   printf "\n"
   print_table_group "custom" "Custom services"
+}
+
+mask_ipv4() {
+  local ip="$1"
+  echo "${ip%.*}.*"
+}
+
+mask_ipv6() {
+  local ip="$1"
+  echo "$ip" | sed -E 's/^([^:]+:[^:]+:[^:]+:)[^:]+(.*)$/\1****\2/'
 }
 
 print_header() {
@@ -717,11 +733,11 @@ print_header() {
   printf "%s\n\n" "$(color URL "Made with ")$(color HEART '❤')$(color URL " by vernette — $SCRIPT_URL")"
 
   if [[ -n "$EXTERNAL_IPV4" ]]; then
-    printf "%s: %s\n" "$(color HEADER 'IPv4')" "$(bold "$ipv4")"
+    printf "%s: %s\n" "$(color HEADER 'IPv4')" "$(bold "$(mask_ipv4 "$ipv4")")"
   fi
 
   if [[ -n "$EXTERNAL_IPV6" ]]; then
-    printf "%s: %s\n" "$(color HEADER 'IPv6')" "$(bold "$ipv6")"
+    printf "%s: %s\n" "$(color HEADER 'IPv6')" "$(bold "$(mask_ipv6 "$ipv6")")"
   fi
 
   printf "%s: %s\n\n" "$(color HEADER 'ASN')" "$(bold "AS$asn $asn_name")"
