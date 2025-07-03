@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 SCRIPT_URL="https://github.com/vernette/ipregion"
-DEPENDENCIES="jq curl"
+DEPENDENCIES="jq curl util-linux"
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 
 VERBOSE=false
@@ -23,6 +23,13 @@ COLOR_RESET="0"
 LOG_INFO="INFO"
 LOG_WARN="WARNING"
 LOG_ERROR="ERROR"
+
+declare -A DEPENDENCY_COMMANDS=(
+  [jq]="jq"
+  [curl]="curl"
+  [util-linux]="column"
+)
+DEPENDENCIES=("jq" "curl" "util-linux")
 
 # TODO: Add missing services
 declare -A PRIMARY_SERVICES=(
@@ -158,15 +165,17 @@ parse_arguments() {
 }
 
 is_installed() {
-  # NOTE: Works only for packages with the same name as command itself
-  command -v "$1" >/dev/null 2>&1
+  local cmd="$1"
+  command -v "$cmd" >/dev/null 2>&1
 }
 
 check_missing_dependencies() {
   local missing_pkgs=()
+  local cmd
 
-  for pkg in $DEPENDENCIES; do
-    if ! is_installed "$pkg"; then
+  for pkg in "${DEPENDENCIES[@]}"; do
+    cmd="${DEPENDENCY_COMMANDS[$pkg]:-$pkg}"
+    if ! is_installed "$cmd"; then
       missing_pkgs+=("$pkg")
     fi
   done
@@ -232,6 +241,9 @@ install_with_package_manager() {
   case "$pkg_manager" in
     *apt)
       $use_sudo "$pkg_manager" update
+      if [[ " ${packages[*]} " == *" util-linux "* ]]; then
+        $use_sudo env NEEDRESTART_MODE=a "$pkg_manager" install -y util-linux bsdmainutils
+      fi
       $use_sudo env NEEDRESTART_MODE=a "$pkg_manager" install -y "${packages[@]}"
       ;;
     *pacman)
