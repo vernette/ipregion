@@ -625,6 +625,63 @@ add_result() {
     <<<"$RESULT_JSON")
 }
 
+format_value() {
+  local value="$1"
+  local not_available="$2"
+
+  if [[ "$value" == "$not_available" ]]; then
+    color NULL "$value"
+  else
+    bold "$value"
+  fi
+}
+
+print_table() {
+  local separator="|||"
+  local not_available="N/A"
+  local show_ipv4=0
+  local show_ipv6=0
+  local header row ipv4_res ipv6_res
+
+  [[ -n "$EXTERNAL_IPV4" ]] && show_ipv4=1
+  [[ -n "$EXTERNAL_IPV6" ]] && show_ipv6=1
+
+  {
+    header=("$(color TABLE_HEADER 'Service')")
+
+    [[ $show_ipv4 -eq 1 ]] && header+=("$(color TABLE_HEADER 'IPv4')")
+    [[ $show_ipv6 -eq 1 ]] && header+=("$(color TABLE_HEADER 'IPv6')")
+
+    printf "%s\n" "$(
+      IFS="$separator"
+      echo "${header[*]}"
+    )"
+
+    jq -c '.results[]' <<<"$RESULT_JSON" | while read -r item; do
+      row=()
+      service=$(jq -r '.service' <<<"$item")
+      row+=("$(color SERVICE "$service")")
+
+      if [[ $show_ipv4 -eq 1 ]]; then
+        ipv4_res=$(jq -r --arg na "$not_available" '.ipv4 // $na' <<<"$item")
+        [[ "$ipv4_res" == "null" ]] && ipv4_res="$not_available"
+        row+=("$(format_value "$ipv4_res" "$not_available")")
+      fi
+
+      if [[ $show_ipv6 -eq 1 ]]; then
+        ipv6_res=$(jq -r --arg na "$not_available" '.ipv6 // $na' <<<"$item")
+        [[ "$ipv6_res" == "null" ]] && ipv6_res="$not_available"
+        row+=("$(format_value "$ipv6_res" "$not_available")")
+      fi
+
+      printf "%s\n" "$(
+        IFS="$separator"
+        echo "${row[*]}"
+      )"
+    done
+  } | column -t -s "$separator"
+}
+
 print_header() {
   local ipv4 ipv6
 
@@ -632,29 +689,16 @@ print_header() {
   ipv6=$(jq -r '.ipv6' <<<"$RESULT_JSON")
 
   printf "%s\n\n" "$(color URL "Made with ")$(color HEART '❤')$(color URL " by vernette — $SCRIPT_URL")"
-  printf "%s: %s\n" "$(color HEADER 'IPv4')" "$(bold "$ipv4")"
-  printf "%s: %s\n" "$(color HEADER 'IPv6')" "$(bold "$ipv6")"
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    printf "%s: %s\n" "$(color HEADER 'IPv4')" "$(bold "$ipv4")"
+  fi
+
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    printf "%s: %s\n" "$(color HEADER 'IPv6')" "$(bold "$ipv6")"
+  fi
+
   printf "%s: %s\n\n" "$(color HEADER 'ASN')" "$(bold "AS$asn $asn_name")"
-}
-
-print_table() {
-  local separator="|||"
-  local not_available="N/A"
-  local service ipv4_res ipv6_res
-
-  {
-    printf "%s%s%s%s%s\n" "$(color TABLE_HEADER 'Service')" "$separator" "$(color TABLE_HEADER 'IPv4')" "$separator" "$(color TABLE_HEADER 'IPv6')"
-    jq -c '.results[]' <<<"$RESULT_JSON" | while read -r item; do
-      service=$(jq -r '.service' <<<"$item")
-      ipv4_res=$(jq -r --arg na "$not_available" '.ipv4 // $na' <<<"$item")
-      ipv6_res=$(jq -r --arg na "$not_available" '.ipv6 // $na' <<<"$item")
-
-      [[ "$ipv4_res" == "$not_available" ]] && ipv4_res=$(color NULL "$ipv4_res") || ipv4_res=$(bold "$ipv4_res")
-      [[ "$ipv6_res" == "$not_available" ]] && ipv6_res=$(color NULL "$ipv6_res") || ipv6_res=$(bold "$ipv6_res")
-
-      printf "%s%s%s%s%s\n" "$(color SERVICE "$service")" "$separator" "$ipv4_res" "$separator" "$ipv6_res"
-    done
-  } | column -t -s "$separator"
 }
 
 print_results() {
