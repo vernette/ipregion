@@ -1,23 +1,28 @@
 #!/usr/bin/env bash
 
+SCRIPT_URL="https://github.com/vernette/ipregion"
+DEPENDENCIES="jq curl"
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+
 VERBOSE=false
 JSON_OUTPUT=false
 
-DEPENDENCIES="jq curl"
-
-# TODO: Make such constants readonly
-COLOR_WHITE="\033[97m"
-COLOR_RED="\033[31m"
-COLOR_GREEN="\033[32m"
-COLOR_BLUE="\033[36m"
-COLOR_ORANGE="\033[33m"
-COLOR_RESET="\033[0m"
+COLOR_HEADER="1;36"
+COLOR_SERVICE="1;32"
+COLOR_HEART="1;31"
+COLOR_URL="1;90"
+COLOR_ASN="1;33"
+COLOR_TABLE_HEADER="1;97"
+COLOR_TABLE_VALUE="1"
+COLOR_NULL="0;90"
+COLOR_ERROR="1;31"
+COLOR_WARN="1;33"
+COLOR_INFO="1;36"
+COLOR_RESET="0"
 
 LOG_INFO="INFO"
 LOG_WARN="WARNING"
 LOG_ERROR="ERROR"
-
-USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 
 # TODO: Add missing services
 declare -A PRIMARY_SERVICES=(
@@ -58,6 +63,35 @@ IDENTITY_SERVICES=(
   "ifconfig.me"
 )
 
+color() {
+  local color_name="$1"
+  local text="$2"
+  local code
+
+  case "$color_name" in
+    HEADER) code="$COLOR_HEADER" ;;
+    SERVICE) code="$COLOR_SERVICE" ;;
+    HEART) code="$COLOR_HEART" ;;
+    URL) code="$COLOR_URL" ;;
+    ASN) code="$COLOR_ASN" ;;
+    TABLE_HEADER) code="$COLOR_TABLE_HEADER" ;;
+    TABLE_VALUE) code="$COLOR_TABLE_VALUE" ;;
+    NULL) code="$COLOR_NULL" ;;
+    ERROR) code="$COLOR_ERROR" ;;
+    WARN) code="$COLOR_WARN" ;;
+    INFO) code="$COLOR_INFO" ;;
+    RESET) code="$COLOR_RESET" ;;
+    *) code="$color_name" ;;
+  esac
+
+  printf "\033[%sm%s\033[0m" "$code" "$text"
+}
+
+bold() {
+  local text="$1"
+  printf "\033[1m%s\033[0m" "$text"
+}
+
 get_timestamp() {
   local format="$1"
   date +"$format"
@@ -69,15 +103,25 @@ log() {
   local timestamp
 
   if [[ "$VERBOSE" == true ]]; then
+    local color_code
+
     timestamp=$(get_timestamp "%d.%m.%Y %H:%M:%S")
-    echo "[$timestamp] [$log_level]: $message"
+
+    case "$log_level" in
+      "$LOG_ERROR") color_code=ERROR ;;
+      "$LOG_WARN") color_code=WARN ;;
+      "$LOG_INFO") color_code=INFO ;;
+      *) color_code=RESET ;;
+    esac
+
+    printf "[%s] [%s]: %s\n" "$timestamp" "$(color $color_code "$log_level")" "$message"
   fi
 }
 
 error_exit() {
   local message="$1"
   local exit_code="${2:-1}"
-  printf "[%b%s%b] %b%s%b\n" "$COLOR_RED" "ERROR" "$COLOR_RESET" "$COLOR_WHITE" "$message" "$COLOR_RESET" >&2
+  printf "%s %s\n" "$(color ERROR '[ERROR]')" "$(color TABLE_HEADER "$message")" >&2
   exit "$exit_code"
 }
 
@@ -581,25 +625,46 @@ add_result() {
     <<<"$RESULT_JSON")
 }
 
-print_human_readable_results() {
+print_header() {
   local ipv4 ipv6
-  local separator="|||"
 
   ipv4=$(jq -r '.ipv4' <<<"$RESULT_JSON")
   ipv6=$(jq -r '.ipv6' <<<"$RESULT_JSON")
 
-  printf "IPv4: %s\nIPv6: %s\nASN: %s %s\n\n" "$ipv4" "$ipv6" "$asn" "$asn_name"
+  printf "%s\n\n" "$(color URL "Made with ")$(color HEART '❤')$(color URL " by vernette — $SCRIPT_URL")"
+  printf "%s: %s\n" "$(color HEADER 'IPv4')" "$(bold "$ipv4")"
+  printf "%s: %s\n" "$(color HEADER 'IPv6')" "$(bold "$ipv6")"
+  printf "%s: %s\n\n" "$(color HEADER 'ASN')" "$(bold "AS$asn $asn_name")"
+}
+
+print_table() {
+  local separator="|||"
+  local not_available="N/A"
+  local service ipv4_res ipv6_res
 
   {
-    printf "Service%sIPv4%sIPv6\n" "$separator" "$separator"
+    printf "%s%s%s%s%s\n" "$(color TABLE_HEADER 'Service')" "$separator" "$(color TABLE_HEADER 'IPv4')" "$separator" "$(color TABLE_HEADER 'IPv6')"
     jq -c '.results[]' <<<"$RESULT_JSON" | while read -r item; do
-      local service ipv4_res ipv6_res
       service=$(jq -r '.service' <<<"$item")
-      ipv4_res=$(jq -r '.ipv4 // "null"' <<<"$item")
-      ipv6_res=$(jq -r '.ipv6 // "null"' <<<"$item")
-      printf "%s%s%s%s%s\n" "$service" "$separator" "$ipv4_res" "$separator" "$ipv6_res"
+      ipv4_res=$(jq -r --arg na "$not_available" '.ipv4 // $na' <<<"$item")
+      ipv6_res=$(jq -r --arg na "$not_available" '.ipv6 // $na' <<<"$item")
+
+      [[ "$ipv4_res" == "$not_available" ]] && ipv4_res=$(color NULL "$ipv4_res") || ipv4_res=$(bold "$ipv4_res")
+      [[ "$ipv6_res" == "$not_available" ]] && ipv6_res=$(color NULL "$ipv6_res") || ipv6_res=$(bold "$ipv6_res")
+
+      printf "%s%s%s%s%s\n" "$(color SERVICE "$service")" "$separator" "$ipv4_res" "$separator" "$ipv6_res"
     done
   } | column -t -s "$separator"
+}
+
+print_results() {
+  if [[ "$JSON_OUTPUT" == true ]]; then
+    echo "$RESULT_JSON" | jq
+    return
+  fi
+
+  print_header
+  print_table
 }
 
 main() {
@@ -618,11 +683,7 @@ main() {
   run_service_group "primary"
   run_service_group "custom"
 
-  if [[ "$JSON_OUTPUT" == true ]]; then
-    echo "$RESULT_JSON" | jq
-  else
-    print_human_readable_results
-  fi
+  print_results
 }
 
 main "$@"
