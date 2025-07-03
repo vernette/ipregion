@@ -128,7 +128,7 @@ log() {
       *) color_code=RESET ;;
     esac
 
-    printf "[%s] [%s]: %s\n" "$timestamp" "$(color $color_code "$log_level")" "$message"
+    printf "[%s] [%s]: %s\n" "$timestamp" "$(color $color_code "$log_level")" "$message" >&2
   fi
 }
 
