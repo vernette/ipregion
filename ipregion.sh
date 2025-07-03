@@ -61,6 +61,10 @@ IDENTITY_SERVICES=(
   "ifconfig.me"
 )
 
+IPV6_OVER_IPV4_SERVICES=(
+  "IPINFO_IO"
+)
+
 color() {
   local color_name="$1"
   local text="$2"
@@ -433,6 +437,14 @@ process_response() {
   process_json "$response" "$jq_filter"
 }
 
+is_ipv6_over_ipv4_service() {
+  local service="$1"
+  for s in "${IPV6_OVER_IPV4_SERVICES[@]}"; do
+    [[ "$s" == "$service" ]] && return 0
+  done
+  return 1
+}
+
 process_service() {
   # TODO: Make service domain two-level and use it in log
   local service="$1"
@@ -465,14 +477,20 @@ process_service() {
   ipv4_result=$(make_request GET "$url_v4" "${request_params[@]}" --ip-version 4)
   ipv4_result=$(process_response "$service" "$ipv4_result")
 
-  if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+  if is_ipv6_over_ipv4_service "$service" && [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
     local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
-
-    log "$LOG_INFO" "Checking $display_name via IPv6"
-    ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
+    log "$LOG_INFO" "Checking $display_name (IPv6 address, IPv4 transport)"
+    ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 4)
     ipv6_result=$(process_response "$service" "$ipv6_result")
   else
-    ipv6_result=""
+    if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+      local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
+      log "$LOG_INFO" "Checking $display_name via IPv6"
+      ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
+      ipv6_result=$(process_response "$service" "$ipv6_result")
+    else
+      ipv6_result=""
+    fi
   fi
 
   add_result "$display_name" "$ipv4_result" "$ipv6_result"
