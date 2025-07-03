@@ -57,12 +57,14 @@ declare -A CUSTOM_SERVICES=(
   [YOUTUBE]="youtube.com"
   [TWITCH]="twitch.tv"
   [CHATGPT]="chatgpt.com"
+  [NETFLIX]="netflix.com"
 )
 
 CUSTOM_SERVICES_ORDER=(
   "YOUTUBE"
   "TWITCH"
   "CHATGPT"
+  "NETFLIX"
 )
 
 declare -A SERVICE_GROUPS=(
@@ -565,6 +567,17 @@ process_custom_service() {
       fi
       add_result "custom" "$display_name" "$ipv4_result" "$ipv6_result"
       ;;
+    NETFLIX)
+      log "$LOG_INFO" "Checking $display_name via IPv4"
+      ipv4_result=$(lookup_netflix 4)
+      if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+        log "$LOG_INFO" "Checking $display_name via IPv6"
+        ipv6_result=$(lookup_netflix 6)
+      else
+        ipv6_result=""
+      fi
+      add_result "custom" "$display_name" "$ipv4_result" "$ipv6_result"
+      ;;
     *)
       log "$LOG_WARN" "Unknown custom service: $service"
       ;;
@@ -682,7 +695,20 @@ lookup_chatgpt() {
       echo "$value"
       break
     fi
-  done <<< "$response"
+  done <<<"$response"
+}
+
+lookup_netflix() {
+  local ip_version="$1"
+  local response country
+
+  response=$(make_request GET "https://api.fast.com/netflix/speedtest/v2?token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm" --ip-version "$ip_version")
+
+  if is_valid_json "$response"; then
+    process_json "$response" ".client.location.country"
+  else
+    echo ""
+  fi
 }
 
 init_json_output() {
