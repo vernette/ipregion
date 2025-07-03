@@ -33,6 +33,14 @@ declare -A PRIMARY_SERVICES=(
   [IPAPI_CO]="ipapi.co|ipapi.co|/{ip}/json"
 )
 
+PRIMARY_SERVICES_ORDER=(
+  "MAXMIND"
+  "RIPE"
+  "IPINFO_IO"
+  "IPREGISTRY"
+  "IPAPI_CO"
+)
+
 declare -A SERVICE_HEADERS=(
   [IPREGISTRY]='("Origin: https://ipregistry.co")'
   [MAXMIND]='("Referer: https://www.maxmind.com")'
@@ -42,9 +50,13 @@ declare -A CUSTOM_SERVICES=(
   [YOUTUBE]="youtube.com"
 )
 
+CUSTOM_SERVICES_ORDER=(
+  "YOUTUBE"
+)
+
 declare -A SERVICE_GROUPS=(
-  [primary]="${!PRIMARY_SERVICES[*]}"
-  [custom]="${!CUSTOM_SERVICES[*]}"
+  [primary]="${PRIMARY_SERVICES_ORDER[*]}"
+  [custom]="${CUSTOM_SERVICES_ORDER[*]}"
 )
 
 EXCLUDED_SERVICES=(
