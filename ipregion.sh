@@ -505,7 +505,7 @@ process_service() {
     fi
   fi
 
-  add_result "$display_name" "$ipv4_result" "$ipv6_result"
+  add_result "primary" "$display_name" "$ipv4_result" "$ipv6_result"
 }
 
 process_custom_service() {
@@ -523,7 +523,7 @@ process_custom_service() {
       else
         ipv6_result=""
       fi
-      add_result "$display_name" "$ipv4_result" "$ipv6_result"
+      add_result "custom" "$display_name" "$ipv4_result" "$ipv6_result"
       ;;
     *)
       log "$LOG_WARN" "Unknown custom service: $service"
@@ -626,19 +626,21 @@ init_json_output() {
     --arg version "1" \
     --arg ipv4 "$EXTERNAL_IPV4" \
     --arg ipv6 "$EXTERNAL_IPV6" \
-    '{version: ($version|tonumber), ipv4: ($ipv4 | select(length > 0) // null), ipv6: ($ipv6 | select(length > 0) // null), results: []}')
+    '{version: ($version|tonumber), ipv4: ($ipv4 | select(length > 0) // null), ipv6: ($ipv6 | select(length > 0) // null), results: {primary: [], custom: []}}')
 }
 
 add_result() {
-  local service="$1"
-  local ipv4="$2"
-  local ipv6="$3"
+  local group="$1"
+  local service="$2"
+  local ipv4="$3"
+  local ipv6="$4"
 
   RESULT_JSON=$(jq \
+    --arg group "$group" \
     --arg service "$service" \
     --arg ipv4 "$ipv4" \
     --arg ipv6 "$ipv6" \
-    '.results += [{
+    '.results[$group] += [{
       service: $service,
       ipv4: ($ipv4 | select(length > 0) // null),
       ipv6: ($ipv6 | select(length > 0) // null)
@@ -657,7 +659,9 @@ format_value() {
   fi
 }
 
-print_table() {
+print_table_group() {
+  local group="$1"
+  local group_title="$2"
   local separator="|||"
   local not_available="N/A"
   local show_ipv4=0
@@ -667,18 +671,15 @@ print_table() {
   [[ -n "$EXTERNAL_IPV4" ]] && show_ipv4=1
   [[ -n "$EXTERNAL_IPV6" ]] && show_ipv6=1
 
+  printf "%s\n\n" "$(color HEADER "$group_title")"
+
   {
     header=("$(color TABLE_HEADER 'Service')")
-
     [[ $show_ipv4 -eq 1 ]] && header+=("$(color TABLE_HEADER 'IPv4')")
     [[ $show_ipv6 -eq 1 ]] && header+=("$(color TABLE_HEADER 'IPv6')")
+    printf "%s\n" "$(IFS="$separator"; echo "${header[*]}")"
 
-    printf "%s\n" "$(
-      IFS="$separator"
-      echo "${header[*]}"
-    )"
-
-    jq -c '.results[]' <<<"$RESULT_JSON" | while read -r item; do
+    jq -c ".results.$group[]" <<<"$RESULT_JSON" | while read -r item; do
       row=()
       service=$(jq -r '.service' <<<"$item")
       row+=("$(color SERVICE "$service")")
@@ -695,12 +696,15 @@ print_table() {
         row+=("$(format_value "$ipv6_res" "$not_available")")
       fi
 
-      printf "%s\n" "$(
-        IFS="$separator"
-        echo "${row[*]}"
-      )"
+      printf "%s\n" "$(IFS="$separator"; echo "${row[*]}")"
     done
   } | column -t -s "$separator"
+}
+
+print_table() {
+  print_table_group "primary" "Primary services"
+  printf "\n"
+  print_table_group "custom" "Custom services"
 }
 
 print_header() {
