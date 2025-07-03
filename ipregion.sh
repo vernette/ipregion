@@ -31,7 +31,6 @@ declare -A PRIMARY_SERVICES=(
   [IPINFO_IO]="ipinfo.io|ipinfo.io|/widget/demo/{ip}"
   [IPREGISTRY]="ipregistry.co|api.ipregistry.co|/{ip}?hostname=true&key=sb69ksjcajfs4c"
   [IPAPI_CO]="ipapi.co|ipapi.co|/{ip}/json"
-  [DBIP]="db-ip.com|db-ip.com|/demo/home.php?s={ip}"
 )
 
 declare -A SERVICE_HEADERS=(
@@ -49,10 +48,9 @@ declare -A SERVICE_GROUPS=(
 )
 
 EXCLUDED_SERVICES=(
-  "IPINFO_IO"
-  "IPREGISTRY"
-  "IPAPI_CO"
-  "DBIP"
+  # "IPINFO_IO"
+  # "IPREGISTRY"
+  # "IPAPI_CO"
 )
 
 IDENTITY_SERVICES=(
@@ -427,9 +425,6 @@ process_response() {
     IPAPI_CO)
       jq_filter='.country'
       ;;
-    DBIP)
-      jq_filter='.demoInfo.countryCode'
-      ;;
     *)
       echo "$response"
       ;;
@@ -575,10 +570,6 @@ lookup_ipregistry() {
 
 lookup_ipapi_co() {
   process_service "IPAPI_CO"
-}
-
-lookup_dbip() {
-  process_service "DBIP"
 }
 
 lookup_youtube() {
