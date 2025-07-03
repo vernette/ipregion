@@ -55,10 +55,12 @@ declare -A SERVICE_HEADERS=(
 
 declare -A CUSTOM_SERVICES=(
   [YOUTUBE]="youtube.com"
+  [TWITCH]="twitch.tv"
 )
 
 CUSTOM_SERVICES_ORDER=(
   "YOUTUBE"
+  "TWITCH"
 )
 
 declare -A SERVICE_GROUPS=(
@@ -527,12 +529,24 @@ process_custom_service() {
   local display_name="${CUSTOM_SERVICES[$service]:-$service}"
 
   case "$service" in
+    # TODO: Refactor later
     YOUTUBE)
       log "$LOG_INFO" "Checking $display_name via IPv4"
       ipv4_result=$(lookup_youtube 4)
       if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
         log "$LOG_INFO" "Checking $display_name via IPv6"
         ipv6_result=$(lookup_youtube 6)
+      else
+        ipv6_result=""
+      fi
+      add_result "custom" "$display_name" "$ipv4_result" "$ipv6_result"
+      ;;
+    TWITCH)
+      log "$LOG_INFO" "Checking $display_name via IPv4"
+      ipv4_result=$(lookup_twitch 4)
+      if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+        log "$LOG_INFO" "Checking $display_name via IPv6"
+        ipv6_result=$(lookup_twitch 6)
       else
         ipv6_result=""
       fi
@@ -632,6 +646,17 @@ lookup_youtube() {
   fi
 
   echo "$result"
+}
+
+lookup_twitch() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request POST "https://gql.twitch.tv/gql" \
+    --header 'Client-Id: kimne78kx3ncx6brgo4mv6wki5h1ko' \
+    --json '[{"operationName":"VerifyEmail_CurrentUser","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f9e7dcdf7e99c314c82d8f7f725fab5f99d1df3d7359b53c9ae122deec590198"}}}]' \
+    --ip-version "$ip_version")
+  process_json "$response" ".[0].data.requestInfo.countryCode"
 }
 
 init_json_output() {
