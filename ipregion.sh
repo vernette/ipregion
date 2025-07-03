@@ -56,11 +56,13 @@ declare -A SERVICE_HEADERS=(
 declare -A CUSTOM_SERVICES=(
   [YOUTUBE]="youtube.com"
   [TWITCH]="twitch.tv"
+  [CHATGPT]="chatgpt.com"
 )
 
 CUSTOM_SERVICES_ORDER=(
   "YOUTUBE"
   "TWITCH"
+  "CHATGPT"
 )
 
 declare -A SERVICE_GROUPS=(
@@ -552,6 +554,17 @@ process_custom_service() {
       fi
       add_result "custom" "$display_name" "$ipv4_result" "$ipv6_result"
       ;;
+    CHATGPT)
+      log "$LOG_INFO" "Checking $display_name via IPv4"
+      ipv4_result=$(lookup_chatgpt 4)
+      if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+        log "$LOG_INFO" "Checking $display_name via IPv6"
+        ipv6_result=$(lookup_chatgpt 6)
+      else
+        ipv6_result=""
+      fi
+      add_result "custom" "$display_name" "$ipv4_result" "$ipv6_result"
+      ;;
     *)
       log "$LOG_WARN" "Unknown custom service: $service"
       ;;
@@ -657,6 +670,19 @@ lookup_twitch() {
     --json '[{"operationName":"VerifyEmail_CurrentUser","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f9e7dcdf7e99c314c82d8f7f725fab5f99d1df3d7359b53c9ae122deec590198"}}}]' \
     --ip-version "$ip_version")
   process_json "$response" ".[0].data.requestInfo.countryCode"
+}
+
+lookup_chatgpt() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request GET "https://chatgpt.com/cdn-cgi/trace" --ip-version "$ip_version")
+  while IFS='=' read -r key value; do
+    if [[ "$key" == "loc" ]]; then
+      echo "$value"
+      break
+    fi
+  done <<< "$response"
 }
 
 init_json_output() {
