@@ -20,8 +20,7 @@ LOG_ERROR="ERROR"
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 
 # TODO: Add missing services
-# TODO: Use second level domain instead of explicitly specifying domain?
-declare -A DOMAIN_MAP=(
+declare -A PRIMARY_SERVICES=(
   [MAXMIND]="maxmind.com|geoip.maxmind.com|/geoip/v2.1/city/me"
   [RIPE]="rdap.db.ripe.net|rdap.db.ripe.net|/ip/{ip}"
   [IPINFO_IO]="ipinfo.io|ipinfo.io|/widget/demo/{ip}"
@@ -30,13 +29,18 @@ declare -A DOMAIN_MAP=(
   [DBIP]="db-ip.com|db-ip.com|/demo/home.php?s={ip}"
 )
 
+declare -A SERVICE_HEADERS=(
+  [IPREGISTRY]='("Origin: https://ipregistry.co")'
+  [MAXMIND]='("Referer: https://www.maxmind.com")'
+)
+
 declare -A CUSTOM_SERVICES=(
   [YOUTUBE]="youtube.com"
 )
 
-declare -A SERVICE_HEADERS=(
-  [IPREGISTRY]='("Origin: https://ipregistry.co")'
-  [MAXMIND]='("Referer: https://www.maxmind.com")'
+declare -A SERVICE_GROUPS=(
+  [primary]="${!PRIMARY_SERVICES[*]}"
+  [custom]="${!CUSTOM_SERVICES[*]}"
 )
 
 EXCLUDED_SERVICES=(
@@ -374,7 +378,7 @@ process_service() {
   # TODO: Make service domain two-level and use it in log
   local service="$1"
   local custom="${2:-false}"
-  local service_config="${DOMAIN_MAP[$service]}"
+  local service_config="${PRIMARY_SERVICES[$service]}"
   local display_name domain url_template response ipv4_result ipv6_result
 
   if [[ "$custom" == true ]]; then
@@ -436,6 +440,36 @@ process_custom_service() {
       log "$LOG_WARN" "Unknown custom service: $service"
       ;;
   esac
+}
+
+run_service_group() {
+  local group="$1"
+  local services_string="${SERVICE_GROUPS[$group]}"
+  local services_array service_name func_name
+
+  read -ra services_array <<<"$services_string"
+
+  log "$LOG_INFO" "Running $group group services"
+
+  for service_name in "${services_array[@]}"; do
+    if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep -Fxq "$service_name"; then
+      log "$LOG_INFO" "Skipping service: $service_name"
+      continue
+    fi
+
+    if [[ -n "${CUSTOM_SERVICES[$service_name]}" ]]; then
+      process_service "$service_name" true
+      continue
+    fi
+
+    func_name="lookup_${service_name,,}"
+
+    if declare -F "$func_name" >/dev/null 2>&1; then
+      "$func_name"
+    else
+      log "$LOG_WARN" "Function $func_name not found for service $service_name"
+    fi
+  done
 }
 
 run_all_services() {
@@ -528,10 +562,9 @@ add_result() {
 }
 
 print_human_readable_results() {
-  local version ipv4 ipv6
+  local ipv4 ipv6
   local separator="|||"
 
-  version=$(jq -r '.version' <<<"$RESULT_JSON")
   ipv4=$(jq -r '.ipv4' <<<"$RESULT_JSON")
   ipv6=$(jq -r '.ipv6' <<<"$RESULT_JSON")
 
@@ -560,7 +593,9 @@ main() {
   get_external_ip
 
   init_json_output
-  run_all_services
+
+  run_service_group "primary"
+  run_service_group "custom"
 
   # TODO: Refactor this
   if [[ "$JSON_OUTPUT" == true ]]; then
