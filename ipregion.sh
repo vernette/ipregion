@@ -416,10 +416,11 @@ process_json() {
 process_response() {
   local service="$1"
   local response="$2"
+  local display_name="$3"
   local jq_filter
 
   if ! is_valid_json "$response"; then
-    log "$LOG_ERROR" "Invalid JSON response from $service: $response"
+    log "$LOG_ERROR" "Invalid JSON response from $display_name: $response"
     return 1
   fi
 
@@ -487,19 +488,19 @@ process_service() {
   # TODO: Make single check for both IPv4 and IPv6
   log "$LOG_INFO" "Checking $display_name via IPv4"
   ipv4_result=$(make_request GET "$url_v4" "${request_params[@]}" --ip-version 4)
-  ipv4_result=$(process_response "$service" "$ipv4_result")
+  ipv4_result=$(process_response "$service" "$ipv4_result" "$display_name")
 
   if is_ipv6_over_ipv4_service "$service" && [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
     local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
     log "$LOG_INFO" "Checking $display_name (IPv6 address, IPv4 transport)"
     ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 4)
-    ipv6_result=$(process_response "$service" "$ipv6_result")
+    ipv6_result=$(process_response "$service" "$ipv6_result" "$display_name")
   else
     if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
       local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
       log "$LOG_INFO" "Checking $display_name via IPv6"
       ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
-      ipv6_result=$(process_response "$service" "$ipv6_result")
+      ipv6_result=$(process_response "$service" "$ipv6_result" "$display_name")
     else
       ipv6_result=""
     fi
