@@ -242,6 +242,26 @@ get_external_ip() {
   fi
 }
 
+get_asn() {
+  local ip ip_version response
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    ip="$EXTERNAL_IPV4"
+    ip_version=4
+  else
+    ip="$EXTERNAL_IPV6"
+    ip_version=6
+  fi
+
+  log "$LOG_INFO" "Getting ASN info for IP $ip"
+
+  response=$(make_request GET "https://geoip.oxl.app/api/ip/$ip" --ip-version "$ip_version")
+  asn=$(jq -r '.asn' <<<"$response")
+  asn_name=$(jq -r '.organization.name' <<<"$response")
+
+  log "$LOG_INFO" "ASN info: AS$asn $asn_name"
+}
+
 make_request() {
   local curl_command
   local method="$1"
@@ -568,7 +588,7 @@ print_human_readable_results() {
   ipv4=$(jq -r '.ipv4' <<<"$RESULT_JSON")
   ipv6=$(jq -r '.ipv6' <<<"$RESULT_JSON")
 
-  printf "IPv4: %s\nIPv6: %s\n\n" "$ipv4" "$ipv6"
+  printf "IPv4: %s\nIPv6: %s\nASN: %s %s\n\n" "$ipv4" "$ipv6" "$asn" "$asn_name"
 
   {
     printf "Service%sIPv4%sIPv6\n" "$separator" "$separator"
@@ -591,13 +611,13 @@ main() {
   IPV6_SUPPORTED=$?
 
   get_external_ip
+  get_asn
 
   init_json_output
 
   run_service_group "primary"
   run_service_group "custom"
 
-  # TODO: Refactor this
   if [[ "$JSON_OUTPUT" == true ]]; then
     echo "$RESULT_JSON" | jq
   else
