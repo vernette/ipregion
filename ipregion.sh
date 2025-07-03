@@ -728,7 +728,7 @@ print_table() {
 
 mask_ipv4() {
   local ip="$1"
-  echo "${ip%.*}.*"
+  echo "${ip%.*.*}.*.*"
 }
 
 mask_ipv6() {
