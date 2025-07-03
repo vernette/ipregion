@@ -721,9 +721,9 @@ print_table_group() {
 }
 
 print_table() {
-  print_table_group "primary" "Primary services"
+  print_table_group "custom" "Popular services"
   printf "\n"
-  print_table_group "custom" "Custom services"
+  print_table_group "primary" "GeoIP services"
 }
 
 mask_ipv4() {
