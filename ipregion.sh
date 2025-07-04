@@ -73,6 +73,13 @@ CUSTOM_SERVICES_ORDER=(
   "NETFLIX"
 )
 
+declare -A CUSTOM_SERVICES_HANDLERS=(
+  [YOUTUBE]="lookup_youtube"
+  [TWITCH]="lookup_twitch"
+  [CHATGPT]="lookup_chatgpt"
+  [NETFLIX]="lookup_netflix"
+)
+
 declare -A SERVICE_GROUPS=(
   [primary]="${PRIMARY_SERVICES_ORDER[*]}"
   [custom]="${CUSTOM_SERVICES_ORDER[*]}"
@@ -554,57 +561,25 @@ process_custom_service() {
   local service="$1"
   local ipv4_result ipv6_result
   local display_name="${CUSTOM_SERVICES[$service]:-$service}"
+  local handler_func="${CUSTOM_SERVICES_HANDLERS[$service]}"
 
-  case "$service" in
-    # TODO: Refactor later
-    YOUTUBE)
-      log "$LOG_INFO" "Checking $display_name via IPv4"
-      ipv4_result=$(lookup_youtube 4)
-      if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
-        log "$LOG_INFO" "Checking $display_name via IPv6"
-        ipv6_result=$(lookup_youtube 6)
-      else
-        ipv6_result=""
-      fi
-      add_result "custom" "$display_name" "$ipv4_result" "$ipv6_result"
-      ;;
-    TWITCH)
-      log "$LOG_INFO" "Checking $display_name via IPv4"
-      ipv4_result=$(lookup_twitch 4)
-      if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
-        log "$LOG_INFO" "Checking $display_name via IPv6"
-        ipv6_result=$(lookup_twitch 6)
-      else
-        ipv6_result=""
-      fi
-      add_result "custom" "$display_name" "$ipv4_result" "$ipv6_result"
-      ;;
-    CHATGPT)
-      log "$LOG_INFO" "Checking $display_name via IPv4"
-      ipv4_result=$(lookup_chatgpt 4)
-      if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
-        log "$LOG_INFO" "Checking $display_name via IPv6"
-        ipv6_result=$(lookup_chatgpt 6)
-      else
-        ipv6_result=""
-      fi
-      add_result "custom" "$display_name" "$ipv4_result" "$ipv6_result"
-      ;;
-    NETFLIX)
-      log "$LOG_INFO" "Checking $display_name via IPv4"
-      ipv4_result=$(lookup_netflix 4)
-      if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
-        log "$LOG_INFO" "Checking $display_name via IPv6"
-        ipv6_result=$(lookup_netflix 6)
-      else
-        ipv6_result=""
-      fi
-      add_result "custom" "$display_name" "$ipv4_result" "$ipv6_result"
-      ;;
-    *)
-      log "$LOG_WARN" "Unknown custom service: $service"
-      ;;
-  esac
+  if [[ -z "$handler_func" ]]; then
+    log "$LOG_WARN" "Unknown custom service: $service"
+    return
+  fi
+
+  log "$LOG_INFO" "Checking $display_name via IPv4"
+
+  ipv4_result=$("$handler_func" 4)
+
+  if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+    log "$LOG_INFO" "Checking $display_name via IPv6"
+    ipv6_result=$("$handler_func" 6)
+  else
+    ipv6_result=""
+  fi
+
+  add_result "custom" "$display_name" "$ipv4_result" "$ipv6_result"
 }
 
 run_service_group() {
