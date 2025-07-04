@@ -49,6 +49,7 @@ declare -A PRIMARY_SERVICES=(
   [IPAPI_IS]="ipapi.is|api.ipapi.is|/?q={ip}"
   [IPBASE_COM]="ipbase.com|api.ipbase.com|/v2/info?ip={ip}"
   [IPQUERY_IO]="ipquery.io|api.ipquery.io|/{ip}"
+  [IP_SB]="ip.sb|api.ip.sb|/geoip/{ip}"
 )
 
 PRIMARY_SERVICES_ORDER=(
@@ -67,6 +68,7 @@ PRIMARY_SERVICES_ORDER=(
   "IPAPI_IS"
   "IPBASE_COM"
   "IPQUERY_IO"
+  "IP_SB"
 )
 
 declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
@@ -78,6 +80,7 @@ declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
 declare -A SERVICE_HEADERS=(
   [IPREGISTRY]='("Origin: https://ipregistry.co")'
   [MAXMIND]='("Referer: https://www.maxmind.com")'
+  [IP_SB]='("User-Agent: $USER_AGENT")'
 )
 
 declare -A CUSTOM_SERVICES=(
@@ -530,6 +533,9 @@ process_response() {
       ;;
     IPQUERY_IO)
       jq_filter='.location.country_code'
+      ;;
+    IP_SB)
+      jq_filter='.country_code'
       ;;
     *)
       echo "$response"
