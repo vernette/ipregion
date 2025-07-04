@@ -39,6 +39,7 @@ declare -A PRIMARY_SERVICES=(
   [IPREGISTRY]="ipregistry.co|api.ipregistry.co|/{ip}?hostname=true&key=sb69ksjcajfs4c"
   [IPAPI_CO]="ipapi.co|ipapi.co|/{ip}/json"
   [CLOUDFLARE]="cloudflare.com|www.cloudflare.com|/cdn-cgi/trace"
+  [IFCONFIG_CO]="ifconfig.co|ifconfig.co|/country-iso?ip={ip}|plain"
 )
 
 PRIMARY_SERVICES_ORDER=(
@@ -48,6 +49,7 @@ PRIMARY_SERVICES_ORDER=(
   "CLOUDFLARE"
   "IPREGISTRY"
   "IPAPI_CO"
+  "IFCONFIG_CO"
 )
 
 declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
@@ -457,7 +459,13 @@ process_response() {
   local service="$1"
   local response="$2"
   local display_name="$3"
+  local response_format="${4:-json}"
   local jq_filter
+
+  if [[ "$response_format" == "plain" ]]; then
+    echo "$response" | tr -d '\r\n '
+    return
+  fi
 
   if ! is_valid_json "$response"; then
     log "$LOG_ERROR" "Invalid JSON response from $display_name: $response"
@@ -502,14 +510,14 @@ process_service() {
   local service="$1"
   local custom="${2:-false}"
   local service_config="${PRIMARY_SERVICES[$service]}"
-  local display_name domain url_template response ipv4_result ipv6_result handler_func
+  local display_name domain url_template response_format ipv4_result ipv6_result handler_func
 
   if [[ "$custom" == true ]]; then
     process_custom_service "$service"
     return
   fi
 
-  IFS='|' read -r display_name domain url_template <<<"$service_config"
+  IFS='|' read -r display_name domain url_template response_format <<<"$service_config"
 
   if [[ -n "${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}" ]]; then
     handler_func="${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}"
@@ -545,19 +553,19 @@ process_service() {
   # TODO: Make single check for both IPv4 and IPv6
   log "$LOG_INFO" "Checking $display_name via IPv4"
   ipv4_result=$(make_request GET "$url_v4" "${request_params[@]}" --ip-version 4)
-  ipv4_result=$(process_response "$service" "$ipv4_result" "$display_name")
+  ipv4_result=$(process_response "$service" "$ipv4_result" "$display_name" "$response_format")
 
   if is_ipv6_over_ipv4_service "$service" && [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
     local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
     log "$LOG_INFO" "Checking $display_name (IPv6 address, IPv4 transport)"
     ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 4)
-    ipv6_result=$(process_response "$service" "$ipv6_result" "$display_name")
+    ipv6_result=$(process_response "$service" "$ipv6_result" "$display_name" "$response_format")
   else
     if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
       local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
       log "$LOG_INFO" "Checking $display_name via IPv6"
       ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
-      ipv6_result=$(process_response "$service" "$ipv6_result" "$display_name")
+      ipv6_result=$(process_response "$service" "$ipv6_result" "$display_name" "$response_format")
     else
       ipv6_result=""
     fi
@@ -667,6 +675,10 @@ lookup_cloudflare() {
       break
     fi
   done <<<"$response"
+}
+
+lookup_ifconfig_co() {
+  process_service "IFCONFIG_CO"
 }
 
 lookup_youtube() {
