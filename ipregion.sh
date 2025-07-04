@@ -64,6 +64,7 @@ declare -A CUSTOM_SERVICES=(
   [TWITCH]="Twitch"
   [CHATGPT]="ChatGPT"
   [NETFLIX]="Netflix"
+  [SPOTIFY]="Spotify"
 )
 
 CUSTOM_SERVICES_ORDER=(
@@ -71,6 +72,7 @@ CUSTOM_SERVICES_ORDER=(
   "TWITCH"
   "CHATGPT"
   "NETFLIX"
+  "SPOTIFY"
 )
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
@@ -78,6 +80,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [TWITCH]="lookup_twitch"
   [CHATGPT]="lookup_chatgpt"
   [NETFLIX]="lookup_netflix"
+  [SPOTIFY]="lookup_spotify"
 )
 
 declare -A SERVICE_GROUPS=(
@@ -714,6 +717,15 @@ lookup_netflix() {
   else
     echo ""
   fi
+}
+
+lookup_spotify() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request GET "https://accounts.spotify.com/en/login" --ip-version "$ip_version")
+
+  sed -n 's/.*"geoLocationCountryCode":"\([^"]*\)".*/\1/p' <<<"$response"
 }
 
 init_json_output() {
