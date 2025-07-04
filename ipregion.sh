@@ -42,6 +42,7 @@ declare -A PRIMARY_SERVICES=(
   [IFCONFIG_CO]="ifconfig.co|ifconfig.co|/country-iso?ip={ip}|plain"
   [WHOER_NET]="whoer.net|whoer.net|/cdn-cgi/trace"
   [IPLOCATION_COM]="iplocation.com|iplocation.com"
+  [COUNTRY_IS]="country.is|api.country.is|/{ip}"
 )
 
 PRIMARY_SERVICES_ORDER=(
@@ -54,6 +55,7 @@ PRIMARY_SERVICES_ORDER=(
   "IFCONFIG_CO"
   "WHOER_NET"
   "IPLOCATION_COM"
+  "COUNTRY_IS"
 )
 
 declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
@@ -494,6 +496,9 @@ process_response() {
       jq_filter='.location.country.code'
       ;;
     IPAPI_CO)
+      jq_filter='.country'
+      ;;
+    COUNTRY_IS)
       jq_filter='.country'
       ;;
     *)
