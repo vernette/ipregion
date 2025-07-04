@@ -3,6 +3,7 @@
 SCRIPT_URL="https://github.com/vernette/ipregion"
 DEPENDENCIES="jq curl util-linux"
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+GROUPS_TO_SHOW="all"
 
 VERBOSE=false
 JSON_OUTPUT=false
@@ -194,6 +195,10 @@ parse_arguments() {
       -j | --json)
         JSON_OUTPUT=true
         shift
+        ;;
+      -g | --group)
+        GROUPS_TO_SHOW="$2"
+        shift 2
         ;;
       *)
         error_exit "Unknown option: $1"
@@ -925,7 +930,20 @@ print_results() {
   fi
 
   print_header
-  print_table
+
+  case "$GROUPS_TO_SHOW" in
+    primary)
+      print_table_group "primary" "GeoIP services"
+      ;;
+    custom)
+      print_table_group "custom" "Popular services"
+      ;;
+    *)
+      print_table_group "custom" "Popular services"
+      printf "\n"
+      print_table_group "primary" "GeoIP services"
+      ;;
+  esac
 }
 
 main() {
@@ -941,8 +959,18 @@ main() {
 
   init_json_output
 
-  run_service_group "primary"
-  run_service_group "custom"
+  case "$GROUPS_TO_SHOW" in
+    primary)
+      run_service_group "primary"
+      ;;
+    custom)
+      run_service_group "custom"
+      ;;
+    *)
+      run_service_group "primary"
+      run_service_group "custom"
+      ;;
+  esac
 
   print_results
 }
