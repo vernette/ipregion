@@ -47,6 +47,7 @@ declare -A PRIMARY_SERVICES=(
   [GEOAPIFY_COM]="geoapify.com|api.geoapify.com|/v1/ipinfo?&ip={ip}&apiKey=b8568cb9afc64fad861a69edbddb2658"
   [GEOJS_IO]="geojs.io|get.geojs.io|/v1/ip/country.json?ip={ip}"
   [IPAPI_IS]="ipapi.is|api.ipapi.is|/?q={ip}"
+  [IPBASE_COM]="ipbase.com|api.ipbase.com|/v2/info?ip={ip}"
 )
 
 PRIMARY_SERVICES_ORDER=(
@@ -63,6 +64,7 @@ PRIMARY_SERVICES_ORDER=(
   "GEOAPIFY_COM"
   "GEOJS_IO"
   "IPAPI_IS"
+  "IPBASE_COM"
 )
 
 declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
@@ -520,6 +522,9 @@ process_response() {
       ;;
     IPAPI_IS)
       jq_filter='.location.country_code'
+      ;;
+    IPBASE_COM)
+      jq_filter='.data.location.country.alpha2'
       ;;
     *)
       echo "$response"
