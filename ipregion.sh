@@ -54,10 +54,10 @@ declare -A SERVICE_HEADERS=(
 )
 
 declare -A CUSTOM_SERVICES=(
-  [YOUTUBE]="youtube.com"
-  [TWITCH]="twitch.tv"
-  [CHATGPT]="chatgpt.com"
-  [NETFLIX]="netflix.com"
+  [YOUTUBE]="Google"
+  [TWITCH]="Twitch"
+  [CHATGPT]="ChatGPT"
+  [NETFLIX]="Netflix"
 )
 
 CUSTOM_SERVICES_ORDER=(
