@@ -40,6 +40,7 @@ declare -A PRIMARY_SERVICES=(
   [IPAPI_CO]="ipapi.co|ipapi.co|/{ip}/json"
   [CLOUDFLARE]="cloudflare.com|www.cloudflare.com|/cdn-cgi/trace"
   [IFCONFIG_CO]="ifconfig.co|ifconfig.co|/country-iso?ip={ip}|plain"
+  [WHOER_NET]="whoer.net|whoer.net|/cdn-cgi/trace"
 )
 
 PRIMARY_SERVICES_ORDER=(
@@ -50,10 +51,12 @@ PRIMARY_SERVICES_ORDER=(
   "IPREGISTRY"
   "IPAPI_CO"
   "IFCONFIG_CO"
+  "WHOER_NET"
 )
 
 declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
   [CLOUDFLARE]="lookup_cloudflare"
+  [WHOER_NET]="lookup_whoer_net"
 )
 
 declare -A SERVICE_HEADERS=(
@@ -679,6 +682,19 @@ lookup_cloudflare() {
 
 lookup_ifconfig_co() {
   process_service "IFCONFIG_CO"
+}
+
+lookup_whoer_net() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request GET "https://whoer.net/cdn-cgi/trace" --ip-version "$ip_version")
+  while IFS='=' read -r key value; do
+    if [[ "$key" == "loc" ]]; then
+      echo "$value"
+      break
+    fi
+  done <<<"$response"
 }
 
 lookup_youtube() {
