@@ -65,6 +65,8 @@ declare -A CUSTOM_SERVICES=(
   [CHATGPT]="ChatGPT"
   [NETFLIX]="Netflix"
   [SPOTIFY]="Spotify"
+  [APPLE]="Apple"
+  [STEAM]="Steam"
 )
 
 CUSTOM_SERVICES_ORDER=(
@@ -73,6 +75,8 @@ CUSTOM_SERVICES_ORDER=(
   "CHATGPT"
   "NETFLIX"
   "SPOTIFY"
+  "APPLE"
+  "STEAM"
 )
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
@@ -81,6 +85,8 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [CHATGPT]="lookup_chatgpt"
   [NETFLIX]="lookup_netflix"
   [SPOTIFY]="lookup_spotify"
+  [APPLE]="lookup_apple"
+  [STEAM]="lookup_steam"
 )
 
 declare -A SERVICE_GROUPS=(
@@ -726,6 +732,19 @@ lookup_spotify() {
   response=$(make_request GET "https://accounts.spotify.com/en/login" --ip-version "$ip_version")
 
   sed -n 's/.*"geoLocationCountryCode":"\([^"]*\)".*/\1/p' <<<"$response"
+}
+
+lookup_apple() {
+  local ip_version="$1"
+  make_request GET "https://gspe1-ssl.ls.apple.com/pep/gcc" --ip-version "$ip_version"
+}
+
+lookup_steam() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request GET "https://store.steampowered.com" --ip-version "$ip_version")
+  sed -n 's/.*"countrycode":"\([^"]*\)".*/\1/p' <<<"$response"
 }
 
 init_json_output() {
