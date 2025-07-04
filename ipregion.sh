@@ -38,14 +38,20 @@ declare -A PRIMARY_SERVICES=(
   [IPINFO_IO]="ipinfo.io|ipinfo.io|/widget/demo/{ip}"
   [IPREGISTRY]="ipregistry.co|api.ipregistry.co|/{ip}?hostname=true&key=sb69ksjcajfs4c"
   [IPAPI_CO]="ipapi.co|ipapi.co|/{ip}/json"
+  [CLOUDFLARE]="cloudflare.com|www.cloudflare.com|/cdn-cgi/trace"
 )
 
 PRIMARY_SERVICES_ORDER=(
   "MAXMIND"
   "RIPE"
   "IPINFO_IO"
+  "CLOUDFLARE"
   "IPREGISTRY"
   "IPAPI_CO"
+)
+
+declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
+  [CLOUDFLARE]="lookup_cloudflare"
 )
 
 declare -A SERVICE_HEADERS=(
@@ -477,11 +483,10 @@ is_ipv6_over_ipv4_service() {
 }
 
 process_service() {
-  # TODO: Make service domain two-level and use it in log
   local service="$1"
   local custom="${2:-false}"
   local service_config="${PRIMARY_SERVICES[$service]}"
-  local display_name domain url_template response ipv4_result ipv6_result
+  local display_name domain url_template response ipv4_result ipv6_result handler_func
 
   if [[ "$custom" == true ]]; then
     process_custom_service "$service"
@@ -489,6 +494,24 @@ process_service() {
   fi
 
   IFS='|' read -r display_name domain url_template <<<"$service_config"
+
+  if [[ -n "${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}" ]]; then
+    handler_func="${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}"
+
+    log "$LOG_INFO" "Checking $display_name via IPv4 (custom handler)"
+
+    ipv4_result=$("$handler_func" 4)
+
+    if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+      log "$LOG_INFO" "Checking $display_name via IPv6 (custom handler)"
+      ipv6_result=$("$handler_func" 6)
+    else
+      ipv6_result=""
+    fi
+
+    add_result "primary" "$display_name" "$ipv4_result" "$ipv6_result"
+    return
+  fi
 
   local request_params=()
 
@@ -587,7 +610,8 @@ process_custom_service() {
 run_service_group() {
   local group="$1"
   local services_string="${SERVICE_GROUPS[$group]}"
-  local services_array service_name func_name
+  local is_custom=false
+  local services_array service_name
 
   read -ra services_array <<<"$services_string"
 
@@ -599,18 +623,11 @@ run_service_group() {
       continue
     fi
 
-    if [[ -n "${CUSTOM_SERVICES[$service_name]}" ]]; then
-      process_service "$service_name" true
-      continue
+    if [[ "$group" == "custom" ]]; then
+      is_custom=true
     fi
 
-    func_name="lookup_${service_name,,}"
-
-    if declare -F "$func_name" >/dev/null 2>&1; then
-      "$func_name"
-    else
-      log "$LOG_WARN" "Function $func_name not found for service $service_name"
-    fi
+    process_service "$service_name" "$is_custom"
   done
 }
 
@@ -653,6 +670,19 @@ lookup_ipregistry() {
 
 lookup_ipapi_co() {
   process_service "IPAPI_CO"
+}
+
+lookup_cloudflare() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request GET "https://www.cloudflare.com/cdn-cgi/trace" --ip-version "$ip_version")
+  while IFS='=' read -r key value; do
+    if [[ "$key" == "loc" ]]; then
+      echo "$value"
+      break
+    fi
+  done <<<"$response"
 }
 
 lookup_youtube() {
@@ -700,7 +730,7 @@ lookup_chatgpt() {
 
 lookup_netflix() {
   local ip_version="$1"
-  local response country
+  local response
 
   response=$(make_request GET "https://api.fast.com/netflix/speedtest/v2?token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm" --ip-version "$ip_version")
 
