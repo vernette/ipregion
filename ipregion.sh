@@ -44,6 +44,7 @@ declare -A PRIMARY_SERVICES=(
   [WHOER_NET]="whoer.net|whoer.net|/cdn-cgi/trace"
   [IPLOCATION_COM]="iplocation.com|iplocation.com"
   [COUNTRY_IS]="country.is|api.country.is|/{ip}"
+  [GEOAPIFY_COM]="geoapify.com|api.geoapify.com|/v1/ipinfo?&ip={ip}&apiKey=b8568cb9afc64fad861a69edbddb2658"
 )
 
 PRIMARY_SERVICES_ORDER=(
@@ -57,6 +58,7 @@ PRIMARY_SERVICES_ORDER=(
   "WHOER_NET"
   "IPLOCATION_COM"
   "COUNTRY_IS"
+  "GEOAPIFY_COM"
 )
 
 declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
@@ -505,6 +507,9 @@ process_response() {
       ;;
     COUNTRY_IS)
       jq_filter='.country'
+      ;;
+    GEOAPIFY_COM)
+      jq_filter='.country.iso_code'
       ;;
     *)
       echo "$response"
