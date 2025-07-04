@@ -41,6 +41,7 @@ declare -A PRIMARY_SERVICES=(
   [CLOUDFLARE]="cloudflare.com|www.cloudflare.com|/cdn-cgi/trace"
   [IFCONFIG_CO]="ifconfig.co|ifconfig.co|/country-iso?ip={ip}|plain"
   [WHOER_NET]="whoer.net|whoer.net|/cdn-cgi/trace"
+  [IPLOCATION_COM]="iplocation.com|iplocation.com"
 )
 
 PRIMARY_SERVICES_ORDER=(
@@ -52,11 +53,13 @@ PRIMARY_SERVICES_ORDER=(
   "IPAPI_CO"
   "IFCONFIG_CO"
   "WHOER_NET"
+  "IPLOCATION_COM"
 )
 
 declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
   [CLOUDFLARE]="lookup_cloudflare"
   [WHOER_NET]="lookup_whoer_net"
+  [IPLOCATION_COM]="lookup_iplocation_com"
 )
 
 declare -A SERVICE_HEADERS=(
@@ -695,6 +698,20 @@ lookup_whoer_net() {
       break
     fi
   done <<<"$response"
+}
+
+lookup_iplocation_com() {
+  local ip_version="$1"
+  local response ip
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    ip="$EXTERNAL_IPV4"
+  else
+    ip="$EXTERNAL_IPV6"
+  fi
+
+  response=$(make_request POST "https://iplocation.com" --ip-version "$ip_version" --user-agent "$USER_AGENT" --data "ip=$ip")
+  process_json "$response" ".country_code"
 }
 
 lookup_youtube() {
