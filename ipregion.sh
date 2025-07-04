@@ -4,6 +4,7 @@ SCRIPT_URL="https://github.com/vernette/ipregion"
 DEPENDENCIES="jq curl util-linux"
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 GROUPS_TO_SHOW="all"
+CURL_TIMEOUT=10
 
 VERBOSE=false
 JSON_OUTPUT=false
@@ -429,8 +430,8 @@ make_request() {
     esac
   done
 
-  # TODO: Process errors and add request timeout
-  curl_command="curl --silent -X $method"
+  # TODO: Process errors
+  curl_command="curl --silent --max-time $CURL_TIMEOUT --request $method"
 
   if [[ "$ip_version" == "4" ]]; then
     curl_command+=" -4"
