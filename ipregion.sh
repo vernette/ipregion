@@ -771,7 +771,7 @@ lookup_youtube() {
   result=$(sed -n "$sed_filter" <<<"$response")
 
   if [[ -z "$result" ]]; then
-    result=$(sed -n "$sed_fallback_filter" <<<"$response")
+    result=$(sed -n "$sed_fallback_filter" <<<"$response" | tail -n 1)
   fi
 
   echo "$result"
