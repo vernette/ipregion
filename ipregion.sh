@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 SCRIPT_URL="https://github.com/vernette/ipregion"
-DEPENDENCIES="jq curl util-linux"
+DEPENDENCIES=("jq" "curl" "util-linux")
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 GROUPS_TO_SHOW="all"
 CURL_TIMEOUT=10
@@ -31,7 +31,6 @@ declare -A DEPENDENCY_COMMANDS=(
   [curl]="curl"
   [util-linux]="column"
 )
-DEPENDENCIES=("jq" "curl" "util-linux")
 
 # TODO: Add missing services
 declare -A PRIMARY_SERVICES=(
