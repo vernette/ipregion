@@ -3,15 +3,17 @@
 SCRIPT_URL="https://github.com/vernette/ipregion"
 DEPENDENCIES=("jq" "curl" "util-linux")
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+SPINNER_SERVICE_FILE="/tmp/ipregion_spinner_service_$$"
+CURRENT_SERVICE=""
+
+VERBOSE=false
+JSON_OUTPUT=false
 GROUPS_TO_SHOW="all"
 CURL_TIMEOUT=10
 IPV4_ONLY=false
 IPV6_ONLY=false
 PROXY_ADDR=""
 INTERFACE_NAME=""
-
-VERBOSE=false
-JSON_OUTPUT=false
 
 COLOR_HEADER="1;36"
 COLOR_SERVICE="1;32"
@@ -637,18 +639,57 @@ is_ipv6_over_ipv4_service() {
   return 1
 }
 
+spinner_start() {
+  local delay=0.1
+  local spinstr='|/-\\'
+  spinner_running=true
+  (
+    while $spinner_running; do
+      for ((i = 0; i < ${#spinstr}; i++)); do
+        local current_service=""
+        if [[ -f "$SPINNER_SERVICE_FILE" ]]; then
+          current_service="$(cat "$SPINNER_SERVICE_FILE")"
+        fi
+        printf "\r\033[K%s %s %s" \
+          "$(color HEADER "${spinstr:$i:1}")" \
+          "$(color HEADER "Checking:")" \
+          "$(color SERVICE "$current_service")"
+        sleep $delay
+      done
+    done
+  ) &
+  spinner_pid=$!
+}
+
+spinner_stop() {
+  spinner_running=false
+  if [[ -n "$spinner_pid" ]]; then
+    kill "$spinner_pid" 2>/dev/null
+    wait "$spinner_pid" 2>/dev/null
+    spinner_pid=""
+    printf "\\r%*s\\r" 40 " "
+  fi
+  CURRENT_SERVICE=""
+}
+
 process_service() {
   local service="$1"
   local custom="${2:-false}"
   local service_config="${PRIMARY_SERVICES[$service]}"
   local display_name domain url_template response_format ipv4_result ipv6_result handler_func
 
+  IFS='|' read -r display_name domain url_template response_format <<<"$service_config"
+
+  if [[ -z "$display_name" ]]; then
+    display_name="$service"
+  fi
+
+  echo "$display_name" >"$SPINNER_SERVICE_FILE"
+
   if [[ "$custom" == true ]]; then
     process_custom_service "$service"
     return
   fi
-
-  IFS='|' read -r display_name domain url_template response_format <<<"$service_config"
 
   if [[ -n "${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}" ]]; then
     handler_func="${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}"
@@ -718,6 +759,12 @@ process_custom_service() {
   local ipv4_result ipv6_result
   local display_name="${CUSTOM_SERVICES[$service]:-$service}"
   local handler_func="${CUSTOM_SERVICES_HANDLERS[$service]}"
+
+  if [[ -z "$display_name" ]]; then
+    display_name="$service"
+  fi
+
+  echo "$display_name" >"$SPINNER_SERVICE_FILE"
 
   if [[ -z "$handler_func" ]]; then
     log "$LOG_WARN" "Unknown custom service: $service"
@@ -1117,6 +1164,11 @@ main() {
 
   init_json_output
 
+  if [[ "$JSON_OUTPUT" != true && "$VERBOSE" != true ]]; then
+    trap spinner_stop EXIT INT TERM
+    spinner_start
+  fi
+
   case "$GROUPS_TO_SHOW" in
     primary)
       run_service_group "primary"
@@ -1129,6 +1181,11 @@ main() {
       run_service_group "custom"
       ;;
   esac
+
+  if [[ "$JSON_OUTPUT" != true && "$VERBOSE" != true ]]; then
+    spinner_stop
+    trap - EXIT INT TERM
+  fi
 
   print_results
 }
