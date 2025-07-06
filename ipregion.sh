@@ -7,6 +7,8 @@ GROUPS_TO_SHOW="all"
 CURL_TIMEOUT=10
 IPV4_ONLY=false
 IPV6_ONLY=false
+PROXY_ADDR=""
+INTERFACE_NAME=""
 
 VERBOSE=false
 JSON_OUTPUT=false
@@ -241,6 +243,16 @@ parse_arguments() {
         IPV6_ONLY=true
         shift
         ;;
+      -p | --proxy)
+        PROXY_ADDR="$2"
+        log "$LOG_INFO" "Using SOCKS5 proxy: $PROXY_ADDR"
+        shift 2
+        ;;
+      -i | --interface)
+        INTERFACE_NAME="$2"
+        log "$LOG_INFO" "Using interface: $INTERFACE_NAME"
+        shift 2
+        ;;
       *)
         error_exit "Unknown option: $1"
         ;;
@@ -427,6 +439,7 @@ make_request() {
   local user_agent=""
   local headers=()
   local json=""
+  local data=""
   local proxy=""
   local response
 
@@ -490,8 +503,12 @@ make_request() {
     fi
   fi
 
-  if [[ -n "$proxy" ]]; then
-    curl_command+=" --proxy $proxy --insecure"
+  if [[ -n "$PROXY_ADDR" ]]; then
+    curl_command+=" --proxy socks5h://$PROXY_ADDR --insecure"
+  fi
+
+  if [[ -n "$INTERFACE_NAME" ]]; then
+    curl_command+=" --interface $INTERFACE_NAME"
   fi
 
   curl_command+=" '$url'"
