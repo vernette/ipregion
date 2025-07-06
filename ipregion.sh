@@ -219,6 +219,14 @@ parse_arguments() {
         GROUPS_TO_SHOW="$2"
         shift 2
         ;;
+      -t | --timeout)
+        if [[ "$2" =~ ^[0-9]+$ ]]; then
+          CURL_TIMEOUT="$2"
+        else
+          error_exit "Invalid timeout value: $2. Timeout must be a positive integer"
+        fi
+        shift 2
+        ;;
       *)
         error_exit "Unknown option: $1"
         ;;
