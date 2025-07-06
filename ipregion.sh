@@ -5,6 +5,8 @@ DEPENDENCIES=("jq" "curl" "util-linux")
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 GROUPS_TO_SHOW="all"
 CURL_TIMEOUT=10
+IPV4_ONLY=false
+IPV6_ONLY=false
 
 VERBOSE=false
 JSON_OUTPUT=false
@@ -227,6 +229,18 @@ parse_arguments() {
         fi
         shift 2
         ;;
+      -4 | --ipv4)
+        IPV4_ONLY=true
+        shift
+        ;;
+      -6 | --ipv6)
+        if ! check_ipv6_support; then
+          error_exit "IPv6 is not supported on this system"
+        fi
+
+        IPV6_ONLY=true
+        shift
+        ;;
       *)
         error_exit "Unknown option: $1"
         ;;
@@ -367,15 +381,17 @@ check_ipv6_support() {
 
 get_external_ip() {
   local identity_service
-  log "$LOG_INFO" "Getting external IPv4 address"
 
   identity_service=${IDENTITY_SERVICES[$RANDOM % ${#IDENTITY_SERVICES[@]}]}
   log "$LOG_INFO" "Using identity service: $identity_service"
 
-  EXTERNAL_IPV4="$(make_request GET "https://$identity_service" --ip-version 4)"
-  log "$LOG_INFO" "External IPv4: $EXTERNAL_IPV4"
+  if [[ "$IPV4_ONLY" == true ]] || [[ "$IPV6_ONLY" != true ]]; then
+    log "$LOG_INFO" "Getting external IPv4 address"
+    EXTERNAL_IPV4="$(make_request GET "https://$identity_service" --ip-version 4)"
+    log "$LOG_INFO" "External IPv4: $EXTERNAL_IPV4"
+  fi
 
-  if [[ "$IPV6_SUPPORTED" -eq 0 ]]; then
+  if [[ "$IPV6_ONLY" == true ]] || ([[ "$IPV6_SUPPORTED" -eq 0 ]] && [[ "$IPV4_ONLY" != true ]]); then
     log "$LOG_INFO" "Getting external IPv6 address"
     EXTERNAL_IPV6="$(make_request GET "https://$identity_service" --ip-version 6)"
     log "$LOG_INFO" "External IPv6: $EXTERNAL_IPV6"
@@ -587,7 +603,7 @@ process_service() {
 
     ipv4_result=$("$handler_func" 4)
 
-    if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+    if [[ "$IPV6_ONLY" == true ]] || ([[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]] && [[ "$IPV4_ONLY" != true ]]); then
       log "$LOG_INFO" "Checking $display_name via IPv6 (custom handler)"
       ipv6_result=$("$handler_func" 6)
     else
@@ -612,24 +628,32 @@ process_service() {
   local url_v4="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV4}"
 
   # TODO: Make single check for both IPv4 and IPv6
-  log "$LOG_INFO" "Checking $display_name via IPv4"
-  ipv4_result=$(make_request GET "$url_v4" "${request_params[@]}" --ip-version 4)
-  ipv4_result=$(process_response "$service" "$ipv4_result" "$display_name" "$response_format")
-
-  if is_ipv6_over_ipv4_service "$service" && [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
-    local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
-    log "$LOG_INFO" "Checking $display_name (IPv6 address, IPv4 transport)"
-    ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 4)
-    ipv6_result=$(process_response "$service" "$ipv6_result" "$display_name" "$response_format")
+  if [[ "$IPV6_ONLY" != true ]]; then
+    log "$LOG_INFO" "Checking $display_name via IPv4"
+    ipv4_result=$(make_request GET "$url_v4" "${request_params[@]}" --ip-version 4)
+    ipv4_result=$(process_response "$service" "$ipv4_result" "$display_name" "$response_format")
   else
-    if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+    ipv4_result=""
+  fi
+
+  if [[ "$IPV4_ONLY" != true ]]; then
+    if is_ipv6_over_ipv4_service "$service" && [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
       local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
-      log "$LOG_INFO" "Checking $display_name via IPv6"
-      ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
+      log "$LOG_INFO" "Checking $display_name (IPv6 address, IPv4 transport)"
+      ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 4)
       ipv6_result=$(process_response "$service" "$ipv6_result" "$display_name" "$response_format")
     else
-      ipv6_result=""
+      if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+        local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
+        log "$LOG_INFO" "Checking $display_name via IPv6"
+        ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
+        ipv6_result=$(process_response "$service" "$ipv6_result" "$display_name" "$response_format")
+      else
+        ipv6_result=""
+      fi
     fi
+  else
+    ipv6_result=""
   fi
 
   add_result "primary" "$display_name" "$ipv4_result" "$ipv6_result"
@@ -646,11 +670,14 @@ process_custom_service() {
     return
   fi
 
-  log "$LOG_INFO" "Checking $display_name via IPv4"
+  if [[ "$IPV6_ONLY" != true ]]; then
+    log "$LOG_INFO" "Checking $display_name via IPv4"
+    ipv4_result=$("$handler_func" 4)
+  else
+    ipv4_result=""
+  fi
 
-  ipv4_result=$("$handler_func" 4)
-
-  if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+  if [[ "$IPV4_ONLY" != true ]] && [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
     log "$LOG_INFO" "Checking $display_name via IPv6"
     ipv6_result=$("$handler_func" 6)
   else
@@ -921,8 +948,13 @@ print_table_group() {
   local show_ipv6=0
   local header row ipv4_res ipv6_res
 
-  [[ -n "$EXTERNAL_IPV4" ]] && show_ipv4=1
-  [[ -n "$EXTERNAL_IPV6" ]] && show_ipv6=1
+  if [[ "$IPV6_ONLY" != true ]]; then
+    [[ -n "$EXTERNAL_IPV4" ]] && show_ipv4=1
+  fi
+
+  if [[ "$IPV4_ONLY" != true ]]; then
+    [[ -n "$EXTERNAL_IPV6" ]] && show_ipv6=1
+  fi
 
   printf "%s\n\n" "$(color HEADER "$group_title")"
 
