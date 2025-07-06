@@ -94,6 +94,7 @@ declare -A CUSTOM_SERVICES=(
   [SPOTIFY]="Spotify"
   [APPLE]="Apple"
   [STEAM]="Steam"
+  [TIKTOK]="Tiktok"
 )
 
 CUSTOM_SERVICES_ORDER=(
@@ -104,6 +105,7 @@ CUSTOM_SERVICES_ORDER=(
   "SPOTIFY"
   "APPLE"
   "STEAM"
+  "TIKTOK"
 )
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
@@ -114,6 +116,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [SPOTIFY]="lookup_spotify"
   [APPLE]="lookup_apple"
   [STEAM]="lookup_steam"
+  [TIKTOK]="lookup_tiktok"
 )
 
 declare -A SERVICE_GROUPS=(
@@ -853,6 +856,14 @@ lookup_ipdata_co() {
     --header "Referer: https://ipdata.co")
 
   process_json "$response" ".country_code"
+}
+
+lookup_tiktok() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request GET "https://www.tiktok.com/api/v1/web-cookie-privacy/config?appId=1988" --ip-version "$ip_version")
+  process_json "$response" ".body.appProps.region"
 }
 
 init_json_output() {
