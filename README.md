@@ -7,7 +7,7 @@ A bash script for determining your IP geolocation using various GeoIP services a
 ## Features
 
 - Checks your IP geolocation using multiple public GeoIP APIs
-- Compares results from both “primary” GeoIP services and popular web services (YouTube, Netflix, Twitch, etc.)
+- Results from both "primary" GeoIP services and popular web services (YouTube, Netflix, Twitch, etc.)
 - Supports both IPv4 and IPv6 (can test separately)
 - SOCKS5 proxy and custom network interface support
 - JSON output for automation and integration
