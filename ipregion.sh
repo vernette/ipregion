@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
 
+get_tmpdir() {
+  if [[ -n "$TMPDIR" ]]; then
+    echo "$TMPDIR"
+  elif [[ -d /data/data/com.termux/files/usr/tmp ]]; then
+    echo "/data/data/com.termux/files/usr/tmp"
+  else
+    echo "/tmp"
+  fi
+}
+
 SCRIPT_URL="https://github.com/vernette/ipregion"
 DEPENDENCIES=("jq" "curl" "util-linux")
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
-SPINNER_SERVICE_FILE="/tmp/ipregion_spinner_service_$$"
+SPINNER_SERVICE_FILE="$(get_tmpdir)/ipregion_spinner_service_$$"
 CURRENT_SERVICE=""
 
 VERBOSE=false
