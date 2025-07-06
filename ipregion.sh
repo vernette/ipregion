@@ -205,12 +205,49 @@ error_exit() {
   local message="$1"
   local exit_code="${2:-1}"
   printf "%s %s\n" "$(color ERROR '[ERROR]')" "$(color TABLE_HEADER "$message")" >&2
+  display_help
   exit "$exit_code"
+}
+
+display_help() {
+  cat <<EOF
+
+Usage: $0 [OPTIONS]
+
+IPRegion — determines your IP geolocation using various GeoIP services and popular websites
+
+Options:
+  -h, --help           Show this help message and exit
+  -v, --verbose        Enable verbose logging
+  -j, --json           Output results in JSON format
+  -g, --group GROUP    Run only one group: 'primary', 'custom', or 'all' (default: all)
+  -t, --timeout SEC    Set curl request timeout in seconds (default: $CURL_TIMEOUT)
+  -4, --ipv4           Test only IPv4
+  -6, --ipv6           Test only IPv6
+  -p, --proxy ADDR     Use SOCKS5 proxy (format: host:port)
+  -i, --interface IF   Use specified network interface (e.g. eth1)
+
+Examples:
+  $0                       # Check all services with default settings
+  $0 -g primary            # Check only GeoIP services
+  $0 -g custom             # Check only popular websites
+  $0 -4                    # Test only IPv4
+  $0 -6                    # Test only IPv6
+  $0 -p 127.0.0.1:1080     # Use SOCKS5 proxy
+  $0 -i eth1               # Use network interface eth1
+  $0 -j                    # Output result as JSON
+  $0 -v                    # Enable verbose logging
+
+EOF
 }
 
 parse_arguments() {
   while [[ $# -gt 0 ]]; do
     case $1 in
+      -h | --help)
+        display_help
+        exit 0
+        ;;
       -v | --verbose)
         VERBOSE=true
         shift
