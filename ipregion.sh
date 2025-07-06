@@ -553,7 +553,7 @@ make_request() {
   fi
 
   if [[ -n "$PROXY_ADDR" ]]; then
-    curl_command+=" --proxy socks5h://$PROXY_ADDR --insecure"
+    curl_command+=" --proxy socks5://$PROXY_ADDR"
   fi
 
   if [[ -n "$INTERFACE_NAME" ]]; then
