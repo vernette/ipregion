@@ -62,6 +62,9 @@ bash <(wget -qO- https://github.com/vernette/ipregion/raw/master/ipregion.sh)
 # Use a specific network interface
 ./ipregion.sh --interface eth1
 
+# Set custom curl request timeout in seconds
+./ipregion.sh --timeout 20
+
 # Output result as JSON
 ./ipregion.sh --json
 
@@ -109,4 +112,3 @@ Examples:
 ## Contributing
 
 Contributions are welcome! Feel free to submit pull requests to add new services or improve the script’s functionality.
-
