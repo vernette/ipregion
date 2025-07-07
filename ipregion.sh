@@ -20,6 +20,7 @@ VERBOSE=false
 JSON_OUTPUT=false
 GROUPS_TO_SHOW="all"
 CURL_TIMEOUT=10
+CURL_RETRIES=2
 IPV4_ONLY=false
 IPV6_ONLY=false
 PROXY_ADDR=""
@@ -522,7 +523,7 @@ make_request() {
   done
 
   # TODO: Process errors
-  curl_command="curl --silent --max-time $CURL_TIMEOUT --request $method"
+  curl_command="curl --silent --retry-connrefused --retry-all-errors --retry $CURL_RETRIES --max-time $CURL_TIMEOUT --request $method"
 
   if [[ "$ip_version" == "4" ]]; then
     curl_command+=" -4"
