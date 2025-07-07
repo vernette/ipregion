@@ -1125,7 +1125,7 @@ print_header() {
   ipv4=$(jq -r '.ipv4' <<<"$RESULT_JSON")
   ipv6=$(jq -r '.ipv6' <<<"$RESULT_JSON")
 
-  printf "%s\n\n" "$(color URL "Made with ")$(color HEART '❤')$(color URL " by vernette — $SCRIPT_URL")"
+  printf "%s\n\n" "$(color URL "Made with ")$(color HEART '<3')$(color URL " by vernette — $SCRIPT_URL")"
 
   if [[ -n "$EXTERNAL_IPV4" ]]; then
     printf "%s: %s\n" "$(color HEADER 'IPv4')" "$(bold "$(mask_ipv4 "$ipv4")")"
