@@ -101,6 +101,7 @@ declare -A CUSTOM_SERVICES=(
   [APPLE]="Apple"
   [STEAM]="Steam"
   [TIKTOK]="Tiktok"
+  [OOKLA_SPEEDTEST]="Ookla Speedtest"
 )
 
 CUSTOM_SERVICES_ORDER=(
@@ -112,6 +113,7 @@ CUSTOM_SERVICES_ORDER=(
   "APPLE"
   "STEAM"
   "TIKTOK"
+  "OOKLA_SPEEDTEST"
 )
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
@@ -123,6 +125,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [APPLE]="lookup_apple"
   [STEAM]="lookup_steam"
   [TIKTOK]="lookup_tiktok"
+  [OOKLA_SPEEDTEST]="lookup_ookla_speedtest"
 )
 
 declare -A SERVICE_GROUPS=(
@@ -1164,6 +1167,14 @@ lookup_tiktok() {
 
   response=$(make_request GET "https://www.tiktok.com/api/v1/web-cookie-privacy/config?appId=1988" --ip-version "$ip_version")
   process_json "$response" ".body.appProps.region"
+}
+
+lookup_ookla_speedtest() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request GET "https://www.speedtest.net/api/js/config-sdk" --ip-version "$ip_version")
+  process_json "$response" ".location.countryCode"
 }
 
 main() {
