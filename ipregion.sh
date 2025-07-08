@@ -1117,7 +1117,11 @@ mask_ipv4() {
 
 mask_ipv6() {
   local ip="$1"
-  echo "$ip" | sed -E 's/^([^:]+:[^:]+:[^:]+:)[^:]+(.*)$/\1****\2/'
+  echo "$ip" | awk -F: '{
+    for(i=1;i<=NF;i++) if($i=="") $i="0";
+    while(NF<8) for(i=1;i<=8;i++) if($i=="0"){NF++; break;}
+    printf "%s:%s:%s::\n", $1, $2, $3
+  }'
 }
 
 print_header() {
