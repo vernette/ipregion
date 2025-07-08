@@ -286,7 +286,7 @@ parse_arguments() {
         shift
         ;;
       -6 | --ipv6)
-        if ! check_ipv6_support; then
+        if ! check_ip_support 6; then
           error_exit "IPv6 is not supported on this system"
         fi
 
@@ -429,15 +429,16 @@ install_dependencies() {
   install_with_package_manager "$pkg_manager" "${missing_packages[@]}"
 }
 
-check_ipv6_support() {
-  log "$LOG_INFO" "Checking for IPv6 support"
+check_ip_support() {
+  local version="$1"
+  log "$LOG_INFO" "Checking for IPv${version} support"
 
-  if [[ -n $(ip -6 addr show scope global 2>/dev/null) ]]; then
-    log "$LOG_INFO" "IPv6 is supported"
+  if [[ -n $(ip -${version} addr show scope global 2>/dev/null) ]]; then
+    log "$LOG_INFO" "IPv${version} is supported"
     return 0
   fi
 
-  log "$LOG_WARN" "IPv6 is not supported on this system"
+  log "$LOG_WARN" "IPv${version} is not supported on this system"
   return 1
 }
 
@@ -1171,7 +1172,10 @@ main() {
 
   install_dependencies
 
-  check_ipv6_support
+  check_ip_support 4
+  IPV4_SUPPORTED=$?
+
+  check_ip_support 6
   IPV6_SUPPORTED=$?
 
   get_external_ip
