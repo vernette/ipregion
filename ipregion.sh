@@ -1,19 +1,8 @@
 #!/usr/bin/env bash
 
-get_tmpdir() {
-  if [[ -n "$TMPDIR" ]]; then
-    echo "$TMPDIR"
-  elif [[ -d /data/data/com.termux/files/usr/tmp ]]; then
-    echo "/data/data/com.termux/files/usr/tmp"
-  else
-    echo "/tmp"
-  fi
-}
-
 SCRIPT_URL="https://github.com/vernette/ipregion"
 DEPENDENCIES=("jq" "curl" "util-linux")
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
-SPINNER_SERVICE_FILE="$(get_tmpdir)/ipregion_spinner_service_$$"
 CURRENT_SERVICE=""
 
 VERBOSE=false
@@ -159,6 +148,16 @@ IPV6_OVER_IPV4_SERVICES=(
   "IPINFO_IO"
 )
 
+get_tmpdir() {
+  if [[ -n "$TMPDIR" ]]; then
+    echo "$TMPDIR"
+  elif [[ -d /data/data/com.termux/files/usr/tmp ]]; then
+    echo "/data/data/com.termux/files/usr/tmp"
+  else
+    echo "/tmp"
+  fi
+}
+
 color() {
   local color_name="$1"
   local text="$2"
@@ -252,62 +251,6 @@ Examples:
   $0 -v                    # Enable verbose logging
 
 EOF
-}
-
-parse_arguments() {
-  while [[ $# -gt 0 ]]; do
-    case $1 in
-      -h | --help)
-        display_help
-        exit 0
-        ;;
-      -v | --verbose)
-        VERBOSE=true
-        shift
-        ;;
-      -j | --json)
-        JSON_OUTPUT=true
-        shift
-        ;;
-      -g | --group)
-        GROUPS_TO_SHOW="$2"
-        shift 2
-        ;;
-      -t | --timeout)
-        if [[ "$2" =~ ^[0-9]+$ ]]; then
-          CURL_TIMEOUT="$2"
-        else
-          error_exit "Invalid timeout value: $2. Timeout must be a positive integer"
-        fi
-        shift 2
-        ;;
-      -4 | --ipv4)
-        IPV4_ONLY=true
-        shift
-        ;;
-      -6 | --ipv6)
-        if ! check_ip_support 6; then
-          error_exit "IPv6 is not supported on this system"
-        fi
-
-        IPV6_ONLY=true
-        shift
-        ;;
-      -p | --proxy)
-        PROXY_ADDR="$2"
-        log "$LOG_INFO" "Using SOCKS5 proxy: $PROXY_ADDR"
-        shift 2
-        ;;
-      -i | --interface)
-        INTERFACE_NAME="$2"
-        log "$LOG_INFO" "Using interface: $INTERFACE_NAME"
-        shift 2
-        ;;
-      *)
-        error_exit "Unknown option: $1"
-        ;;
-    esac
-  done
 }
 
 is_installed() {
@@ -429,6 +372,98 @@ install_dependencies() {
   install_with_package_manager "$pkg_manager" "${missing_packages[@]}"
 }
 
+is_valid_json() {
+  local json="$1"
+  jq -e . >/dev/null 2>&1 <<<"$json"
+}
+
+process_json() {
+  local json="$1"
+  local jq_filter="$2"
+  jq -r "$jq_filter" <<<"$json"
+}
+
+format_value() {
+  local value="$1"
+  local not_available="$2"
+
+  if [[ "$value" == "$not_available" ]]; then
+    color NULL "$value"
+  else
+    bold "$value"
+  fi
+}
+
+mask_ipv4() {
+  local ip="$1"
+  echo "${ip%.*.*}.*.*"
+}
+
+mask_ipv6() {
+  local ip="$1"
+  echo "$ip" | awk -F: '{
+    for(i=1;i<=NF;i++) if($i=="") $i="0";
+    while(NF<8) for(i=1;i<=8;i++) if($i=="0"){NF++; break;}
+    printf "%s:%s:%s::\n", $1, $2, $3
+  }'
+}
+
+parse_arguments() {
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      -h | --help)
+        display_help
+        exit 0
+        ;;
+      -v | --verbose)
+        VERBOSE=true
+        shift
+        ;;
+      -j | --json)
+        JSON_OUTPUT=true
+        shift
+        ;;
+      -g | --group)
+        GROUPS_TO_SHOW="$2"
+        shift 2
+        ;;
+      -t | --timeout)
+        if [[ "$2" =~ ^[0-9]+$ ]]; then
+          CURL_TIMEOUT="$2"
+        else
+          error_exit "Invalid timeout value: $2. Timeout must be a positive integer"
+        fi
+        shift 2
+        ;;
+      -4 | --ipv4)
+        IPV4_ONLY=true
+        shift
+        ;;
+      -6 | --ipv6)
+        if ! check_ip_support 6; then
+          error_exit "IPv6 is not supported on this system"
+        fi
+
+        IPV6_ONLY=true
+        shift
+        ;;
+      -p | --proxy)
+        PROXY_ADDR="$2"
+        log "$LOG_INFO" "Using SOCKS5 proxy: $PROXY_ADDR"
+        shift 2
+        ;;
+      -i | --interface)
+        INTERFACE_NAME="$2"
+        log "$LOG_INFO" "Using interface: $INTERFACE_NAME"
+        shift 2
+        ;;
+      *)
+        error_exit "Unknown option: $1"
+        ;;
+    esac
+  done
+}
+
 check_ip_support() {
   local version="$1"
   log "$LOG_INFO" "Checking for IPv${version} support"
@@ -479,6 +514,47 @@ get_asn() {
   asn_name=$(jq -r '.organization.name' <<<"$response")
 
   log "$LOG_INFO" "ASN info: AS$asn $asn_name"
+}
+
+is_ipv6_over_ipv4_service() {
+  local service="$1"
+  for s in "${IPV6_OVER_IPV4_SERVICES[@]}"; do
+    [[ "$s" == "$service" ]] && return 0
+  done
+  return 1
+}
+
+spinner_start() {
+  local delay=0.1
+  local spinstr='|/-\\'
+  spinner_running=true
+  (
+    while $spinner_running; do
+      for ((i = 0; i < ${#spinstr}; i++)); do
+        local current_service=""
+        if [[ -f "$SPINNER_SERVICE_FILE" ]]; then
+          current_service="$(cat "$SPINNER_SERVICE_FILE")"
+        fi
+        printf "\r\033[K%s %s %s" \
+          "$(color HEADER "${spinstr:$i:1}")" \
+          "$(color HEADER "Checking:")" \
+          "$(color SERVICE "$current_service")"
+        sleep $delay
+      done
+    done
+  ) &
+  spinner_pid=$!
+}
+
+spinner_stop() {
+  spinner_running=false
+  if [[ -n "$spinner_pid" ]]; then
+    kill "$spinner_pid" 2>/dev/null
+    wait "$spinner_pid" 2>/dev/null
+    spinner_pid=""
+    printf "\\r%*s\\r" 40 " "
+  fi
+  CURRENT_SERVICE=""
 }
 
 make_request() {
@@ -568,17 +644,6 @@ make_request() {
   echo "$response"
 }
 
-is_valid_json() {
-  local json="$1"
-  jq -e . >/dev/null 2>&1 <<<"$json"
-}
-
-process_json() {
-  local json="$1"
-  local jq_filter="$2"
-  jq -r "$jq_filter" <<<"$json"
-}
-
 process_response() {
   local service="$1"
   local response="$2"
@@ -641,47 +706,6 @@ process_response() {
   esac
 
   process_json "$response" "$jq_filter"
-}
-
-is_ipv6_over_ipv4_service() {
-  local service="$1"
-  for s in "${IPV6_OVER_IPV4_SERVICES[@]}"; do
-    [[ "$s" == "$service" ]] && return 0
-  done
-  return 1
-}
-
-spinner_start() {
-  local delay=0.1
-  local spinstr='|/-\\'
-  spinner_running=true
-  (
-    while $spinner_running; do
-      for ((i = 0; i < ${#spinstr}; i++)); do
-        local current_service=""
-        if [[ -f "$SPINNER_SERVICE_FILE" ]]; then
-          current_service="$(cat "$SPINNER_SERVICE_FILE")"
-        fi
-        printf "\r\033[K%s %s %s" \
-          "$(color HEADER "${spinstr:$i:1}")" \
-          "$(color HEADER "Checking:")" \
-          "$(color SERVICE "$current_service")"
-        sleep $delay
-      done
-    done
-  ) &
-  spinner_pid=$!
-}
-
-spinner_stop() {
-  spinner_running=false
-  if [[ -n "$spinner_pid" ]]; then
-    kill "$spinner_pid" 2>/dev/null
-    wait "$spinner_pid" 2>/dev/null
-    spinner_pid=""
-    printf "\\r%*s\\r" 40 " "
-  fi
-  CURRENT_SERVICE=""
 }
 
 process_service() {
@@ -843,6 +867,134 @@ run_all_services() {
 
     "$func"
   done
+}
+
+init_json_output() {
+  RESULT_JSON=$(jq -n \
+    --arg version "1" \
+    --arg ipv4 "$EXTERNAL_IPV4" \
+    --arg ipv6 "$EXTERNAL_IPV6" \
+    '{version: ($version|tonumber), ipv4: ($ipv4 | select(length > 0) // null), ipv6: ($ipv6 | select(length > 0) // null), results: {primary: [], custom: []}}')
+}
+
+add_result() {
+  local group="$1"
+  local service="$2"
+  local ipv4="$3"
+  local ipv6="$4"
+
+  RESULT_JSON=$(jq \
+    --arg group "$group" \
+    --arg service "$service" \
+    --arg ipv4 "$ipv4" \
+    --arg ipv6 "$ipv6" \
+    '.results[$group] += [{
+      service: $service,
+      ipv4: ($ipv4 | select(length > 0) // null),
+      ipv6: ($ipv6 | select(length > 0) // null)
+    }]' \
+    <<<"$RESULT_JSON")
+}
+
+print_table_group() {
+  local group="$1"
+  local group_title="$2"
+  local separator="|||"
+  local not_available="N/A"
+  local show_ipv4=0
+  local show_ipv6=0
+  local header row ipv4_res ipv6_res
+
+  if [[ "$IPV6_ONLY" != true ]]; then
+    [[ -n "$EXTERNAL_IPV4" ]] && show_ipv4=1
+  fi
+
+  if [[ "$IPV4_ONLY" != true ]]; then
+    [[ -n "$EXTERNAL_IPV6" ]] && show_ipv6=1
+  fi
+
+  printf "%s\n\n" "$(color HEADER "$group_title")"
+
+  {
+    header=("$(color TABLE_HEADER 'Service')")
+    [[ $show_ipv4 -eq 1 ]] && header+=("$(color TABLE_HEADER 'IPv4')")
+    [[ $show_ipv6 -eq 1 ]] && header+=("$(color TABLE_HEADER 'IPv6')")
+    printf "%s\n" "$(
+      IFS="$separator"
+      echo "${header[*]}"
+    )"
+
+    jq -c ".results.$group[]" <<<"$RESULT_JSON" | while read -r item; do
+      row=()
+      service=$(jq -r '.service' <<<"$item")
+      row+=("$(color SERVICE "$service")")
+
+      if [[ $show_ipv4 -eq 1 ]]; then
+        ipv4_res=$(jq -r --arg na "$not_available" '.ipv4 // $na' <<<"$item")
+        [[ "$ipv4_res" == "null" ]] && ipv4_res="$not_available"
+        row+=("$(format_value "$ipv4_res" "$not_available")")
+      fi
+
+      if [[ $show_ipv6 -eq 1 ]]; then
+        ipv6_res=$(jq -r --arg na "$not_available" '.ipv6 // $na' <<<"$item")
+        [[ "$ipv6_res" == "null" ]] && ipv6_res="$not_available"
+        row+=("$(format_value "$ipv6_res" "$not_available")")
+      fi
+
+      printf "%s\n" "$(
+        IFS="$separator"
+        echo "${row[*]}"
+      )"
+    done
+  } | column -t -s "$separator"
+}
+
+print_table() {
+  print_table_group "custom" "Popular services"
+  printf "\n"
+  print_table_group "primary" "GeoIP services"
+}
+
+print_header() {
+  local ipv4 ipv6
+
+  ipv4=$(jq -r '.ipv4' <<<"$RESULT_JSON")
+  ipv6=$(jq -r '.ipv6' <<<"$RESULT_JSON")
+
+  printf "%s\n\n" "$(color URL "Made with ")$(color HEART '<3')$(color URL " by vernette — $SCRIPT_URL")"
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    printf "%s: %s\n" "$(color HEADER 'IPv4')" "$(bold "$(mask_ipv4 "$ipv4")")"
+  fi
+
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    printf "%s: %s\n" "$(color HEADER 'IPv6')" "$(bold "$(mask_ipv6 "$ipv6")")"
+  fi
+
+  printf "%s: %s\n\n" "$(color HEADER 'ASN')" "$(bold "AS$asn $asn_name")"
+}
+
+print_results() {
+  if [[ "$JSON_OUTPUT" == true ]]; then
+    echo "$RESULT_JSON" | jq
+    return
+  fi
+
+  print_header
+
+  case "$GROUPS_TO_SHOW" in
+    primary)
+      print_table_group "primary" "GeoIP services"
+      ;;
+    custom)
+      print_table_group "custom" "Popular services"
+      ;;
+    *)
+      print_table_group "custom" "Popular services"
+      printf "\n"
+      print_table_group "primary" "GeoIP services"
+      ;;
+  esac
 }
 
 lookup_maxmind() {
@@ -1014,159 +1166,6 @@ lookup_tiktok() {
   process_json "$response" ".body.appProps.region"
 }
 
-init_json_output() {
-  RESULT_JSON=$(jq -n \
-    --arg version "1" \
-    --arg ipv4 "$EXTERNAL_IPV4" \
-    --arg ipv6 "$EXTERNAL_IPV6" \
-    '{version: ($version|tonumber), ipv4: ($ipv4 | select(length > 0) // null), ipv6: ($ipv6 | select(length > 0) // null), results: {primary: [], custom: []}}')
-}
-
-add_result() {
-  local group="$1"
-  local service="$2"
-  local ipv4="$3"
-  local ipv6="$4"
-
-  RESULT_JSON=$(jq \
-    --arg group "$group" \
-    --arg service "$service" \
-    --arg ipv4 "$ipv4" \
-    --arg ipv6 "$ipv6" \
-    '.results[$group] += [{
-      service: $service,
-      ipv4: ($ipv4 | select(length > 0) // null),
-      ipv6: ($ipv6 | select(length > 0) // null)
-    }]' \
-    <<<"$RESULT_JSON")
-}
-
-format_value() {
-  local value="$1"
-  local not_available="$2"
-
-  if [[ "$value" == "$not_available" ]]; then
-    color NULL "$value"
-  else
-    bold "$value"
-  fi
-}
-
-print_table_group() {
-  local group="$1"
-  local group_title="$2"
-  local separator="|||"
-  local not_available="N/A"
-  local show_ipv4=0
-  local show_ipv6=0
-  local header row ipv4_res ipv6_res
-
-  if [[ "$IPV6_ONLY" != true ]]; then
-    [[ -n "$EXTERNAL_IPV4" ]] && show_ipv4=1
-  fi
-
-  if [[ "$IPV4_ONLY" != true ]]; then
-    [[ -n "$EXTERNAL_IPV6" ]] && show_ipv6=1
-  fi
-
-  printf "%s\n\n" "$(color HEADER "$group_title")"
-
-  {
-    header=("$(color TABLE_HEADER 'Service')")
-    [[ $show_ipv4 -eq 1 ]] && header+=("$(color TABLE_HEADER 'IPv4')")
-    [[ $show_ipv6 -eq 1 ]] && header+=("$(color TABLE_HEADER 'IPv6')")
-    printf "%s\n" "$(
-      IFS="$separator"
-      echo "${header[*]}"
-    )"
-
-    jq -c ".results.$group[]" <<<"$RESULT_JSON" | while read -r item; do
-      row=()
-      service=$(jq -r '.service' <<<"$item")
-      row+=("$(color SERVICE "$service")")
-
-      if [[ $show_ipv4 -eq 1 ]]; then
-        ipv4_res=$(jq -r --arg na "$not_available" '.ipv4 // $na' <<<"$item")
-        [[ "$ipv4_res" == "null" ]] && ipv4_res="$not_available"
-        row+=("$(format_value "$ipv4_res" "$not_available")")
-      fi
-
-      if [[ $show_ipv6 -eq 1 ]]; then
-        ipv6_res=$(jq -r --arg na "$not_available" '.ipv6 // $na' <<<"$item")
-        [[ "$ipv6_res" == "null" ]] && ipv6_res="$not_available"
-        row+=("$(format_value "$ipv6_res" "$not_available")")
-      fi
-
-      printf "%s\n" "$(
-        IFS="$separator"
-        echo "${row[*]}"
-      )"
-    done
-  } | column -t -s "$separator"
-}
-
-print_table() {
-  print_table_group "custom" "Popular services"
-  printf "\n"
-  print_table_group "primary" "GeoIP services"
-}
-
-mask_ipv4() {
-  local ip="$1"
-  echo "${ip%.*.*}.*.*"
-}
-
-mask_ipv6() {
-  local ip="$1"
-  echo "$ip" | awk -F: '{
-    for(i=1;i<=NF;i++) if($i=="") $i="0";
-    while(NF<8) for(i=1;i<=8;i++) if($i=="0"){NF++; break;}
-    printf "%s:%s:%s::\n", $1, $2, $3
-  }'
-}
-
-print_header() {
-  local ipv4 ipv6
-
-  ipv4=$(jq -r '.ipv4' <<<"$RESULT_JSON")
-  ipv6=$(jq -r '.ipv6' <<<"$RESULT_JSON")
-
-  printf "%s\n\n" "$(color URL "Made with ")$(color HEART '<3')$(color URL " by vernette — $SCRIPT_URL")"
-
-  if [[ -n "$EXTERNAL_IPV4" ]]; then
-    printf "%s: %s\n" "$(color HEADER 'IPv4')" "$(bold "$(mask_ipv4 "$ipv4")")"
-  fi
-
-  if [[ -n "$EXTERNAL_IPV6" ]]; then
-    printf "%s: %s\n" "$(color HEADER 'IPv6')" "$(bold "$(mask_ipv6 "$ipv6")")"
-  fi
-
-  printf "%s: %s\n\n" "$(color HEADER 'ASN')" "$(bold "AS$asn $asn_name")"
-}
-
-print_results() {
-  if [[ "$JSON_OUTPUT" == true ]]; then
-    echo "$RESULT_JSON" | jq
-    return
-  fi
-
-  print_header
-
-  case "$GROUPS_TO_SHOW" in
-    primary)
-      print_table_group "primary" "GeoIP services"
-      ;;
-    custom)
-      print_table_group "custom" "Popular services"
-      ;;
-    *)
-      print_table_group "custom" "Popular services"
-      printf "\n"
-      print_table_group "primary" "GeoIP services"
-      ;;
-  esac
-}
-
 main() {
   parse_arguments "$@"
 
@@ -1182,6 +1181,8 @@ main() {
   get_asn
 
   init_json_output
+
+  SPINNER_SERVICE_FILE="$(get_tmpdir)/ipregion_spinner_service_$$"
 
   if [[ "$JSON_OUTPUT" != true && "$VERBOSE" != true ]]; then
     trap spinner_stop EXIT INT TERM
