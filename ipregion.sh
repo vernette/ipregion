@@ -102,6 +102,7 @@ declare -A CUSTOM_SERVICES=(
   [STEAM]="Steam"
   [TIKTOK]="Tiktok"
   [OOKLA_SPEEDTEST]="Ookla Speedtest"
+  [JETBRAINS]="JetBrains"
 )
 
 CUSTOM_SERVICES_ORDER=(
@@ -114,6 +115,7 @@ CUSTOM_SERVICES_ORDER=(
   "STEAM"
   "TIKTOK"
   "OOKLA_SPEEDTEST"
+  "JETBRAINS"
 )
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
@@ -126,6 +128,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [STEAM]="lookup_steam"
   [TIKTOK]="lookup_tiktok"
   [OOKLA_SPEEDTEST]="lookup_ookla_speedtest"
+  [JETBRAINS]="lookup_jetbrains"
 )
 
 declare -A SERVICE_GROUPS=(
@@ -1175,6 +1178,14 @@ lookup_ookla_speedtest() {
 
   response=$(make_request GET "https://www.speedtest.net/api/js/config-sdk" --ip-version "$ip_version")
   process_json "$response" ".location.countryCode"
+}
+
+lookup_jetbrains() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request GET "https://data.services.jetbrains.com/geo" --ip-version "$ip_version")
+  process_json "$response" ".code"
 }
 
 main() {
