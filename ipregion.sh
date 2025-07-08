@@ -516,8 +516,8 @@ get_asn() {
   log "$LOG_INFO" "Getting ASN info for IP $ip"
 
   response=$(make_request GET "https://geoip.oxl.app/api/ip/$ip" --ip-version "$ip_version")
-  asn=$(jq -r '.asn' <<<"$response")
-  asn_name=$(jq -r '.organization.name' <<<"$response")
+  asn=$(process_json "$response" ".asn")
+  asn_name=$(process_json "$response" ".organization.name")
 
   log "$LOG_INFO" "ASN info: AS$asn $asn_name"
 }
@@ -932,17 +932,17 @@ print_table_group() {
 
     jq -c ".results.$group[]" <<<"$RESULT_JSON" | while read -r item; do
       row=()
-      service=$(jq -r '.service' <<<"$item")
+      service=$(process_json "$item" ".service")
       row+=("$(color SERVICE "$service")")
 
       if [[ $show_ipv4 -eq 1 ]]; then
-        ipv4_res=$(jq -r --arg na "$not_available" '.ipv4 // $na' <<<"$item")
+        ipv4_res=$(process_json "$item" ".ipv4 // \"$not_available\"")
         [[ "$ipv4_res" == "null" ]] && ipv4_res="$not_available"
         row+=("$(format_value "$ipv4_res" "$not_available")")
       fi
 
       if [[ $show_ipv6 -eq 1 ]]; then
-        ipv6_res=$(jq -r --arg na "$not_available" '.ipv6 // $na' <<<"$item")
+        ipv6_res=$(process_json "$item" ".ipv6 // \"$not_available\"")
         [[ "$ipv6_res" == "null" ]] && ipv6_res="$not_available"
         row+=("$(format_value "$ipv6_res" "$not_available")")
       fi
@@ -964,8 +964,8 @@ print_table() {
 print_header() {
   local ipv4 ipv6
 
-  ipv4=$(jq -r '.ipv4' <<<"$RESULT_JSON")
-  ipv6=$(jq -r '.ipv6' <<<"$RESULT_JSON")
+  ipv4=$(process_json "$RESULT_JSON" ".ipv4")
+  ipv6=$(process_json "$RESULT_JSON" ".ipv6")
 
   printf "%s\n\n" "$(color URL "Made with ")$(color HEART '<3')$(color URL " by vernette — $SCRIPT_URL")"
 
