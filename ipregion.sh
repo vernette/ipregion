@@ -93,7 +93,7 @@ declare -A SERVICE_HEADERS=(
 )
 
 declare -A CUSTOM_SERVICES=(
-  [YOUTUBE]="Google"
+  [GOOGLE]="Google"
   [TWITCH]="Twitch"
   [CHATGPT]="ChatGPT"
   [NETFLIX]="Netflix"
@@ -106,7 +106,7 @@ declare -A CUSTOM_SERVICES=(
 )
 
 CUSTOM_SERVICES_ORDER=(
-  "YOUTUBE"
+  "GOOGLE"
   "TWITCH"
   "CHATGPT"
   "NETFLIX"
@@ -119,7 +119,7 @@ CUSTOM_SERVICES_ORDER=(
 )
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
-  [YOUTUBE]="lookup_youtube"
+  [GOOGLE]="lookup_google"
   [TWITCH]="lookup_twitch"
   [CHATGPT]="lookup_chatgpt"
   [NETFLIX]="lookup_netflix"
@@ -1067,7 +1067,7 @@ lookup_iplocation_com() {
   process_json "$response" ".country_code"
 }
 
-lookup_youtube() {
+lookup_google() {
   local ip_version="$1"
   local sed_filter='s/.*"[a-z]\{2\}_\([A-Z]\{2\}\)".*/\1/p'
   local sed_fallback_filter='s/.*"[a-z]\{2\}-\([A-Z]\{2\}\)".*/\1/p'
