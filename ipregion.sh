@@ -3,6 +3,7 @@
 SCRIPT_URL="https://github.com/vernette/ipregion"
 DEPENDENCIES=("jq" "curl" "util-linux")
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 CURRENT_SERVICE=""
 
 VERBOSE=false
@@ -533,34 +534,48 @@ is_ipv6_over_ipv4_service() {
 spinner_start() {
   local delay=0.1
   local spinstr='|/-\\'
+  local current_service
+
   spinner_running=true
+
   (
     while $spinner_running; do
       for ((i = 0; i < ${#spinstr}; i++)); do
-        local current_service=""
+        current_service=""
+
         if [[ -f "$SPINNER_SERVICE_FILE" ]]; then
           current_service="$(cat "$SPINNER_SERVICE_FILE")"
         fi
+
         printf "\r\033[K%s %s %s" \
           "$(color HEADER "${spinstr:$i:1}")" \
           "$(color HEADER "Checking:")" \
           "$(color SERVICE "$current_service")"
+
         sleep $delay
       done
     done
   ) &
+
   spinner_pid=$!
 }
 
 spinner_stop() {
   spinner_running=false
+
   if [[ -n "$spinner_pid" ]]; then
     kill "$spinner_pid" 2>/dev/null
     wait "$spinner_pid" 2>/dev/null
     spinner_pid=""
     printf "\\r%*s\\r" 40 " "
   fi
+
   CURRENT_SERVICE=""
+
+  if [[ -f "$SPINNER_SERVICE_FILE" ]]; then
+    rm -f "$SPINNER_SERVICE_FILE"
+    unset SPINNER_SERVICE_FILE
+  fi
 }
 
 make_request() {
@@ -1203,8 +1218,6 @@ main() {
   get_asn
 
   init_json_output
-
-  SPINNER_SERVICE_FILE="$(get_tmpdir)/ipregion_spinner_service_$$"
 
   if [[ "$JSON_OUTPUT" != true && "$VERBOSE" != true ]]; then
     trap spinner_stop EXIT INT TERM
