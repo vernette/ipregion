@@ -39,7 +39,6 @@ declare -A DEPENDENCY_COMMANDS=(
   [util-linux]="column"
 )
 
-# TODO: Add missing services
 declare -A PRIMARY_SERVICES=(
   [MAXMIND]="maxmind.com|geoip.maxmind.com|/geoip/v2.1/city/me"
   [RIPE]="rdap.db.ripe.net|rdap.db.ripe.net|/ip/{ip}"
@@ -620,7 +619,6 @@ make_request() {
     esac
   done
 
-  # TODO: Process errors
   curl_command="curl --silent --retry-connrefused --retry-all-errors --retry $CURL_RETRIES --max-time $CURL_TIMEOUT --request $method"
 
   if [[ "$ip_version" == "4" ]]; then
@@ -681,8 +679,6 @@ process_response() {
     log "$LOG_ERROR" "Invalid JSON response from $display_name: $response"
     return 1
   fi
-
-  # TODO: Process rate-limits
 
   case "$service" in
     MAXMIND)
