@@ -283,6 +283,7 @@ declare -A COUNTRY_NAMES=(
   [YE]="Yemen"
   [ZM]="Zambia"
   [ZW]="Zimbabwe"
+  [XK]="Kosovo"
 )
 
 declare -A DEPENDENCY_COMMANDS=(
