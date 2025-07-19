@@ -117,8 +117,6 @@ CUSTOM_SERVICES_ORDER=(
   "APPLE"
   "STEAM"
   "TIKTOK"
-  "CLOUDFLARE_CDN"
-  "YOUTUBE_CDN"
   "OOKLA_SPEEDTEST"
   "JETBRAINS"
   "EPIC_GAMES"
@@ -140,9 +138,20 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [EPIC_GAMES]="lookup_epic_games"
 )
 
+declare -A CDN_SERVICES=(
+  [CLOUDFLARE_CDN]="Cloudflare CDN"
+  [YOUTUBE_CDN]="YouTube CDN"
+)
+
+CDN_SERVICES_ORDER=(
+  "CLOUDFLARE_CDN"
+  "YOUTUBE_CDN"
+)
+
 declare -A SERVICE_GROUPS=(
   [primary]="${PRIMARY_SERVICES_ORDER[*]}"
   [custom]="${CUSTOM_SERVICES_ORDER[*]}"
+  [cdn]="${CDN_SERVICES_ORDER[*]}"
 )
 
 EXCLUDED_SERVICES=(
@@ -247,7 +256,7 @@ Options:
   -h, --help           Show this help message and exit
   -v, --verbose        Enable verbose logging
   -j, --json           Output results in JSON format
-  -g, --group GROUP    Run only one group: 'primary', 'custom', or 'all' (default: all)
+  -g, --group GROUP    Run only one group: 'primary', 'custom', 'cdn', or 'all' (default: all)
   -t, --timeout SEC    Set curl request timeout in seconds (default: $CURL_TIMEOUT)
   -4, --ipv4           Test only IPv4
   -6, --ipv6           Test only IPv6
@@ -258,6 +267,7 @@ Examples:
   $0                       # Check all services with default settings
   $0 -g primary            # Check only GeoIP services
   $0 -g custom             # Check only popular websites
+  $0 -g cdn                # Check only CDN endpoints
   $0 -4                    # Test only IPv4
   $0 -6                    # Test only IPv6
   $0 -p 127.0.0.1:1080     # Use SOCKS5 proxy
@@ -878,7 +888,8 @@ run_service_group() {
   local group="$1"
   local services_string="${SERVICE_GROUPS[$group]}"
   local is_custom=false
-  local services_array service_name
+  local is_cdn=false
+  local services_array service_name handler_func display_name result
 
   read -ra services_array <<<"$services_string"
 
@@ -892,9 +903,30 @@ run_service_group() {
 
     if [[ "$group" == "custom" ]]; then
       is_custom=true
+    else
+      is_custom=false
     fi
 
-    process_service "$service_name" "$is_custom"
+    if [[ "$group" == "cdn" ]]; then
+      is_cdn=true
+    else
+      is_cdn=false
+    fi
+
+    if [[ "$is_custom" == true ]]; then
+      process_service "$service_name" true
+    elif [[ "$is_cdn" == true ]]; then
+      handler_func="${CUSTOM_SERVICES_HANDLERS[$service_name]}"
+      display_name="${CDN_SERVICES[$service_name]}"
+
+      if [[ -n "$handler_func" ]]; then
+        echo "$display_name" >"$SPINNER_SERVICE_FILE"
+        result=$("$handler_func" 4)
+        add_result "cdn" "$display_name" "$result" ""
+      fi
+    else
+      process_service "$service_name"
+    fi
   done
 }
 
@@ -924,7 +956,7 @@ init_json_output() {
     --arg version "1" \
     --arg ipv4 "$EXTERNAL_IPV4" \
     --arg ipv6 "$EXTERNAL_IPV6" \
-    '{version: ($version|tonumber), ipv4: ($ipv4 | select(length > 0) // null), ipv6: ($ipv6 | select(length > 0) // null), results: {primary: [], custom: []}}')
+    '{version: ($version|tonumber), ipv4: ($ipv4 | select(length > 0) // null), ipv6: ($ipv6 | select(length > 0) // null), results: {primary: [], custom: [], cdn: []}}')
 }
 
 add_result() {
@@ -1039,8 +1071,13 @@ print_results() {
     custom)
       print_table_group "custom" "Popular services"
       ;;
+    cdn)
+      print_table_group "cdn" "CDN services"
+      ;;
     *)
       print_table_group "custom" "Popular services"
+      printf "\n"
+      print_table_group "cdn" "CDN services"
       printf "\n"
       print_table_group "primary" "GeoIP services"
       ;;
@@ -1306,9 +1343,13 @@ main() {
     custom)
       run_service_group "custom"
       ;;
+    cdn)
+      run_service_group "cdn"
+      ;;
     *)
       run_service_group "primary"
       run_service_group "custom"
+      run_service_group "cdn"
       ;;
   esac
 
