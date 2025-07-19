@@ -102,6 +102,7 @@ declare -A CUSTOM_SERVICES=(
   [STEAM]="Steam"
   [TIKTOK]="Tiktok"
   [CLOUDFLARE_CDN]="Cloudflare CDN"
+  [YOUTUBE_CDN]="YouTube CDN"
   [OOKLA_SPEEDTEST]="Ookla Speedtest"
   [JETBRAINS]="JetBrains"
 )
@@ -116,6 +117,7 @@ CUSTOM_SERVICES_ORDER=(
   "STEAM"
   "TIKTOK"
   "CLOUDFLARE_CDN"
+  "YOUTUBE_CDN"
   "OOKLA_SPEEDTEST"
   "JETBRAINS"
 )
@@ -130,6 +132,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [STEAM]="lookup_steam"
   [TIKTOK]="lookup_tiktok"
   [CLOUDFLARE_CDN]="lookup_cloudflare_cdn"
+  [YOUTUBE_CDN]="lookup_youtube_cdn"
   [OOKLA_SPEEDTEST]="lookup_ookla_speedtest"
   [JETBRAINS]="lookup_jetbrains"
 )
@@ -1221,6 +1224,22 @@ lookup_cloudflare_cdn() {
       break
     fi
   done <<<"$response"
+
+  location=$(get_iata_location "$iata")
+  echo "$iata ($location)"
+}
+
+lookup_youtube_cdn() {
+  local ip_version="$1"
+  local response iata location
+
+  response=$(make_request GET "https://redirector.googlevideo.com/report_mapping?di=no" --ip-version "$ip_version")
+  iata=$(echo "$response" | awk '{print $3}' | cut -f2 -d'-' | cut -c1-3 | tr a-z A-Z)
+
+  if [[ -z "$iata" ]]; then
+    echo ""
+    return
+  fi
 
   location=$(get_iata_location "$iata")
   echo "$iata ($location)"
