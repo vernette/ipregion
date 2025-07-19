@@ -133,6 +133,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [TIKTOK]="lookup_tiktok"
   [CLOUDFLARE_CDN]="lookup_cloudflare_cdn"
   [YOUTUBE_CDN]="lookup_youtube_cdn"
+  [NETFLIX_CDN]="lookup_netflix_cdn"
   [OOKLA_SPEEDTEST]="lookup_ookla_speedtest"
   [JETBRAINS]="lookup_jetbrains"
   [EPIC_GAMES]="lookup_epic_games"
@@ -141,11 +142,13 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
 declare -A CDN_SERVICES=(
   [CLOUDFLARE_CDN]="Cloudflare CDN"
   [YOUTUBE_CDN]="YouTube CDN"
+  [NETFLIX_CDN]="Netflix CDN"
 )
 
 CDN_SERVICES_ORDER=(
   "CLOUDFLARE_CDN"
   "YOUTUBE_CDN"
+  "NETFLIX_CDN"
 )
 
 declare -A SERVICE_GROUPS=(
@@ -1188,7 +1191,7 @@ lookup_netflix() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://api.fast.com/netflix/speedtest/v2?token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm" --ip-version "$ip_version")
+  response=$(make_request GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=1" --ip-version "$ip_version")
 
   if is_valid_json "$response"; then
     process_json "$response" ".client.location.country"
@@ -1267,7 +1270,8 @@ lookup_youtube_cdn() {
   local response iata location
 
   response=$(make_request GET "https://redirector.googlevideo.com/report_mapping?di=no" --ip-version "$ip_version")
-  iata=$(echo "$response" | awk '{print $3}' | cut -f2 -d'-' | cut -c1-3 | tr a-z A-Z)
+  iata=$(echo "$response" | awk '{print $3}' | cut -f2 -d'-' | cut -c1-3)
+  iata=${iata^^}
 
   if [[ -z "$iata" ]]; then
     echo ""
@@ -1276,6 +1280,21 @@ lookup_youtube_cdn() {
 
   location=$(get_iata_location "$iata")
   echo "$location ($iata)"
+}
+
+
+lookup_netflix_cdn() {
+  local ip_version="$1"
+  local response
+
+  # TODO: Make contant
+  response=$(make_request GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=1" --ip-version "$ip_version")
+
+  if is_valid_json "$response"; then
+    process_json "$response" ".targets[0].location.country"
+  else
+    echo ""
+  fi
 }
 
 lookup_ookla_speedtest() {
