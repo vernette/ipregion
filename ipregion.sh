@@ -101,6 +101,7 @@ declare -A CUSTOM_SERVICES=(
   [APPLE]="Apple"
   [STEAM]="Steam"
   [TIKTOK]="Tiktok"
+  [CLOUDFLARE_CDN]="Cloudflare CDN"
   [OOKLA_SPEEDTEST]="Ookla Speedtest"
   [JETBRAINS]="JetBrains"
 )
@@ -114,6 +115,7 @@ CUSTOM_SERVICES_ORDER=(
   "APPLE"
   "STEAM"
   "TIKTOK"
+  "CLOUDFLARE_CDN"
   "OOKLA_SPEEDTEST"
   "JETBRAINS"
 )
@@ -127,6 +129,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [APPLE]="lookup_apple"
   [STEAM]="lookup_steam"
   [TIKTOK]="lookup_tiktok"
+  [CLOUDFLARE_CDN]="lookup_cloudflare_cdn"
   [OOKLA_SPEEDTEST]="lookup_ookla_speedtest"
   [JETBRAINS]="lookup_jetbrains"
 )
@@ -520,6 +523,30 @@ get_asn() {
   asn_name=$(process_json "$response" ".organization.name")
 
   log "$LOG_INFO" "ASN info: AS$asn $asn_name"
+}
+
+get_iata_location() {
+  local iata_code="$1"
+  local url="https://www.air-port-codes.com/api/v1/single"
+  local payload="iata=$iata_code"
+  local apc_auth="96dc04b3fb"
+  local referer="https://www.air-port-codes.com/"
+  local response city country
+
+  response=$(make_request POST "$url" \
+    --header "APC-Auth: $apc_auth" \
+    --header "Referer: $referer" \
+    --data "$payload" \
+    --ip-version 4)
+
+  city=$(process_json "$response" ".airport.city")
+  country=$(process_json "$response" ".airport.country.name")
+
+  if [[ -n "$city" && -n "$country" ]]; then
+    echo "$city, $country"
+  else
+    echo "Unknown location"
+  fi
 }
 
 is_ipv6_over_ipv4_service() {
@@ -1181,6 +1208,22 @@ lookup_tiktok() {
 
   response=$(make_request GET "https://www.tiktok.com/api/v1/web-cookie-privacy/config?appId=1988" --ip-version "$ip_version")
   process_json "$response" ".body.appProps.region"
+}
+
+lookup_cloudflare_cdn() {
+  local ip_version="$1"
+  local response iata location
+
+  response=$(make_request GET "https://www.cloudflare.com/cdn-cgi/trace" --ip-version "$ip_version")
+  while IFS='=' read -r key value; do
+    if [[ "$key" == "colo" ]]; then
+      iata="$value"
+      break
+    fi
+  done <<<"$response"
+
+  location=$(get_iata_location "$iata")
+  echo "$iata ($location)"
 }
 
 lookup_ookla_speedtest() {
