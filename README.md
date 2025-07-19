@@ -47,6 +47,9 @@ bash <(wget -qO- https://github.com/vernette/ipregion/raw/master/ipregion.sh)
 # Check only GeoIP services
 ./ipregion.sh --group primary
 
+# Check only CDN services
+./ipregion.sh --group cdn
+
 # Check only popular web services
 ./ipregion.sh --group custom
 
@@ -85,7 +88,7 @@ Options:
   -h, --help           Show this help message and exit
   -v, --verbose        Enable verbose logging
   -j, --json           Output results in JSON format
-  -g, --group GROUP    Run only one group: 'primary', 'custom', or 'all' (default: all)
+  -g, --group GROUP    Run only one group: 'primary', 'custom', 'cdn' or 'all' (default: all)
   -t, --timeout SEC    Set curl request timeout in seconds (default: 10)
   -4, --ipv4           Test only IPv4
   -6, --ipv6           Test only IPv6
@@ -96,6 +99,7 @@ Examples:
   ipregion.sh                       # Check all services with default settings
   ipregion.sh -g primary            # Check only GeoIP services
   ipregion.sh -g custom             # Check only popular websites
+  ipregion.sh -g cdn                # Check only CDN
   ipregion.sh -4                    # Test only IPv4
   ipregion.sh -6                    # Test only IPv6
   ipregion.sh -p 127.0.0.1:1080     # Use SOCKS5 proxy
