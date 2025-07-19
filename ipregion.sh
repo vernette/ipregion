@@ -555,14 +555,7 @@ get_iata_location() {
     --data "$payload" \
     --ip-version 4)
 
-  city=$(process_json "$response" ".airport.city")
-  country=$(process_json "$response" ".airport.country.name")
-
-  if [[ -n "$city" && -n "$country" ]]; then
-    echo "$city, $country"
-  else
-    echo "Unknown location"
-  fi
+  process_json "$response" ".airport.country.iso"
 }
 
 is_ipv6_over_ipv4_service() {
@@ -1266,7 +1259,7 @@ lookup_cloudflare_cdn() {
   done <<<"$response"
 
   location=$(get_iata_location "$iata")
-  echo "$iata ($location)"
+  echo "$location ($iata)"
 }
 
 lookup_youtube_cdn() {
@@ -1282,7 +1275,7 @@ lookup_youtube_cdn() {
   fi
 
   location=$(get_iata_location "$iata")
-  echo "$iata ($location)"
+  echo "$location ($iata)"
 }
 
 lookup_ookla_speedtest() {
