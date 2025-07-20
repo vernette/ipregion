@@ -556,7 +556,7 @@ get_iata_location() {
   local payload="iata=$iata_code"
   local apc_auth="96dc04b3fb"
   local referer="https://www.air-port-codes.com/"
-  local response city country
+  local response
 
   response=$(make_request POST "$url" \
     --header "APC-Auth: $apc_auth" \
