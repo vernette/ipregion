@@ -98,6 +98,8 @@ declare -A CUSTOM_SERVICES=(
   [CHATGPT]="ChatGPT"
   [NETFLIX]="Netflix"
   [SPOTIFY]="Spotify"
+  [REDDIT]="Reddit"
+  [REDDIT_GUEST_ACCESS]="Reddit (Guest Access)"
   [APPLE]="Apple"
   [STEAM]="Steam"
   [TIKTOK]="Tiktok"
@@ -114,6 +116,8 @@ CUSTOM_SERVICES_ORDER=(
   "CHATGPT"
   "NETFLIX"
   "SPOTIFY"
+  "REDDIT"
+  "REDDIT_GUEST_ACCESS"
   "APPLE"
   "STEAM"
   "TIKTOK"
@@ -128,6 +132,8 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [CHATGPT]="lookup_chatgpt"
   [NETFLIX]="lookup_netflix"
   [SPOTIFY]="lookup_spotify"
+  [REDDIT]="lookup_reddit"
+  [REDDIT_GUEST_ACCESS]="lookup_reddit_guest_access"
   [APPLE]="lookup_apple"
   [STEAM]="lookup_steam"
   [TIKTOK]="lookup_tiktok"
@@ -1039,7 +1045,7 @@ print_header() {
   ipv4=$(process_json "$RESULT_JSON" ".ipv4")
   ipv6=$(process_json "$RESULT_JSON" ".ipv6")
 
-  printf "%s\n\n" "$(color URL "Made with ")$(color HEART '<3')$(color URL " by vernette — $SCRIPT_URL")"
+  printf "%s\n\n" "$(color URL "Made with ")$(color HEART "<3")$(color URL " by vernette — $SCRIPT_URL")"
 
   if [[ -n "$EXTERNAL_IPV4" ]]; then
     printf "%s: %s\n" "$(color HEADER 'IPv4')" "$(bold "$(mask_ipv4 "$ipv4")")"
@@ -1209,6 +1215,51 @@ lookup_spotify() {
   sed -n 's/.*"geoLocationCountryCode":"\([^"]*\)".*/\1/p' <<<"$response"
 }
 
+lookup_reddit() {
+  local ip_version="$1"
+  local basic_access_token="Basic b2hYcG9xclpZdWIxa2c6"
+  local user_agent="Reddit/Version 2025.29.0/Build 2529021/Android 13"
+  local response access_token
+
+  response=$(make_request POST "https://www.reddit.com/auth/v2/oauth/access-token/loid" \
+    --ip-version "$ip_version" \
+    --user-agent "$user_agent" \
+    --header "Authorization: $basic_access_token" \
+    --json '{"scopes":["email"]}')
+
+  access_token=$(process_json "$response" ".access_token")
+
+  response=$(make_request POST "https://gql-fed.reddit.com" \
+    --ip-version "$ip_version" \
+    --user-agent "$user_agent" \
+    --header "Authorization: Bearer $access_token" \
+    --json '{"operationName":"UserLocation","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f07de258c54537e24d7856080f662c1b1268210251e5789c8c08f20d76cc8ab2"}}}')
+
+  process_json "$response" ".data.userLocation.countryCode"
+}
+
+lookup_reddit_guest_access() {
+  local ip_version="$1"
+  local response is_blocked is_available color_name
+
+  response=$(make_request GET "https://www.reddit.com" --ip-version "$ip_version" --user-agent "$USER_AGENT")
+  is_blocked=$(sed -n 's/.*\(blocked by network security\).*/\1/p' <<<"$response")
+
+  if [[ -z "$is_blocked" ]]; then
+    is_available="Yes"
+    color_name="SERVICE"
+  else
+    is_available="No"
+    color_name="HEART"
+  fi
+
+  if [[ "$JSON_OUTPUT" == true ]]; then
+    echo "$is_available"
+  else
+    color "$color_name" "$is_available"
+  fi
+}
+
 lookup_apple() {
   local ip_version="$1"
   make_request GET "https://gspe1-ssl.ls.apple.com/pep/gcc" --ip-version "$ip_version"
@@ -1281,7 +1332,6 @@ lookup_youtube_cdn() {
   location=$(get_iata_location "$iata")
   echo "$location ($iata)"
 }
-
 
 lookup_netflix_cdn() {
   local ip_version="$1"
