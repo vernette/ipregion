@@ -4,7 +4,6 @@ SCRIPT_URL="https://github.com/vernette/ipregion"
 DEPENDENCIES=("jq" "curl" "util-linux")
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
-CURRENT_SERVICE=""
 
 VERBOSE=false
 JSON_OUTPUT=false
@@ -86,6 +85,7 @@ declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
   [IPDATA_CO]="lookup_ipdata_co"
 )
 
+# shellcheck disable=SC2016
 declare -A SERVICE_HEADERS=(
   [IPREGISTRY]='("Origin: https://ipregistry.co")'
   [MAXMIND]='("Referer: https://www.maxmind.com")'
@@ -502,7 +502,7 @@ check_ip_support() {
   local version="$1"
   log "$LOG_INFO" "Checking for IPv${version} support"
 
-  if [[ -n $(ip -${version} addr show scope global 2>/dev/null) ]]; then
+  if [[ -n $(ip -"${version}" addr show scope global 2>/dev/null) ]]; then
     log "$LOG_INFO" "IPv${version} is supported"
     return 0
   fi
@@ -523,7 +523,7 @@ get_external_ip() {
     log "$LOG_INFO" "External IPv4: $EXTERNAL_IPV4"
   fi
 
-  if [[ "$IPV6_ONLY" == true ]] || ([[ "$IPV6_SUPPORTED" -eq 0 ]] && [[ "$IPV4_ONLY" != true ]]); then
+  if [[ "$IPV6_ONLY" == true ]] || { [[ "$IPV6_SUPPORTED" -eq 0 ]] && [[ "$IPV4_ONLY" != true ]]; }; then
     log "$LOG_INFO" "Getting external IPv6 address"
     EXTERNAL_IPV6="$(make_request GET "https://$identity_service" --ip-version 6)"
     log "$LOG_INFO" "External IPv6: $EXTERNAL_IPV6"
@@ -577,6 +577,7 @@ is_ipv6_over_ipv4_service() {
 
 spinner_start() {
   local delay=0.1
+  # shellcheck disable=SC1003
   local spinstr='|/-\\'
   local current_service
 
@@ -613,8 +614,6 @@ spinner_stop() {
     spinner_pid=""
     printf "\\r%*s\\r" 40 " "
   fi
-
-  CURRENT_SERVICE=""
 
   if [[ -f "$SPINNER_SERVICE_FILE" ]]; then
     rm -f "$SPINNER_SERVICE_FILE"
@@ -796,7 +795,7 @@ process_service() {
 
     ipv4_result=$("$handler_func" 4)
 
-    if [[ "$IPV6_ONLY" == true ]] || ([[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]] && [[ "$IPV4_ONLY" != true ]]); then
+    if [[ "$IPV6_ONLY" == true ]] || { [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]] && [[ "$IPV4_ONLY" != true ]]; }; then
       log "$LOG_INFO" "Checking $display_name via IPv6 (custom handler)"
       ipv6_result=$("$handler_func" 6)
     else
@@ -1008,6 +1007,7 @@ print_table_group() {
       echo "${header[*]}"
     )"
 
+    # shellcheck disable=SC1087
     jq -c ".results.$group[]" <<<"$RESULT_JSON" | while read -r item; do
       row=()
       service=$(process_json "$item" ".service")
@@ -1368,7 +1368,6 @@ lookup_epic_games() {
   local response
 
   response=$(make_request GET "https://www.epicgames.com/cdn-cgi/trace" --ip-version "$ip_version")
-  log "$LOG_INFO" "$response"
   while IFS='=' read -r key value; do
     if [[ "$key" == "loc" ]]; then
       echo "$value"
