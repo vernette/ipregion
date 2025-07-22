@@ -632,7 +632,7 @@ make_request() {
   local json=""
   local data=""
   local proxy=""
-  local response
+  local response_and_code response http_code
 
   while (("$#")); do
     case "$1" in
@@ -701,9 +701,17 @@ make_request() {
     curl_command+=" --interface $INTERFACE_NAME"
   fi
 
-  curl_command+=" '$url'"
+  curl_command+=" '$url' -w '\n%{http_code}'"
 
-  response=$(eval "$curl_command")
+  response_and_code=$(eval "$curl_command")
+  http_code=$(echo "$response_and_code" | tail -n1)
+  response=$(echo "$response_and_code" | sed '$d')
+
+  if [[ "$http_code" == "403" ]]; then
+    echo ""
+    return
+  fi
+
   echo "$response"
 }
 
@@ -713,6 +721,11 @@ process_response() {
   local display_name="$3"
   local response_format="${4:-json}"
   local jq_filter
+
+  if [[ -z "$response" || "$response" == *"<html"* ]]; then
+    echo "N/A"
+    return
+  fi
 
   if [[ "$response_format" == "plain" ]]; then
     echo "$response" | tr -d '\r\n '
