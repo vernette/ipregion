@@ -2,7 +2,7 @@
 
 A bash script for determining your IP geolocation using various GeoIP services and popular websites.
 
-![image](https://i.imgur.com/FHlXO8a.png)
+![image](https://i.imgur.com/Dt7wWx4.png)
 
 ## Features
 
@@ -25,14 +25,14 @@ A bash script for determining your IP geolocation using various GeoIP services a
 For local usage, download the script:
 
 ```bash
-wget https://github.com/vernette/ipregion/raw/master/ipregion.sh
+wget -O ipregion.sh https://ipregion.vrnt.xyz
 chmod +x ipregion.sh
 ```
 
 Or run directly from GitHub:
 
 ```bash
-bash <(wget -qO- https://github.com/vernette/ipregion/raw/master/ipregion.sh)
+bash <(wget -qO- https://ipregion.vrnt.xyz)
 ```
 
 ### Common Use Cases
