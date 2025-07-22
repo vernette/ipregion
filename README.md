@@ -20,6 +20,12 @@ A bash script for determining your IP geolocation using various GeoIP services a
 - jq
 - util-linux or bsdmainutils (for `column`)
 
+## Country codes
+
+The script outputs country codes in ISO 3166-1 alpha-2 format (e.g., RU, US, DE). You can look up the meaning of any country code at the official ISO website: [https://www.iso.org/obp/ui/#search/code/](https://www.iso.org/obp/ui/#search/code/)
+
+Just enter the code in the search box to get the full country name.
+
 ## Usage
 
 For local usage, download the script:
@@ -35,7 +41,7 @@ Or run directly from GitHub:
 bash <(wget -qO- https://ipregion.vrnt.xyz)
 ```
 
-### Common Use Cases
+### Common use cases
 
 ```bash
 # Show help message
