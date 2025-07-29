@@ -1181,13 +1181,9 @@ lookup_chatgpt() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://chatgpt.com/cdn-cgi/trace" --ip-version "$ip_version")
-  while IFS='=' read -r key value; do
-    if [[ "$key" == "loc" ]]; then
-      echo "$value"
-      break
-    fi
-  done <<<"$response"
+  response=$(make_request POST "https://ab.chatgpt.com/v1/initialize" --ip-version "$ip_version" \
+    --header "Statsig-Api-Key: client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG")
+  process_json "$response" ".derived_fields.country"
 }
 
 lookup_netflix() {
