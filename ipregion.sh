@@ -54,7 +54,6 @@ declare -A PRIMARY_SERVICES=(
   [IPBASE_COM]="ipbase.com|api.ipbase.com|/v2/info?ip={ip}"
   [IPQUERY_IO]="ipquery.io|api.ipquery.io|/{ip}"
   [IP_SB]="ip.sb|api.ip.sb|/geoip/{ip}"
-  [IPDATA_CO]="ipdata.co|api.ipdata.co"
 )
 
 PRIMARY_SERVICES_ORDER=(
@@ -73,13 +72,11 @@ PRIMARY_SERVICES_ORDER=(
   "IPBASE_COM"
   "IPQUERY_IO"
   "IP_SB"
-  "IPDATA_CO"
 )
 
 declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
   [CLOUDFLARE]="lookup_cloudflare"
   [IPLOCATION_COM]="lookup_iplocation_com"
-  [IPDATA_CO]="lookup_ipdata_co"
 )
 
 # shellcheck disable=SC2016
@@ -1261,25 +1258,6 @@ lookup_steam() {
 
   response=$(make_request GET "https://store.steampowered.com" --ip-version "$ip_version")
   sed -n 's/.*"countrycode":"\([^"]*\)".*/\1/p' <<<"$response"
-}
-
-lookup_ipdata_co() {
-  local ip_version="$1"
-  local html api_key response
-
-  html=$(make_request GET "https://ipdata.co" --ip-version "$ip_version")
-  api_key=$(sed -n 's/.*api-key=\([a-zA-Z0-9]\+\).*/\1/p' <<<"$html")
-
-  if [[ -z "$api_key" ]]; then
-    echo ""
-    return
-  fi
-
-  response=$(make_request GET "https://api.ipdata.co/?api-key=$api_key" \
-    --ip-version "$ip_version" \
-    --header "Referer: https://ipdata.co")
-
-  process_json "$response" ".country_code"
 }
 
 lookup_tiktok() {
