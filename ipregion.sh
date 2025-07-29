@@ -705,7 +705,7 @@ make_request() {
   http_code=$(echo "$response_and_code" | tail -n1)
   response=$(echo "$response_and_code" | sed '$d')
 
-  if [[ "$http_code" == "403" ]]; then
+  if [[ "$http_code" == "403" || "$http_code" == "429" ]]; then
     echo ""
     return
   fi
