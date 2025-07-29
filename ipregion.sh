@@ -46,7 +46,6 @@ declare -A PRIMARY_SERVICES=(
   [IPAPI_CO]="ipapi.co|ipapi.co|/{ip}/json"
   [CLOUDFLARE]="cloudflare.com|www.cloudflare.com|/cdn-cgi/trace"
   [IFCONFIG_CO]="ifconfig.co|ifconfig.co|/country-iso?ip={ip}|plain"
-  [WHOER_NET]="whoer.net|whoer.net|/cdn-cgi/trace"
   [IPLOCATION_COM]="iplocation.com|iplocation.com"
   [COUNTRY_IS]="country.is|api.country.is|/{ip}"
   [GEOAPIFY_COM]="geoapify.com|api.geoapify.com|/v1/ipinfo?&ip={ip}&apiKey=b8568cb9afc64fad861a69edbddb2658"
@@ -66,7 +65,6 @@ PRIMARY_SERVICES_ORDER=(
   "IPREGISTRY"
   "IPAPI_CO"
   "IFCONFIG_CO"
-  "WHOER_NET"
   "IPLOCATION_COM"
   "COUNTRY_IS"
   "GEOAPIFY_COM"
@@ -80,7 +78,6 @@ PRIMARY_SERVICES_ORDER=(
 
 declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
   [CLOUDFLARE]="lookup_cloudflare"
-  [WHOER_NET]="lookup_whoer_net"
   [IPLOCATION_COM]="lookup_iplocation_com"
   [IPDATA_CO]="lookup_ipdata_co"
 )
@@ -1134,19 +1131,6 @@ lookup_cloudflare() {
 
 lookup_ifconfig_co() {
   process_service "IFCONFIG_CO"
-}
-
-lookup_whoer_net() {
-  local ip_version="$1"
-  local response
-
-  response=$(make_request GET "https://whoer.net/cdn-cgi/trace" --ip-version "$ip_version")
-  while IFS='=' read -r key value; do
-    if [[ "$key" == "loc" ]]; then
-      echo "$value"
-      break
-    fi
-  done <<<"$response"
 }
 
 lookup_iplocation_com() {
