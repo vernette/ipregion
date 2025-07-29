@@ -619,11 +619,18 @@ make_request() {
   shift 2
   local ip_version=""
   local user_agent=""
+  local default_headers
   local headers=()
   local json=""
   local data=""
   local proxy=""
   local response_and_code response http_code
+
+  default_headers=(
+    "Accept-Encoding: gzip, deflate, br, zstd"
+  )
+
+  headers+=("${default_headers[@]}")
 
   while (("$#")); do
     case "$1" in
@@ -654,7 +661,7 @@ make_request() {
     esac
   done
 
-  curl_command="curl --silent --retry-connrefused --retry-all-errors --retry $CURL_RETRIES --max-time $CURL_TIMEOUT --request $method"
+  curl_command="curl --silent --compressed --retry-connrefused --retry-all-errors --retry $CURL_RETRIES --max-time $CURL_TIMEOUT --request $method"
 
   if [[ "$ip_version" == "4" ]]; then
     curl_command+=" -4"
