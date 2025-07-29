@@ -1056,7 +1056,7 @@ print_header() {
   ipv4=$(process_json "$RESULT_JSON" ".ipv4")
   ipv6=$(process_json "$RESULT_JSON" ".ipv6")
 
-  printf "%s\n\n" "$(color URL "Made with ")$(color HEART "<3")$(color URL " by vernette — $SCRIPT_URL")"
+  printf "%s\n%s\n\n" "$(color URL "Made with ")$(color HEART "<3")$(color URL " by vernette")" "$(color URL "$SCRIPT_URL")"
 
   if [[ -n "$EXTERNAL_IPV4" ]]; then
     printf "%s: %s\n" "$(color HEADER 'IPv4')" "$(bold "$(mask_ipv4 "$ipv4")")"
