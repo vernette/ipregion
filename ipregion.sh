@@ -104,7 +104,6 @@ declare -A CUSTOM_SERVICES=(
   [YOUTUBE_CDN]="YouTube CDN"
   [OOKLA_SPEEDTEST]="Ookla Speedtest"
   [JETBRAINS]="JetBrains"
-  [EPIC_GAMES]="Epic Games"
 )
 
 CUSTOM_SERVICES_ORDER=(
@@ -120,7 +119,6 @@ CUSTOM_SERVICES_ORDER=(
   "TIKTOK"
   "OOKLA_SPEEDTEST"
   "JETBRAINS"
-  "EPIC_GAMES"
 )
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
@@ -139,7 +137,6 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [NETFLIX_CDN]="lookup_netflix_cdn"
   [OOKLA_SPEEDTEST]="lookup_ookla_speedtest"
   [JETBRAINS]="lookup_jetbrains"
-  [EPIC_GAMES]="lookup_epic_games"
 )
 
 declare -A CDN_SERVICES=(
@@ -1354,19 +1351,6 @@ lookup_jetbrains() {
 
   response=$(make_request GET "https://data.services.jetbrains.com/geo" --ip-version "$ip_version")
   process_json "$response" ".code"
-}
-
-lookup_epic_games() {
-  local ip_version="$1"
-  local response
-
-  response=$(make_request GET "https://www.epicgames.com/cdn-cgi/trace" --ip-version "$ip_version")
-  while IFS='=' read -r key value; do
-    if [[ "$key" == "loc" ]]; then
-      echo "$value"
-      break
-    fi
-  done <<<"$response"
 }
 
 main() {
