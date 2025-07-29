@@ -2,7 +2,7 @@
 
 A bash script for determining your IP geolocation using various GeoIP services and popular websites.
 
-![image](https://i.imgur.com/Dt7wWx4.png)
+![image](https://i.imgur.com/fL9SqiK.png)
 
 ## Features
 
