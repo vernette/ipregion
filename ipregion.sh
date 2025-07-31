@@ -1237,9 +1237,8 @@ lookup_reddit_guest_access() {
   local response is_blocked is_available color_name
 
   response=$(make_request GET "https://www.reddit.com" --ip-version "$ip_version" --user-agent "$USER_AGENT")
-  is_blocked=$(sed -n 's/.*\(blocked by network security\).*/\1/p' <<<"$response")
 
-  if [[ -z "$is_blocked" ]]; then
+  if [[ -n "$response" ]]; then
     is_available="Yes"
     color_name="SERVICE"
   else
