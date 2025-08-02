@@ -94,6 +94,7 @@ declare -A CUSTOM_SERVICES=(
   [SPOTIFY]="Spotify"
   [REDDIT]="Reddit"
   [REDDIT_GUEST_ACCESS]="Reddit (Guest Access)"
+  [YOUTUBE_PREMIUM]="YouTube Premium"
   [APPLE]="Apple"
   [STEAM]="Steam"
   [TIKTOK]="Tiktok"
@@ -111,6 +112,7 @@ CUSTOM_SERVICES_ORDER=(
   "SPOTIFY"
   "REDDIT"
   "REDDIT_GUEST_ACCESS"
+  "YOUTUBE_PREMIUM"
   "APPLE"
   "STEAM"
   "TIKTOK"
@@ -126,6 +128,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [SPOTIFY]="lookup_spotify"
   [REDDIT]="lookup_reddit"
   [REDDIT_GUEST_ACCESS]="lookup_reddit_guest_access"
+  [YOUTUBE_PREMIUM]="lookup_youtube_premium"
   [APPLE]="lookup_apple"
   [STEAM]="lookup_steam"
   [TIKTOK]="lookup_tiktok"
@@ -1234,11 +1237,42 @@ lookup_reddit() {
 
 lookup_reddit_guest_access() {
   local ip_version="$1"
-  local response is_blocked is_available color_name
+  local response is_available color_name
 
   response=$(make_request GET "https://www.reddit.com" --ip-version "$ip_version" --user-agent "$USER_AGENT")
 
   if [[ -n "$response" ]]; then
+    is_available="Yes"
+    color_name="SERVICE"
+  else
+    is_available="No"
+    color_name="HEART"
+  fi
+
+  if [[ "$JSON_OUTPUT" == true ]]; then
+    echo "$is_available"
+  else
+    color "$color_name" "$is_available"
+  fi
+}
+
+lookup_youtube_premium() {
+  local ip_version="$1"
+  local response is_available
+
+  response=$(make_request GET "https://www.youtube.com/premium" \
+    --ip-version "$ip_version" \
+    --user-agent "$USER_AGENT" \
+    --header "Accept-Language: en-US,en;q=0.9")
+
+  if [[ -z "$response" ]]; then
+    echo ""
+    return
+  fi
+
+  is_available=$(grep -io "youtube premium is not available in your country" <<<"$response")
+
+  if [[ -z "$is_available" ]]; then
     is_available="Yes"
     color_name="SERVICE"
   else
