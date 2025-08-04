@@ -616,26 +616,20 @@ spinner_stop() {
 }
 
 make_request() {
-  local curl_command
   local method="$1"
   local url="$2"
   shift 2
-  local ip_version=""
-  local user_agent=""
-  local default_headers
-  local headers=()
-  local json=""
-  local data=""
-  local proxy=""
-  local response_and_code response http_code
-
-  default_headers=(
-    "Accept-Encoding: gzip, deflate, br, zstd"
+  local ip_version user_agent json data headers response_with_code response http_code
+  local curl_args=(
+    --silent --compressed
+    --retry-connrefused --retry-all-errors
+    --retry "$CURL_RETRIES"
+    --max-time "$CURL_TIMEOUT"
+    --request "$method"
+    -w '\n%{http_code}'
   )
 
-  headers+=("${default_headers[@]}")
-
-  while (("$#")); do
+  while (($#)); do
     case "$1" in
       --ip-version)
         ip_version="$2"
@@ -657,60 +651,51 @@ make_request() {
         data="$2"
         shift 2
         ;;
-      --proxy)
-        proxy="$2"
-        shift 2
-        ;;
     esac
   done
 
-  curl_command="curl --silent --compressed --retry-connrefused --retry-all-errors --retry $CURL_RETRIES --max-time $CURL_TIMEOUT --request $method"
-
   if [[ "$ip_version" == "4" ]]; then
-    curl_command+=" -4"
+    curl_args+=(-4)
   else
-    curl_command+=" -6"
+    curl_args+=(-6)
   fi
 
-  if [[ -n "$user_agent" ]]; then
-    curl_command+=" -A '$user_agent'"
-  fi
-
-  for header in "${headers[@]}"; do
-    curl_command+=" -H '$header'"
+  headers+=("Accept-Encoding: gzip, deflate, br, zstd")
+  for h in "${headers[@]}"; do
+    curl_args+=(-H "$h")
   done
 
+  if [[ -n "$user_agent" ]]; then
+    curl_args+=(-A "$user_agent")
+  fi
+
   if [[ -n "$json" ]]; then
-    curl_command+=" --data '$json'"
-    if ! [[ "${headers[*]}" =~ "Content-Type" ]]; then
-      curl_command+=" -H 'Content-Type: application/json'"
-    fi
+    curl_args+=(--data "$json")
+    curl_args+=(-H 'Content-Type: application/json')
   fi
 
   if [[ -n "$data" ]]; then
-    curl_command+=" --data '$data'"
-    if ! [[ "${headers[*]}" =~ "Content-Type" ]]; then
-      curl_command+=" -H 'Content-Type: application/x-www-form-urlencoded'"
-    fi
+    curl_args+=(--data "$data")
+    curl_args+=(-H 'Content-Type: application/x-www-form-urlencoded')
   fi
 
   if [[ -n "$PROXY_ADDR" ]]; then
-    curl_command+=" --proxy socks5://$PROXY_ADDR"
+    curl_args+=(--proxy "socks5://$PROXY_ADDR")
   fi
 
   if [[ -n "$INTERFACE_NAME" ]]; then
-    curl_command+=" --interface $INTERFACE_NAME"
+    curl_args+=(--interface "$INTERFACE_NAME")
   fi
 
-  curl_command+=" '$url' -w '\n%{http_code}'"
+  curl_args+=("$url")
 
-  response_and_code=$(eval "$curl_command")
-  http_code=$(echo "$response_and_code" | tail -n1)
-  response=$(echo "$response_and_code" | sed '$d')
+  response_with_code=$(curl "${curl_args[@]}")
+  http_code=$(tail -n1 <<<"$response_with_code")
+  response=$(sed '$d' <<<"$response_with_code")
 
   if [[ "$http_code" == "403" || "$http_code" == "429" ]]; then
     echo ""
-    return
+    return 0
   fi
 
   echo "$response"
