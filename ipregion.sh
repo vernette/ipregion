@@ -1263,6 +1263,7 @@ lookup_youtube_premium() {
   response=$(make_request GET "https://www.youtube.com/premium" \
     --ip-version "$ip_version" \
     --user-agent "$USER_AGENT" \
+    --header "Cookie: SOCS=CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY" \
     --header "Accept-Language: en-US,en;q=0.9")
 
   if [[ -z "$response" ]]; then
