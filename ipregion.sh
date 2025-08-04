@@ -79,11 +79,10 @@ declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
   [IPLOCATION_COM]="lookup_iplocation_com"
 )
 
-# shellcheck disable=SC2016
 declare -A SERVICE_HEADERS=(
-  [IPREGISTRY]='("Origin: https://ipregistry.co")'
-  [MAXMIND]='("Referer: https://www.maxmind.com")'
-  [IP_SB]='("User-Agent: $USER_AGENT")'
+  [IPREGISTRY]="Origin: https://ipregistry.co"
+  [MAXMIND]="Referer: https://www.maxmind.com"
+  [IP_SB]="User-Agent: ${USER_AGENT}"
 )
 
 declare -A CUSTOM_SERVICES=(
@@ -701,6 +700,56 @@ make_request() {
   echo "$response"
 }
 
+service_build_request() {
+  local service="$1" ip="$2" ip_version="$3"
+  local cfg="${PRIMARY_SERVICES[$service]}"
+  local display_name domain url_template url headers_str response_format
+
+  IFS='|' read -r display_name domain url_template response_format <<<"$cfg"
+
+  if [[ -z "$display_name" ]]; then
+    display_name="$service"
+  fi
+
+  url="https://$domain${url_template//\{ip\}/$ip}"
+
+  if [[ -n "${SERVICE_HEADERS[$service]}" ]]; then
+    headers_str="${SERVICE_HEADERS[$service]}"
+  fi
+
+  printf "%s\n%s\n%s\n%s" "$display_name" "$url" "${response_format:-json}" "$headers_str"
+}
+
+probe_service() {
+  local service="$1"
+  local ip_version="$2"
+  local ip="$3"
+  local built display_name url response_format headers_line request_params response
+
+  mapfile -t built < <(service_build_request "$service" "$ip" "$ip_version")
+  display_name="${built[0]}"
+  url="${built[1]}"
+  response_format="${built[2]}"
+  headers_line="${built[3]}"
+
+  if [[ -n "$headers_line" ]]; then
+    IFS='||' read -ra hs <<<"$headers_line"
+    for h in "${hs[@]}"; do
+      if [[ -n "$h" ]]; then
+        request_params+=(--header "$h")
+      fi
+    done
+  fi
+
+  if [[ "$ip_version" == "6" ]] && is_ipv6_over_ipv4_service "$service"; then
+    ip_version="4"
+  fi
+
+  response=$(make_request GET "$url" "${request_params[@]}" --ip-version "$ip_version")
+
+  process_response "$service" "$response" "$display_name" "$response_format"
+}
+
 process_response() {
   local service="$1"
   local response="$2"
@@ -805,46 +854,22 @@ process_service() {
     return
   fi
 
-  local request_params=()
-
-  # TODO: Refactor this
-  if [[ -n "${SERVICE_HEADERS[$service]}" ]]; then
-    eval "local headers=${SERVICE_HEADERS[$service]}"
-    for header in "${headers[@]}"; do
-      request_params+=(--header "$header")
-    done
-  fi
-
-  # TODO: Make function to get url
-  local url_v4="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV4}"
-
-  # TODO: Make single check for both IPv4 and IPv6
   if [[ "$IPV6_ONLY" != true ]]; then
-    log "$LOG_INFO" "Checking $display_name via IPv4"
-    ipv4_result=$(make_request GET "$url_v4" "${request_params[@]}" --ip-version 4)
-    ipv4_result=$(process_response "$service" "$ipv4_result" "$display_name" "$response_format")
-  else
-    ipv4_result=""
+    if [[ -n "$EXTERNAL_IPV4" ]]; then
+      log "$LOG_INFO" "Checking $display_name via IPv4"
+      ipv4_result=$(probe_service "$service" 4 "$EXTERNAL_IPV4")
+    fi
   fi
 
   if [[ "$IPV4_ONLY" != true ]]; then
-    if is_ipv6_over_ipv4_service "$service" && [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
-      local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
-      log "$LOG_INFO" "Checking $display_name (IPv6 address, IPv4 transport)"
-      ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 4)
-      ipv6_result=$(process_response "$service" "$ipv6_result" "$display_name" "$response_format")
-    else
-      if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
-        local url_v6="https://$domain${url_template/\{ip\}/$EXTERNAL_IPV6}"
-        log "$LOG_INFO" "Checking $display_name via IPv6"
-        ipv6_result=$(make_request GET "$url_v6" "${request_params[@]}" --ip-version 6)
-        ipv6_result=$(process_response "$service" "$ipv6_result" "$display_name" "$response_format")
+    if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+      if is_ipv6_over_ipv4_service "$service"; then
+        log "$LOG_INFO" "Checking $display_name (IPv6 address, IPv4 transport)"
       else
-        ipv6_result=""
+        log "$LOG_INFO" "Checking $display_name via IPv6"
       fi
+      ipv6_result=$(probe_service "$service" 6 "$EXTERNAL_IPV6")
     fi
-  else
-    ipv6_result=""
   fi
 
   add_result "primary" "$display_name" "$ipv4_result" "$ipv6_result"
