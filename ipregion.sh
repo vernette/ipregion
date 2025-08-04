@@ -15,6 +15,11 @@ IPV6_ONLY=false
 PROXY_ADDR=""
 INTERFACE_NAME=""
 
+RESULT_JSON=""
+ARR_PRIMARY=()
+ARR_CUSTOM=()
+ARR_CDN=()
+
 COLOR_HEADER="1;36"
 COLOR_SERVICE="1;32"
 COLOR_HEART="1;31"
@@ -976,12 +981,56 @@ run_all_services() {
   done
 }
 
-init_json_output() {
-  RESULT_JSON=$(jq -n \
-    --arg version "1" \
-    --arg ipv4 "$EXTERNAL_IPV4" \
-    --arg ipv6 "$EXTERNAL_IPV6" \
-    '{version: ($version|tonumber), ipv4: ($ipv4 | select(length > 0) // null), ipv6: ($ipv6 | select(length > 0) // null), results: {primary: [], custom: [], cdn: []}}')
+finalize_json() {
+  local t_primary t_custom t_cdn
+  local IFS=$'\n'
+
+  if ((${#ARR_PRIMARY[@]} > 0)); then
+    t_primary=$(printf '%s\n' "${ARR_PRIMARY[@]//|||/$'\t'}")
+  fi
+
+  if ((${#ARR_CUSTOM[@]} > 0)); then
+    t_custom=$(printf '%s\n' "${ARR_CUSTOM[@]//|||/$'\t'}")
+  fi
+
+  if ((${#ARR_CDN[@]} > 0)); then
+    t_cdn=$(printf '%s\n' "${ARR_CDN[@]//|||/$'\t'}")
+  fi
+
+  RESULT_JSON=$(
+    jq -n \
+      --rawfile p <(printf "%s" "$t_primary") \
+      --rawfile c <(printf "%s" "$t_custom") \
+      --rawfile d <(printf "%s" "$t_cdn") \
+      --arg ipv4 "$EXTERNAL_IPV4" \
+      --arg ipv6 "$EXTERNAL_IPV6" \
+      --arg version "1" '
+        def lines_to_array($raw):
+          if ($raw | length) == 0 then [] else
+          ($raw | split("\n"))
+          | map(select(length > 0))
+          | map(
+              (split("\t")) as $f
+              | {
+                  service: $f[0],
+                  ipv4: ( ($f[1] // "") | if length>0 then . else null end ),
+                  ipv6: ( ($f[2] // "") | if length>0 then . else null end )
+                }
+            )
+          end;
+
+        {
+          version: ($version|tonumber),
+          ipv4: ($ipv4 | select(length > 0) // null),
+          ipv6: ($ipv6 | select(length > 0) // null),
+          results: {
+            primary: lines_to_array($p),
+            custom:  lines_to_array($c),
+            cdn:     lines_to_array($d)
+          }
+        }
+      '
+  )
 }
 
 add_result() {
@@ -990,77 +1039,76 @@ add_result() {
   local ipv4="$3"
   local ipv6="$4"
 
-  RESULT_JSON=$(jq \
-    --arg group "$group" \
-    --arg service "$service" \
-    --arg ipv4 "$ipv4" \
-    --arg ipv6 "$ipv6" \
-    '.results[$group] += [{
-      service: $service,
-      ipv4: ($ipv4 | select(length > 0) // null),
-      ipv6: ($ipv6 | select(length > 0) // null)
-    }]' \
-    <<<"$RESULT_JSON")
+  ipv4=${ipv4//$'\n'/}
+  ipv4=${ipv4//$'\t'/ }
+  ipv6=${ipv6//$'\n'/}
+  ipv6=${ipv6//$'\t'/ }
+
+  case "$group" in
+    primary) ARR_PRIMARY+=("$service|||$ipv4|||$ipv6") ;;
+    custom) ARR_CUSTOM+=("$service|||$ipv4|||$ipv6") ;;
+    cdn) ARR_CDN+=("$service|||$ipv4|||$ipv6") ;;
+  esac
 }
 
 print_table_group() {
   local group="$1"
   local group_title="$2"
-  local separator="|||"
-  local not_available="N/A"
+  local na="N/A"
   local show_ipv4=0
   local show_ipv6=0
-  local header row ipv4_res ipv6_res
+  local separator=$'\t'
 
-  if [[ "$IPV6_ONLY" != true ]]; then
-    [[ -n "$EXTERNAL_IPV4" ]] && show_ipv4=1
+  if [[ "$IPV6_ONLY" != true && -n "$EXTERNAL_IPV4" ]]; then
+    show_ipv4=1
   fi
 
-  if [[ "$IPV4_ONLY" != true ]]; then
-    [[ -n "$EXTERNAL_IPV6" ]] && show_ipv6=1
+  if [[ "$IPV4_ONLY" != true && -n "$EXTERNAL_IPV6" ]]; then
+    show_ipv6=1
   fi
 
   printf "%s\n\n" "$(color HEADER "$group_title")"
 
   {
-    header=("$(color TABLE_HEADER 'Service')")
-    [[ $show_ipv4 -eq 1 ]] && header+=("$(color TABLE_HEADER 'IPv4')")
-    [[ $show_ipv6 -eq 1 ]] && header+=("$(color TABLE_HEADER 'IPv6')")
-    printf "%s\n" "$(
-      IFS="$separator"
-      echo "${header[*]}"
-    )"
+    printf "%s" "$(color TABLE_HEADER 'Service')"
 
-    # shellcheck disable=SC1087
-    jq -c ".results.$group[]" <<<"$RESULT_JSON" | while read -r item; do
-      row=()
-      service=$(process_json "$item" ".service")
-      row+=("$(color SERVICE "$service")")
+    if [[ $show_ipv4 -eq 1 ]]; then
+      printf "%s%s" "$separator" "$(color TABLE_HEADER 'IPv4')"
+    fi
+
+    if [[ $show_ipv6 -eq 1 ]]; then
+      printf "%s%s" "$separator" "$(color TABLE_HEADER 'IPv6')"
+    fi
+
+    printf "\n"
+
+    jq -r --arg group "$group" '
+      (.results // {}) as $r
+      | ($r[$group] // [])
+      | .[]
+      | [ .service, (.ipv4 // "N/A"), (.ipv6 // "N/A") ]
+      | @tsv
+    ' <<<"$RESULT_JSON" | while IFS=$'\t' read -r s v4 v6; do
+
+      printf "%s" "$(color SERVICE "$s")"
 
       if [[ $show_ipv4 -eq 1 ]]; then
-        ipv4_res=$(process_json "$item" ".ipv4 // \"$not_available\"")
-        [[ "$ipv4_res" == "null" ]] && ipv4_res="$not_available"
-        row+=("$(format_value "$ipv4_res" "$not_available")")
+        if [[ "$v4" == "null" || -z "$v4" ]]; then
+          v4="$na"
+        fi
+        printf "%s%s" "$separator" "$(format_value "$v4" "$na")"
       fi
 
       if [[ $show_ipv6 -eq 1 ]]; then
-        ipv6_res=$(process_json "$item" ".ipv6 // \"$not_available\"")
-        [[ "$ipv6_res" == "null" ]] && ipv6_res="$not_available"
-        row+=("$(format_value "$ipv6_res" "$not_available")")
+        if [[ "$v6" == "null" || -z "$v6" ]]; then
+          v6="$na"
+        fi
+        printf "%s%s" "$separator" "$(format_value "$v6" "$na")"
       fi
 
-      printf "%s\n" "$(
-        IFS="$separator"
-        echo "${row[*]}"
-      )"
+      printf "\n"
     done
   } | column -t -s "$separator"
-}
-
-print_table() {
-  print_table_group "custom" "Popular services"
-  printf "\n"
-  print_table_group "primary" "GeoIP services"
 }
 
 print_header() {
@@ -1083,6 +1131,8 @@ print_header() {
 }
 
 print_results() {
+  finalize_json
+
   if [[ "$JSON_OUTPUT" == true ]]; then
     echo "$RESULT_JSON" | jq
     return
@@ -1395,8 +1445,6 @@ main() {
 
   get_external_ip
   get_asn
-
-  init_json_output
 
   if [[ "$JSON_OUTPUT" != true && "$VERBOSE" != true ]]; then
     trap spinner_stop EXIT INT TERM
