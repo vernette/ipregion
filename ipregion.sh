@@ -99,6 +99,7 @@ declare -A CUSTOM_SERVICES=(
   [REDDIT]="Reddit"
   [REDDIT_GUEST_ACCESS]="Reddit (Guest Access)"
   [YOUTUBE_PREMIUM]="YouTube Premium"
+  [GOOGLE_SEARCH_CAPTCHA]="Google Search Captcha"
   [APPLE]="Apple"
   [STEAM]="Steam"
   [TIKTOK]="Tiktok"
@@ -117,6 +118,7 @@ CUSTOM_SERVICES_ORDER=(
   "REDDIT"
   "REDDIT_GUEST_ACCESS"
   "YOUTUBE_PREMIUM"
+  "GOOGLE_SEARCH_CAPTCHA"
   "APPLE"
   "STEAM"
   "TIKTOK"
@@ -133,6 +135,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [REDDIT]="lookup_reddit"
   [REDDIT_GUEST_ACCESS]="lookup_reddit_guest_access"
   [YOUTUBE_PREMIUM]="lookup_youtube_premium"
+  [GOOGLE_SEARCH_CAPTCHA]="lookup_google_search_captcha"
   [APPLE]="lookup_apple"
   [STEAM]="lookup_steam"
   [TIKTOK]="lookup_tiktok"
@@ -1345,6 +1348,36 @@ lookup_youtube_premium() {
     echo "$is_available"
   else
     color "$color_name" "$is_available"
+  fi
+}
+
+lookup_google_search_captcha() {
+  local ip_version="$1"
+  local response is_captcha color_name
+
+  response=$(make_request GET "https://www.google.com/search?q=cats" --ip-version "$ip_version" \
+    --user-agent "$USER_AGENT" \
+    --header "Accept-Language: en-US,en;q=0.9")
+
+  if [[ -z "$response" ]]; then
+    echo ""
+    return
+  fi
+
+  is_captcha=$(grep -iE "unusual traffic from|is blocked|unaddressed abuse" <<<"$response")
+
+  if [[ -z "$is_captcha" ]]; then
+    is_captcha="No"
+    color_name="SERVICE"
+  else
+    is_captcha="Yes"
+    color_name="HEART"
+  fi
+
+  if [[ "$JSON_OUTPUT" == true ]]; then
+    echo "$is_captcha"
+  else
+    color "$color_name" "$is_captcha"
   fi
 }
 
