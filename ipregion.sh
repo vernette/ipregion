@@ -429,6 +429,18 @@ format_value() {
   fi
 }
 
+print_value_or_colored() {
+  local value="$1"
+  local color_name="$2"
+
+  if [[ "$JSON_OUTPUT" == true ]]; then
+    echo "$value"
+    return
+  fi
+
+  color "$color_name" "$value"
+}
+
 mask_ipv4() {
   local ip="$1"
   echo "${ip%.*.*}.*.*"
@@ -1312,11 +1324,7 @@ lookup_reddit_guest_access() {
     color_name="HEART"
   fi
 
-  if [[ "$JSON_OUTPUT" == true ]]; then
-    echo "$is_available"
-  else
-    color "$color_name" "$is_available"
-  fi
+  print_value_or_colored "$is_available" "$color_name"
 }
 
 lookup_youtube_premium() {
@@ -1344,11 +1352,7 @@ lookup_youtube_premium() {
     color_name="HEART"
   fi
 
-  if [[ "$JSON_OUTPUT" == true ]]; then
-    echo "$is_available"
-  else
-    color "$color_name" "$is_available"
-  fi
+  print_value_or_colored "$is_available" "$color_name"
 }
 
 lookup_google_search_captcha() {
@@ -1374,11 +1378,7 @@ lookup_google_search_captcha() {
     color_name="HEART"
   fi
 
-  if [[ "$JSON_OUTPUT" == true ]]; then
-    echo "$is_captcha"
-  else
-    color "$color_name" "$is_captcha"
-  fi
+  print_value_or_colored "$is_captcha" "$color_name"
 }
 
 lookup_apple() {
