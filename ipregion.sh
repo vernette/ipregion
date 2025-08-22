@@ -515,7 +515,7 @@ check_ip_support() {
   local version="$1"
   log "$LOG_INFO" "Checking for IPv${version} support"
 
-  if [[ -n $(ip -"${version}" addr show scope global 2>/dev/null) ]]; then
+  if ip -${version} addr show scope global 2>/dev/null | grep -q "inet${version}"; then
     log "$LOG_INFO" "IPv${version} is supported"
     return 0
   fi
