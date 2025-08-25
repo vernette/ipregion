@@ -38,7 +38,7 @@ chmod +x ipregion.sh
 Or run directly from GitHub:
 
 ```bash
-bash <(wget -qO- https://ipregion.vrnt.xyz)
+bash <(wget -qO- https://raw.githubusercontent.com/vernette/ipregion/refs/heads/master/ipregion.sh)
 ```
 
 ### Common use cases
