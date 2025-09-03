@@ -31,14 +31,14 @@ Just enter the code in the search box to get the full country name.
 For local usage, download the script:
 
 ```bash
-wget -O ipregion.sh https://ipregion.vrnt.xyz
+wget -O ipregion.sh https://raw.githubusercontent.com/vernette/ipregion/refs/heads/master/ipregion.sh
 chmod +x ipregion.sh
 ```
 
 Or run directly from GitHub:
 
 ```bash
-bash <(wget -qO- https://ipregion.vrnt.xyz)
+bash <(wget -qO- https://raw.githubusercontent.com/vernette/ipregion/refs/heads/master/ipregion.sh)
 ```
 
 ### Common use cases
