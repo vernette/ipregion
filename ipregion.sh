@@ -5,6 +5,9 @@ DEPENDENCIES=("jq" "curl" "util-linux")
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 
+SPOTIFY_API_KEY="142b583129b2df829de3656f9eb484e6"
+SPOTIFY_CLIENT_ID="9a8d2f0ce77a4e248bb71fefcb557637"
+
 VERBOSE=false
 JSON_OUTPUT=false
 GROUPS_TO_SHOW="all"
@@ -1282,9 +1285,11 @@ lookup_spotify() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://accounts.spotify.com/en/login" --ip-version "$ip_version")
+  response=$(make_request GET "https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=$SPOTIFY_API_KEY" \
+    --header "X-Client-Id: $SPOTIFY_CLIENT_ID" \
+    --ip-version "$ip_version")
 
-  sed -n 's/.*"geoLocationCountryCode":"\([^"]*\)".*/\1/p' <<<"$response"
+  process_json "$response" ".country"
 }
 
 lookup_reddit() {
