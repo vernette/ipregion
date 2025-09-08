@@ -103,6 +103,7 @@ declare -A CUSTOM_SERVICES=(
   [REDDIT_GUEST_ACCESS]="Reddit (Guest Access)"
   [YOUTUBE_PREMIUM]="YouTube Premium"
   [GOOGLE_SEARCH_CAPTCHA]="Google Search Captcha"
+  [SPOTIFY_SIGNUP]="Spotify Signup"
   [APPLE]="Apple"
   [STEAM]="Steam"
   [TIKTOK]="Tiktok"
@@ -122,6 +123,7 @@ CUSTOM_SERVICES_ORDER=(
   "REDDIT_GUEST_ACCESS"
   "YOUTUBE_PREMIUM"
   "GOOGLE_SEARCH_CAPTCHA"
+  "SPOTIFY_SIGNUP"
   "APPLE"
   "STEAM"
   "TIKTOK"
@@ -139,6 +141,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [REDDIT_GUEST_ACCESS]="lookup_reddit_guest_access"
   [YOUTUBE_PREMIUM]="lookup_youtube_premium"
   [GOOGLE_SEARCH_CAPTCHA]="lookup_google_search_captcha"
+  [SPOTIFY_SIGNUP]="lookup_spotify_signup"
   [APPLE]="lookup_apple"
   [STEAM]="lookup_steam"
   [TIKTOK]="lookup_tiktok"
@@ -1384,6 +1387,28 @@ lookup_google_search_captcha() {
   fi
 
   print_value_or_colored "$is_captcha" "$color_name"
+}
+
+lookup_spotify_signup() {
+  local ip_version="$1"
+  local response status is_country_launched available color_name
+
+  response=$(make_request GET "https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=$SPOTIFY_API_KEY" \
+    --header "X-Client-Id: $SPOTIFY_CLIENT_ID" \
+    --ip-version "$ip_version")
+
+  status=$(process_json "$response" ".status")
+  is_country_launched=$(process_json "$response" ".is_country_launched")
+
+  if [[ "$status" == "120" || "$status" == "320" || "$is_country_launched" == "false" ]]; then
+    available="No"
+    color_name="HEART"
+  else
+    available="Yes"
+    color_name="SERVICE"
+  fi
+
+  print_value_or_colored "$available" "$color_name"
 }
 
 lookup_apple() {
