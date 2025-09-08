@@ -550,7 +550,8 @@ get_external_ip() {
 }
 
 get_asn() {
-  local ip ip_version response
+  local ipbase_api_key="sgiPfh4j3aXFR3l2CnjWqdKQzxpqGn9pX5b3CUsz"
+  local ip ip_version response connection_data
 
   if [[ -n "$EXTERNAL_IPV4" ]]; then
     ip="$EXTERNAL_IPV4"
@@ -562,9 +563,10 @@ get_asn() {
 
   log "$LOG_INFO" "Getting ASN info for IP $ip"
 
-  response=$(make_request GET "https://geoip.oxl.app/api/ip/$ip" --ip-version "$ip_version")
-  asn=$(process_json "$response" ".asn")
-  asn_name=$(process_json "$response" ".organization.name")
+  response=$(make_request GET "https://api.ipbase.com/v2/info?apikey=$ipbase_api_key&ip=$ip" --ip-version "$ip_version")
+  connection_data=$(process_json "$response" ".data.connection")
+  asn=$(process_json "$connection_data" ".asn")
+  asn_name=$(process_json "$connection_data" ".organization")
 
   log "$LOG_INFO" "ASN info: AS$asn $asn_name"
 }
