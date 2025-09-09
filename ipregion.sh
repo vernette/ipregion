@@ -273,7 +273,7 @@ IPRegion — determines your IP geolocation using various GeoIP services and pop
 Options:
   -h, --help           Show this help message and exit
   -v, --verbose        Enable verbose logging
-  -d, --debug          Enable full debug trace and save full trace to file
+  -d, --debug          Enable full debug trace and save full trace to file and upload it to bashupload.com
   -j, --json           Output results in JSON format
   -g, --group GROUP    Run only one group: 'primary', 'custom', 'cdn', or 'all' (default: all)
   -t, --timeout SEC    Set curl request timeout in seconds (default: $CURL_TIMEOUT)
@@ -293,7 +293,7 @@ Examples:
   $0 -i eth1               # Use network interface eth1
   $0 -j                    # Output result as JSON
   $0 -v                    # Enable verbose logging
-  $0 -d                    # Enable debug and save full trace to file
+  $0 -d                    # Enable debug and save full trace to file and upload it to bashupload.com
 
 EOF
 }
@@ -312,15 +312,33 @@ setup_debug() {
   return 0
 }
 
+extract_debug_url() {
+  local response="$1"
+  url=$(grep bashupload.com <<<"$response")
+  url=${url##* }
+  echo "$url"
+}
+
+upload_debug() {
+  local ip_version=4
+  local response
+  response=$(make_request POST "https://bashupload.com" --file "$DEBUG_LOG_FILE" --ip-version "$ip_version")
+  extract_debug_url "$response"
+}
+
 cleanup_debug() {
-  if [[ -z "$DEBUG_LOG_FILE" ]]; then
+  local debug_url
+
+  if [[ ! -f "$DEBUG_LOG_FILE" ]]; then
     return 1
   fi
 
   set +x
   exec 1>&3 2>&4 3>&- 4>&-
 
-  printf "\nDebug log saved to: %s\n" "$DEBUG_LOG_FILE" >&2
+  debug_url="$(upload_debug)"
+
+  printf "\nDebug log saved to: %s\n\nDebug log URL: %s\nIf you open a GitHub Issue, please download the log and attach it\n" "$DEBUG_LOG_FILE" "$debug_url" >&2
 }
 
 is_installed() {
@@ -679,7 +697,7 @@ make_request() {
   local method="$1"
   local url="$2"
   shift 2
-  local ip_version user_agent json data headers response_with_code response http_code
+  local ip_version user_agent json data file headers response_with_code response http_code
   local curl_args=(
     --silent --compressed
     --retry-connrefused --retry-all-errors
@@ -711,6 +729,10 @@ make_request() {
         data="$2"
         shift 2
         ;;
+      --file)
+        file="$2"
+        shift 2
+        ;;
     esac
   done
 
@@ -737,6 +759,10 @@ make_request() {
   if [[ -n "$data" ]]; then
     curl_args+=(--data "$data")
     curl_args+=(-H 'Content-Type: application/x-www-form-urlencoded')
+  fi
+
+  if [[ -n "$file" ]]; then
+    curl_args+=(--upload-file "$file")
   fi
 
   if [[ -n "$PROXY_ADDR" ]]; then
