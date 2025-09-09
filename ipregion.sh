@@ -8,6 +8,11 @@ DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
 
 SPOTIFY_API_KEY="142b583129b2df829de3656f9eb484e6"
 SPOTIFY_CLIENT_ID="9a8d2f0ce77a4e248bb71fefcb557637"
+NETFLIX_API_KEY="YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm"
+TWITCH_CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
+CHATGPT_STATSIG_API_KEY="client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG"
+REDDIT_BASIC_ACCESS_TOKEN="b2hYcG9xclpZdWIxa2c6"
+YOUTUBE_SOCS_COOKIE="CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY"
 
 VERBOSE=false
 JSON_OUTPUT=false
@@ -1317,7 +1322,7 @@ lookup_twitch() {
   local response
 
   response=$(make_request POST "https://gql.twitch.tv/gql" \
-    --header 'Client-Id: kimne78kx3ncx6brgo4mv6wki5h1ko' \
+    --header "Client-Id: $TWITCH_CLIENT_ID" \
     --json '[{"operationName":"VerifyEmail_CurrentUser","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f9e7dcdf7e99c314c82d8f7f725fab5f99d1df3d7359b53c9ae122deec590198"}}}]' \
     --ip-version "$ip_version")
   process_json "$response" ".[0].data.requestInfo.countryCode"
@@ -1328,7 +1333,7 @@ lookup_chatgpt() {
   local response
 
   response=$(make_request POST "https://ab.chatgpt.com/v1/initialize" --ip-version "$ip_version" \
-    --header "Statsig-Api-Key: client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG")
+    --header "Statsig-Api-Key: $CHATGPT_STATSIG_API_KEY")
   process_json "$response" ".derived_fields.country"
 }
 
@@ -1336,7 +1341,7 @@ lookup_netflix() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=1" --ip-version "$ip_version")
+  response=$(make_request GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=$NETFLIX_API_KEY&urlCount=1" --ip-version "$ip_version")
 
   if is_valid_json "$response"; then
     process_json "$response" ".client.location.country"
@@ -1358,7 +1363,7 @@ lookup_spotify() {
 
 lookup_reddit() {
   local ip_version="$1"
-  local basic_access_token="Basic b2hYcG9xclpZdWIxa2c6"
+  local basic_access_token="Basic $REDDIT_BASIC_ACCESS_TOKEN"
   local user_agent="Reddit/Version 2025.29.0/Build 2529021/Android 13"
   local response access_token
 
@@ -1403,7 +1408,7 @@ lookup_youtube_premium() {
   response=$(make_request GET "https://www.youtube.com/premium" \
     --ip-version "$ip_version" \
     --user-agent "$USER_AGENT" \
-    --header "Cookie: SOCS=CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY" \
+    --header "Cookie: SOCS=$YOUTUBE_SOCS_COOKIE" \
     --header "Accept-Language: en-US,en;q=0.9")
 
   if [[ -z "$response" ]]; then
@@ -1530,8 +1535,7 @@ lookup_netflix_cdn() {
   local ip_version="$1"
   local response
 
-  # TODO: Make contant
-  response=$(make_request GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=1" --ip-version "$ip_version")
+  response=$(make_request GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=$NETFLIX_API_KEY&urlCount=1" --ip-version "$ip_version")
 
   if is_valid_json "$response"; then
     process_json "$response" ".targets[0].location.country"
