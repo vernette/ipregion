@@ -79,6 +79,9 @@ bash <(wget -qO- https://ipregion.vrnt.xyz)
 
 # Enable verbose logging
 ./ipregion.sh --verbose
+
+# Enable debug mode and save output to a file
+./ipregion.sh --debug
 ```
 
 All options available in the help message (`-h, --help`) can be used and combined.
@@ -93,6 +96,7 @@ IPRegion — determines your IP geolocation using various GeoIP services and pop
 Options:
   -h, --help           Show this help message and exit
   -v, --verbose        Enable verbose logging
+  -d, --debug          Enable full debug trace and save full trace to file
   -j, --json           Output results in JSON format
   -g, --group GROUP    Run only one group: 'primary', 'custom', 'cdn' or 'all' (default: all)
   -t, --timeout SEC    Set curl request timeout in seconds (default: 10)
@@ -112,6 +116,7 @@ Examples:
   ipregion.sh -i eth1               # Use network interface eth1
   ipregion.sh -j                    # Output result as JSON
   ipregion.sh -v                    # Enable verbose logging
+  ipregion.sh -d                    # Enable debug and save full trace to file
 ```
 
 ## Output

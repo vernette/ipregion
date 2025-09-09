@@ -4,6 +4,7 @@ SCRIPT_URL="https://github.com/vernette/ipregion"
 DEPENDENCIES=("jq" "curl" "util-linux")
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
+DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
 
 SPOTIFY_API_KEY="142b583129b2df829de3656f9eb484e6"
 SPOTIFY_CLIENT_ID="9a8d2f0ce77a4e248bb71fefcb557637"
@@ -17,6 +18,7 @@ IPV4_ONLY=false
 IPV6_ONLY=false
 PROXY_ADDR=""
 INTERFACE_NAME=""
+DEBUG=false
 
 RESULT_JSON=""
 ARR_PRIMARY=()
@@ -271,6 +273,7 @@ IPRegion — determines your IP geolocation using various GeoIP services and pop
 Options:
   -h, --help           Show this help message and exit
   -v, --verbose        Enable verbose logging
+  -d, --debug          Enable full debug trace and save full trace to file
   -j, --json           Output results in JSON format
   -g, --group GROUP    Run only one group: 'primary', 'custom', 'cdn', or 'all' (default: all)
   -t, --timeout SEC    Set curl request timeout in seconds (default: $CURL_TIMEOUT)
@@ -290,8 +293,34 @@ Examples:
   $0 -i eth1               # Use network interface eth1
   $0 -j                    # Output result as JSON
   $0 -v                    # Enable verbose logging
+  $0 -d                    # Enable debug and save full trace to file
 
 EOF
+}
+
+setup_debug() {
+  if [[ "$DEBUG" != true ]]; then
+    return 1
+  fi
+
+  exec 3>&1 4>&2
+
+  exec 1> >(tee -a "$DEBUG_LOG_FILE" >&3)
+  exec 2> >(tee -a "$DEBUG_LOG_FILE" >&4)
+
+  set -x
+  return 0
+}
+
+cleanup_debug() {
+  if [[ -z "$DEBUG_LOG_FILE" ]]; then
+    return 1
+  fi
+
+  set +x
+  exec 1>&3 2>&4 3>&- 4>&-
+
+  printf "\nDebug log saved to: %s\n" "$DEBUG_LOG_FILE" >&2
 }
 
 is_installed() {
@@ -470,6 +499,10 @@ parse_arguments() {
         ;;
       -v | --verbose)
         VERBOSE=true
+        shift
+        ;;
+      -d | --debug)
+        DEBUG=true
         shift
         ;;
       -j | --json)
@@ -1500,6 +1533,8 @@ lookup_jetbrains() {
 main() {
   parse_arguments "$@"
 
+  setup_debug
+
   install_dependencies
 
   check_ip_support 4
@@ -1539,6 +1574,8 @@ main() {
   fi
 
   print_results
+
+  cleanup_debug
 }
 
 main "$@"
