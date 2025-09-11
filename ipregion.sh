@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 SCRIPT_URL="https://github.com/vernette/ipregion"
-DEPENDENCIES=("jq" "curl" "util-linux")
+DEPENDENCIES=("jq" "curl" "util-linux" "nslookup")
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
@@ -51,6 +51,7 @@ declare -A DEPENDENCY_COMMANDS=(
   [jq]="jq"
   [curl]="curl"
   [util-linux]="column"
+  [nslookup]="nslookup"
 )
 
 declare -A PRIMARY_SERVICES=(
@@ -414,6 +415,33 @@ install_with_package_manager() {
   local pkg_manager="$1"
   local packages=("${@:2}")
   local use_sudo=""
+  shift
+
+  for dep in "$@"; do
+    case "$pkg_manager" in
+      apt | termux)
+        case "$dep" in
+          nslookup) packages+=("dnsutils") ;;
+          *) packages+=("$dep") ;;
+        esac
+        ;;
+      pacman)
+        case "$dep" in
+          nslookup) packages+=("bind") ;;
+          *) packages+=("$dep") ;;
+        esac
+        ;;
+      dnf)
+        case "$dep" in
+          nslookup) packages+=("bind-utils") ;;
+          *) packages+=("$dep") ;;
+        esac
+        ;;
+      *)
+        packages+=("$dep")
+        ;;
+    esac
+  done
 
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
     use_sudo="sudo"
@@ -421,17 +449,17 @@ install_with_package_manager() {
   fi
 
   case "$pkg_manager" in
-    *apt)
+    apt)
       $use_sudo "$pkg_manager" update
       if [[ " ${packages[*]} " == *" util-linux "* ]]; then
         $use_sudo env NEEDRESTART_MODE=a "$pkg_manager" install -y util-linux bsdmainutils
       fi
       $use_sudo env NEEDRESTART_MODE=a "$pkg_manager" install -y "${packages[@]}"
       ;;
-    *pacman)
+    pacman)
       $use_sudo "$pkg_manager" -Syy --noconfirm "${packages[@]}"
       ;;
-    *dnf)
+    dnf)
       $use_sudo "$pkg_manager" install -y "${packages[@]}"
       ;;
     termux)
@@ -573,17 +601,89 @@ parse_arguments() {
   done
 }
 
-check_ip_support() {
+check_ip_interfaces() {
   local version="$1"
-  log "$LOG_INFO" "Checking for IPv${version} support"
+
+  log "$LOG_INFO" "Checking for IPv${version} interfaces"
 
   if [[ -n $(ip -"${version}" addr show scope global 2>/dev/null) ]]; then
-    log "$LOG_INFO" "IPv${version} is supported"
+    log "$LOG_INFO" "IPv${version} global interfaces found"
     return 0
   fi
 
-  log "$LOG_WARN" "IPv${version} is not supported on this system"
+  log "$LOG_ERROR" "No global IPv${version} addresses found on interfaces"
   return 1
+}
+
+check_ip_connectivity() {
+  local version="$1"
+  local test_hosts_v4=("8.8.8.8" "8.8.4.4" "1.1.1.1" "1.0.0.1" "9.9.9.9")
+  local test_hosts_v6=("2001:4860:4860::8888" "2001:4860:4860::8844" "2606:4700:4700::1111" "2606:4700:4700::1001" "2620:fe::9")
+  local timeout=3
+  local count=1
+  local test_hosts
+
+  log "$LOG_INFO" "Checking IPv${version} connectivity"
+
+  if [[ "$version" == "4" ]]; then
+    test_hosts=("${test_hosts_v4[@]}")
+  else
+    test_hosts=("${test_hosts_v6[@]}")
+  fi
+
+  for host in "${test_hosts[@]}"; do
+    if ping -"${version}" -c "$count" -W "$timeout" "$host" >/dev/null 2>&1; then
+      log "$LOG_INFO" "IPv${version} connectivity confirmed via $host"
+      return 0
+    fi
+  done
+
+  log "$LOG_ERROR" "IPv${version} connectivity test failed"
+  return 1
+}
+
+check_ip_dns() {
+  local version="$1"
+  local test_domain="google.com"
+  local record_type
+
+  log "$LOG_INFO" "Checking IPv${version} DNS resolution"
+
+  if [[ "$version" == "4" ]]; then
+    record_type="A"
+  else
+    record_type="AAAA"
+  fi
+
+  if nslookup -type="$record_type" "$test_domain" >/dev/null 2>&1; then
+    log "$LOG_INFO" "IPv${version} DNS resolution works via nslookup"
+    return 0
+  fi
+
+  log "$LOG_ERROR" "IPv${version} DNS resolution failed"
+  return 1
+}
+
+check_ip_support() {
+  local version="$1"
+  local -a checks=("interfaces" "connectivity" "dns")
+  local -a failed=()
+
+  log "$LOG_INFO" "Starting comprehensive IPv${version} support check"
+
+  for check in "${checks[@]}"; do
+    if ! "check_ip_${check}" "$version"; then
+      failed+=("$check")
+    fi
+  done
+
+  if [[ ${#failed[@]} -eq 0 ]]; then
+    log "$LOG_INFO" "IPv${version} is fully supported (${checks[*]})"
+    return 0
+  else
+    log "$LOG_ERROR" "IPv${version} is not fully supported. Failed checks: ${failed[*]}"
+    return 1
+  fi
 }
 
 get_external_ip() {
