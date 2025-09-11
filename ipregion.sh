@@ -196,16 +196,6 @@ IPV6_OVER_IPV4_SERVICES=(
   "IPINFO_IO"
 )
 
-get_tmpdir() {
-  if [[ -n "$TMPDIR" ]]; then
-    echo "$TMPDIR"
-  elif [[ -d /data/data/com.termux/files/usr/tmp ]]; then
-    echo "/data/data/com.termux/files/usr/tmp"
-  else
-    echo "/tmp"
-  fi
-}
-
 color() {
   local color_name="$1"
   local text="$2"
