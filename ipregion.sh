@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 SCRIPT_URL="https://github.com/vernette/ipregion"
-DEPENDENCIES=("jq" "curl" "util-linux" "nslookup")
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
@@ -47,11 +46,20 @@ LOG_INFO="INFO"
 LOG_WARN="WARNING"
 LOG_ERROR="ERROR"
 
-declare -A DEPENDENCY_COMMANDS=(
+declare -A DEPENDENCIES=(
   [jq]="jq"
   [curl]="curl"
-  [util-linux]="column"
-  [nslookup]="nslookup"
+  [column]="util-linux"
+  [nslookup]="bind-utils"
+)
+
+declare -A PACKAGE_MAPPING=(
+  ["apt:nslookup"]="dnsutils"
+  ["apt:column"]="bsdmainutils"
+  ["pacman:nslookup"]="bind"
+  ["dnf:nslookup"]="bind-utils"
+  ["yum:nslookup"]="bind-utils"
+  ["termux:column"]="util-linux"
 )
 
 declare -A PRIMARY_SERVICES=(
@@ -337,150 +345,202 @@ cleanup_debug() {
   printf "\nDebug log saved to: %s\n\nDebug log URL: %s\nIf you open a GitHub Issue, please download the log and attach it\n" "$DEBUG_LOG_FILE" "$debug_url" >&2
 }
 
-is_installed() {
+is_command_available() {
   local cmd="$1"
   command -v "$cmd" >/dev/null 2>&1
 }
 
-check_missing_dependencies() {
-  local missing_pkgs=()
-  local cmd
+detect_distro() {
+  if [[ -f /etc/os-release ]]; then
+    source /etc/os-release
+    distro="$ID"
+  elif [[ -f /etc/redhat-release ]]; then
+    distro="rhel"
+  elif [[ -d /data/data/com.termux ]]; then
+    distro="termux"
+  fi
+}
 
-  for pkg in "${DEPENDENCIES[@]}"; do
-    cmd="${DEPENDENCY_COMMANDS[$pkg]:-$pkg}"
-    if ! is_installed "$cmd"; then
-      missing_pkgs+=("$pkg")
+detect_package_manager() {
+  local pkg_manager
+
+  case "$distro" in
+    ubuntu | debian | termux)
+      pkg_manager="apt"
+      ;;
+    arch | manjaro)
+      pkg_manager="pacman"
+      ;;
+    fedora)
+      pkg_manager="dnf"
+      ;;
+    centos | rhel)
+      if is_command_available "dnf"; then
+        pkg_manager="dnf"
+      else
+        pkg_manager="yum"
+      fi
+      ;;
+    opensuse*)
+      pkg_manager="zypper"
+      ;;
+    alpine)
+      pkg_manager="apk"
+      ;;
+    *)
+      error_exit "Unknown distro: $distro"
+      ;;
+  esac
+
+  echo "$pkg_manager"
+}
+
+get_missing_commands() {
+  local missing=()
+
+  for cmd in "${!DEPENDENCIES[@]}"; do
+    if ! is_command_available "$cmd"; then
+      missing+=("$cmd")
     fi
   done
 
-  echo "${missing_pkgs[@]}"
+  printf '%s\n' "${missing[@]}"
+}
+
+get_package_name() {
+  local pkg_manager="$1"
+  local command="$2"
+  local mapping_key="${pkg_manager}:${command}"
+
+  if [[ -n "${PACKAGE_MAPPING[$mapping_key]}" ]]; then
+    echo "${PACKAGE_MAPPING[$mapping_key]}"
+    return
+  fi
+
+  echo "${DEPENDENCIES[$command]:-$command}"
+}
+
+is_sudo_required() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 || "$distro" == "termux" ]]; then
+    return 1
+  fi
+
+  return 0
+}
+
+get_install_args() {
+  local pkg_manager="$1"
+  local install_args
+
+  case "$pkg_manager" in
+    apt)
+      install_args=("install" "-y")
+      ;;
+    pacman)
+      install_args=("-Sy" "--noconfirm")
+      ;;
+    dnf | yum | zypper)
+      install_args=("install" "-y")
+      ;;
+    apk)
+      install_args=("add" "--no-cache")
+      ;;
+  esac
+
+  echo "${install_args[@]}"
+}
+
+install_packages() {
+  local pkg_manager="$1"
+  shift
+  local packages=("$@")
+  local cmd_prefix=()
+  local install_cmd=()
+
+  if is_sudo_required; then
+    cmd_prefix=("sudo")
+    log "$LOG_INFO" "Running as non-root user, using sudo"
+  fi
+
+  cmd_prefix+=("$pkg_manager")
+
+  if [[ "$pkg_manager" == "apt" ]]; then
+    log "$LOG_INFO" "Updating package lists"
+    if ! "${cmd_prefix[@]}" update; then
+      error_exit "Error occurred while updating package lists"
+    fi
+  fi
+
+  read -ra install_args <<<"$(get_install_args "$pkg_manager")"
+  install_cmd+=("${cmd_prefix[@]}" "${install_args[@]}" "${packages[@]}")
+
+  log "$LOG_INFO" "Running: ${install_cmd[*]}"
+
+  if ! "${install_cmd[@]}"; then
+    error_exit "Error occurred while installing packages"
+  fi
 }
 
 prompt_for_installation() {
-  local missing_pkgs=("$@")
+  local missing=("$@")
+  local response
+  local formatted_deps=""
 
-  echo "Missing dependencies: ${missing_pkgs[*]}"
-  read -r -p "Do you want to install them? [y/N]: " answer
-  answer=${answer,,}
+  for dep in "${missing[@]}"; do
+    formatted_deps+="  $dep\n"
+  done
 
-  case "${answer,,}" in
+  printf "\n%s\n%b\n%s " \
+    "$(color WARN 'Missing dependencies:')" \
+    "$formatted_deps" \
+    "$(color INFO 'Do you want to install them? [y/N]:')"
+
+  read -r response
+  response=${response,,}
+
+  case "$response" in
     y | yes)
       return 0
       ;;
     *)
-      exit 0
-      ;;
-  esac
-}
-
-get_package_manager() {
-  # Check if the script is running in Termux
-  if [[ -d /data/data/com.termux ]]; then
-    echo "termux"
-    return
-  fi
-
-  if [[ -f /etc/os-release ]]; then
-    . /etc/os-release
-    case "$ID" in
-      debian | ubuntu)
-        echo "apt"
-        ;;
-      arch)
-        echo "pacman"
-        ;;
-      fedora)
-        echo "dnf"
-        ;;
-      *)
-        error_exit "Unknown distribution: $ID. Please install dependencies manually."
-        ;;
-    esac
-  else
-    error_exit "File /etc/os-release not found, unable to determine distribution. Please install dependencies manually."
-  fi
-}
-
-install_with_package_manager() {
-  local pkg_manager="$1"
-  local packages=("${@:2}")
-  local use_sudo=""
-  shift
-
-  for dep in "$@"; do
-    case "$pkg_manager" in
-      apt | termux)
-        case "$dep" in
-          nslookup) packages+=("dnsutils") ;;
-          *) packages+=("$dep") ;;
-        esac
-        ;;
-      pacman)
-        case "$dep" in
-          nslookup) packages+=("bind") ;;
-          *) packages+=("$dep") ;;
-        esac
-        ;;
-      dnf)
-        case "$dep" in
-          nslookup) packages+=("bind-utils") ;;
-          *) packages+=("$dep") ;;
-        esac
-        ;;
-      *)
-        packages+=("$dep")
-        ;;
-    esac
-  done
-
-  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    use_sudo="sudo"
-    log "$LOG_INFO" "Running as non-root user, using sudo"
-  fi
-
-  case "$pkg_manager" in
-    apt)
-      $use_sudo "$pkg_manager" update
-      if [[ " ${packages[*]} " == *" util-linux "* ]]; then
-        $use_sudo env NEEDRESTART_MODE=a "$pkg_manager" install -y util-linux bsdmainutils
-      fi
-      $use_sudo env NEEDRESTART_MODE=a "$pkg_manager" install -y "${packages[@]}"
-      ;;
-    pacman)
-      $use_sudo "$pkg_manager" -Syy --noconfirm "${packages[@]}"
-      ;;
-    dnf)
-      $use_sudo "$pkg_manager" install -y "${packages[@]}"
-      ;;
-    termux)
-      apt update
-      apt install -y "${packages[@]}"
-      ;;
-    *)
-      error_exit "Unknown package manager: $pkg_manager"
+      return 1
       ;;
   esac
 }
 
 install_dependencies() {
-  local missing_packages
-  local pkg_manager
+  local missing_dependencies=()
+  local missing_commands pkg_manager package_name
 
-  log "$LOG_INFO" "Checking for dependencies"
-  read -r -a missing_packages <<<"$(check_missing_dependencies)"
+  log "$LOG_INFO" "Checking dependencies"
 
-  if [[ ${#missing_packages[@]} -eq 0 ]]; then
+  mapfile -t missing_commands < <(get_missing_commands)
+
+  if [[ "${missing_commands[*]}" =~ ^[[:space:]]*$ ]]; then
     log "$LOG_INFO" "All dependencies are installed"
     return 0
   fi
 
-  prompt_for_installation "${missing_packages[@]}" </dev/tty
+  log "$LOG_INFO" "Missing commands: ${missing_commands[*]}"
 
-  pkg_manager=$(get_package_manager)
+  pkg_manager=$(detect_package_manager)
+
   log "$LOG_INFO" "Detected package manager: $pkg_manager"
 
+  for cmd in "${missing_commands[@]}"; do
+    package_name=$(get_package_name "$pkg_manager" "$cmd")
+    missing_dependencies+=("$package_name")
+  done
+
+  log "$LOG_INFO" "Missing dependencies: ${missing_dependencies[*]}"
+
+  if ! prompt_for_installation "${missing_dependencies[@]}" </dev/tty; then
+    printf "%s\n" "$(color WARN 'Installation canceled by user')"
+    exit 1
+  fi
+
   log "$LOG_INFO" "Installing missing dependencies"
-  install_with_package_manager "$pkg_manager" "${missing_packages[@]}"
+  install_packages "$pkg_manager" "${missing_dependencies[@]}"
 }
 
 is_valid_json() {
@@ -1655,6 +1715,7 @@ main() {
 
   setup_debug
 
+  detect_distro
   install_dependencies
 
   check_ip_support 4
