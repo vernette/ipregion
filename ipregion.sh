@@ -342,7 +342,11 @@ cleanup_debug() {
 
   debug_url="$(upload_debug)"
 
-  printf "\nDebug log saved to: %s\n\nDebug log URL: %s\nIf you open a GitHub Issue, please download the log and attach it\n" "$DEBUG_LOG_FILE" "$debug_url" >&2
+  printf "\n%s\n  %s\n  %s\n\n%s\n" \
+    "$(color WARN 'Debug information:')" \
+    "Local file: $DEBUG_LOG_FILE" \
+    "Remote URL: $debug_url" \
+    "$(color INFO 'If you open a GitHub Issue, please download the log and attach it')"
 }
 
 is_command_available() {
