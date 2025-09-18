@@ -321,9 +321,20 @@ setup_debug() {
   return 0
 }
 
+grep_wrapper() {
+  local grep_args=()
+
+  if [[ "$1" == "--perl" ]]; then
+    grep_args+=("-oP")
+    shift
+  fi
+
+  grep "${grep_args[@]}" "$@"
+}
+
 extract_debug_url() {
   local response="$1"
-  url=$(grep bashupload.com <<<"$response")
+  url=$(grep_wrapper bashupload.com <<<"$response")
   url=${url##* }
   echo "$url"
 }
@@ -944,7 +955,7 @@ make_request() {
 
   response_with_code=$(curl "${curl_args[@]}")
   http_code=$(tail -n1 <<<"$response_with_code")
-  response=$(sed '$d' <<<"$response_with_code")
+  response=$(head -n -1 <<<"$response_with_code")
 
   if [[ "$http_code" == "403" || "$http_code" == "429" ]]; then
     echo ""
@@ -1178,7 +1189,7 @@ run_service_group() {
   log "$LOG_INFO" "Running $group group services"
 
   for service_name in "${services_array[@]}"; do
-    if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep -Fxq "$service_name"; then
+    if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep_wrapper -Fxq "$service_name"; then
       log "$LOG_INFO" "Skipping service: $service_name"
       continue
     fi
@@ -1215,11 +1226,11 @@ run_service_group() {
 run_all_services() {
   local service_name
 
-  for func in $(declare -F | awk '{print $3}' | grep '^lookup_'); do
+  for func in $(declare -F | awk '{print $3}' | grep_wrapper '^lookup_'); do
     service_name=${func#lookup_}
     service_name_uppercase=${service_name^^}
 
-    if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep -Fxq "$service_name_uppercase"; then
+    if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep_wrapper -Fxq "$service_name_uppercase"; then
       log "$LOG_INFO" "Skipping service: $service_name_uppercase"
       continue
     fi
@@ -1465,18 +1476,18 @@ lookup_iplocation_com() {
 
 lookup_google() {
   local ip_version="$1"
-  local sed_filter='s/.*"[a-z]\{2\}_\([A-Z]\{2\}\)".*/\1/p'
-  local sed_fallback_filter='s/.*"[a-z]\{2\}-\([A-Z]\{2\}\)".*/\1/p'
+  local primary_pattern='"[a-z]{2}_\K[A-Z]{2}(?=")'
+  local fallback_pattern='"[a-z]{2}-\K[A-Z]{2}(?=")'
   local response result
 
   response=$(make_request GET "https://www.google.com" \
     --user-agent "$USER_AGENT" \
     --ip-version "$ip_version")
 
-  result=$(sed -n "$sed_filter" <<<"$response")
+  result=$(grep_wrapper --perl "$primary_pattern" <<<"$response")
 
   if [[ -z "$result" ]]; then
-    result=$(sed -n "$sed_fallback_filter" <<<"$response" | tail -n 1)
+    result=$(grep_wrapper --perl "$fallback_pattern" <<<"$response" | tail -n 1)
   fi
 
   echo "$result"
@@ -1591,7 +1602,7 @@ lookup_youtube_premium() {
     return
   fi
 
-  is_available=$(grep -io "youtube premium is not available in your country" <<<"$response")
+  is_available=$(grep_wrapper -io "youtube premium is not available in your country" <<<"$response")
 
   if [[ -z "$is_available" ]]; then
     is_available="Yes"
@@ -1617,7 +1628,7 @@ lookup_google_search_captcha() {
     return
   fi
 
-  is_captcha=$(grep -iE "unusual traffic from|is blocked|unaddressed abuse" <<<"$response")
+  is_captcha=$(grep_wrapper -iE "unusual traffic from|is blocked|unaddressed abuse" <<<"$response")
 
   if [[ -z "$is_captcha" ]]; then
     is_captcha="No"
@@ -1662,7 +1673,7 @@ lookup_steam() {
   local response
 
   response=$(make_request GET "https://store.steampowered.com" --ip-version "$ip_version")
-  sed -n 's/.*"countrycode":"\([^"]*\)".*/\1/p' <<<"$response"
+  grep_wrapper --perl '"countrycode":"\K[^"]*' <<<"$response"
 }
 
 lookup_tiktok() {
