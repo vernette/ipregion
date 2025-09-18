@@ -77,7 +77,7 @@ declare -A PRIMARY_SERVICES=(
   [IPAPI_IS]="ipapi.is|api.ipapi.is|/?q={ip}"
   [IPBASE_COM]="ipbase.com|api.ipbase.com|/v2/info?ip={ip}"
   [IPQUERY_IO]="ipquery.io|api.ipquery.io|/{ip}"
-  [IP_SB]="ip.sb|api.ip.sb|/geoip/{ip}"
+  [IPWHO_IS]="ipwho.is|ipwho.is|/{ip}"
 )
 
 PRIMARY_SERVICES_ORDER=(
@@ -95,7 +95,7 @@ PRIMARY_SERVICES_ORDER=(
   "IPAPI_IS"
   "IPBASE_COM"
   "IPQUERY_IO"
-  "IP_SB"
+  "IPWHO_IS"
 )
 
 declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
@@ -1052,7 +1052,7 @@ process_response() {
     IPQUERY_IO)
       jq_filter='.location.country_code'
       ;;
-    IP_SB)
+    IPWHO_IS)
       jq_filter='.country_code'
       ;;
     *)
