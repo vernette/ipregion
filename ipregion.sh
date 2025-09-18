@@ -113,6 +113,7 @@ declare -A SERVICE_HEADERS=(
 
 declare -A CUSTOM_SERVICES=(
   [GOOGLE]="Google"
+  [YOUTUBE]="YouTube"
   [TWITCH]="Twitch"
   [CHATGPT]="ChatGPT"
   [NETFLIX]="Netflix"
@@ -133,6 +134,7 @@ declare -A CUSTOM_SERVICES=(
 
 CUSTOM_SERVICES_ORDER=(
   "GOOGLE"
+  "YOUTUBE"
   "TWITCH"
   "CHATGPT"
   "NETFLIX"
@@ -151,6 +153,7 @@ CUSTOM_SERVICES_ORDER=(
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
   [GOOGLE]="lookup_google"
+  [YOUTUBE]="lookup_youtube"
   [TWITCH]="lookup_twitch"
   [CHATGPT]="lookup_chatgpt"
   [NETFLIX]="lookup_netflix"
@@ -1477,6 +1480,16 @@ lookup_google() {
   fi
 
   echo "$result"
+}
+
+lookup_youtube() {
+  local ip_version="$1"
+  local response json_result
+
+  response=$(make_request GET "https://www.youtube.com/sw.js_data" --ip-version "$ip_version")
+
+  json_result=$(tail -n +3 <<<"$response")
+  process_json "$json_result" ".[0][2][0][0][1]"
 }
 
 lookup_twitch() {
