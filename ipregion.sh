@@ -860,8 +860,11 @@ make_request() {
   shift 2
   local ip_version user_agent json data file headers response_with_code response http_code
   local curl_args=(
-    --silent --compressed
-    --retry-connrefused --retry-all-errors
+    --silent
+    --compressed
+    --location
+    --retry-connrefused
+    --retry-all-errors
     --retry "$CURL_RETRIES"
     --max-time "$CURL_TIMEOUT"
     --request "$method"
