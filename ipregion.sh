@@ -957,7 +957,7 @@ make_request() {
   http_code=$(tail -n1 <<<"$response_with_code")
   response=$(head -n -1 <<<"$response_with_code")
 
-  if [[ "$http_code" == "403" || "$http_code" == "429" ]]; then
+  if [[ "$http_code" == 4* || "$http_code" == 5* ]]; then
     echo ""
     return 0
   fi
