@@ -927,6 +927,11 @@ spinner_update() {
   fi
 }
 
+spinner_cleanup() {
+  spinner_stop
+  exit 130
+}
+
 make_request() {
   local method="$1"
   local url="$2"
@@ -1828,6 +1833,8 @@ main() {
 
   setup_debug
 
+  trap spinner_cleanup EXIT INT TERM
+
   detect_distro
   install_dependencies
 
@@ -1840,8 +1847,7 @@ main() {
   discover_external_ips
   get_asn
 
-  if [[ "$JSON_OUTPUT" != true && "$VERBOSE" != true ]]; then
-    trap spinner_stop EXIT INT TERM
+  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" ]]; then
     spinner_start
   fi
 
@@ -1862,14 +1868,15 @@ main() {
       ;;
   esac
 
-  if [[ "$JSON_OUTPUT" != true && "$VERBOSE" != true ]]; then
+  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" ]]; then
     spinner_stop
-    trap - EXIT INT TERM
   fi
 
   print_results
 
   cleanup_debug
+
+  trap - EXIT INT TERM
 }
 
 main "$@"
