@@ -919,6 +919,14 @@ spinner_stop() {
   fi
 }
 
+spinner_update() {
+  local value="$1"
+
+  if [[ -n "$SPINNER_SERVICE_FILE" ]]; then
+    echo "$value" >"$SPINNER_SERVICE_FILE"
+  fi
+}
+
 make_request() {
   local method="$1"
   local url="$2"
@@ -1156,7 +1164,7 @@ process_service() {
     display_name="$service"
   fi
 
-  echo "$display_name" >"$SPINNER_SERVICE_FILE"
+  spinner_update "$display_name"
 
   if [[ "$custom" == true ]]; then
     process_custom_service "$service"
@@ -1212,7 +1220,7 @@ process_custom_service() {
     display_name="$service"
   fi
 
-  echo "$display_name" >"$SPINNER_SERVICE_FILE"
+  spinner_update "$display_name"
 
   if [[ -z "$handler_func" ]]; then
     log "$LOG_WARN" "Unknown custom service: $service"
@@ -1272,7 +1280,7 @@ run_service_group() {
       display_name="${CDN_SERVICES[$service_name]}"
 
       if [[ -n "$handler_func" ]]; then
-        echo "$display_name" >"$SPINNER_SERVICE_FILE"
+        spinner_update "$display_name"
         result=$("$handler_func" 4)
         add_result "cdn" "$display_name" "$result" ""
       fi
