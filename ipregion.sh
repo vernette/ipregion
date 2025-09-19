@@ -1476,21 +1476,13 @@ lookup_iplocation_com() {
 
 lookup_google() {
   local ip_version="$1"
-  local primary_pattern='"[a-z]{2}_\K[A-Z]{2}(?=")'
-  local fallback_pattern='"[a-z]{2}-\K[A-Z]{2}(?=")'
-  local response result
+  local response
 
   response=$(make_request GET "https://www.google.com" \
     --user-agent "$USER_AGENT" \
     --ip-version "$ip_version")
 
-  result=$(grep_wrapper --perl "$primary_pattern" <<<"$response")
-
-  if [[ -z "$result" ]]; then
-    result=$(grep_wrapper --perl "$fallback_pattern" <<<"$response" | tail -n 1)
-  fi
-
-  echo "$result"
+  grep_wrapper --perl '"MgUcDb":"\K[^"]*' <<<"$response"
 }
 
 lookup_youtube() {
