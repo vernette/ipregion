@@ -130,6 +130,7 @@ declare -A CUSTOM_SERVICES=(
   [YOUTUBE_CDN]="YouTube CDN"
   [OOKLA_SPEEDTEST]="Ookla Speedtest"
   [JETBRAINS]="JetBrains"
+  [PLAYSTATION]="PlayStation"
 )
 
 CUSTOM_SERVICES_ORDER=(
@@ -149,6 +150,7 @@ CUSTOM_SERVICES_ORDER=(
   "TIKTOK"
   "OOKLA_SPEEDTEST"
   "JETBRAINS"
+  "PLAYSTATION"
 )
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
@@ -171,6 +173,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [NETFLIX_CDN]="lookup_netflix_cdn"
   [OOKLA_SPEEDTEST]="lookup_ookla_speedtest"
   [JETBRAINS]="lookup_jetbrains"
+  [PLAYSTATION]="lookup_playstation"
 )
 
 declare -A CDN_SERVICES=(
@@ -881,9 +884,17 @@ make_request() {
     --retry-all-errors
     --retry "$CURL_RETRIES"
     --max-time "$CURL_TIMEOUT"
-    --request "$method"
     -w '\n%{http_code}'
   )
+
+  case "$method" in
+    HEAD)
+      curl_args+=(--head)
+      ;;
+    *)
+      curl_args+=(--request "$method")
+      ;;
+  esac
 
   while (($#)); do
     case "$1" in
@@ -1736,6 +1747,14 @@ lookup_jetbrains() {
 
   response=$(make_request GET "https://data.services.jetbrains.com/geo" --ip-version "$ip_version")
   process_json "$response" ".code"
+}
+
+lookup_playstation() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request HEAD "https://www.playstation.com" --ip-version "$ip_version")
+  grep_wrapper --perl 'country=\K[^;]*' <<<"$response" | head -n1
 }
 
 main() {
