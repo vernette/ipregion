@@ -762,22 +762,67 @@ check_ip_support() {
   fi
 }
 
-get_external_ip() {
-  local identity_service
+shuffle_identity_services() {
+  local i tmp size rand_idx
+  size=${#IDENTITY_SERVICES[@]}
 
-  identity_service=${IDENTITY_SERVICES[$RANDOM % ${#IDENTITY_SERVICES[@]}]}
-  log "$LOG_INFO" "Using identity service: $identity_service"
+  for ((i = size - 1; i > 0; i--)); do
+    rand_idx=$((RANDOM % (i + 1)))
 
+    if ((rand_idx != i)); then
+      tmp=${IDENTITY_SERVICES[i]}
+      IDENTITY_SERVICES[i]=${IDENTITY_SERVICES[rand_idx]}
+      IDENTITY_SERVICES[rand_idx]=$tmp
+    fi
+  done
+}
+
+fetch_ip_from_service() {
+  local service="$1"
+  local ip_version="$2"
+  local response
+
+  response=$(make_request GET "https://$service" --ip-version "$ip_version")
+
+  if [[ -n "$response" ]]; then
+    echo "$response"
+  fi
+}
+
+fetch_external_ip() {
+  local ip_version="$1"
+  local service ip
+
+  log "$LOG_INFO" "Getting external IPv${ip_version} address"
+
+  shuffle_identity_services
+
+  for service in "${IDENTITY_SERVICES[@]}"; do
+    ip=$(fetch_ip_from_service "$service" "$ip_version")
+
+    if [[ -n "$ip" ]]; then
+      log "$LOG_INFO" "Successfully obtained IPv${ip_version} address from $service: $ip"
+      echo "$ip"
+      return
+    else
+      log "$LOG_WARN" "No response from $service for IPv${ip_version}"
+    fi
+  done
+
+  log "$LOG_ERROR" "Failed to obtain IPv${ip_version} address from any service"
+}
+
+discover_external_ips() {
   if [[ "$IPV4_ONLY" == true ]] || [[ "$IPV6_ONLY" != true ]]; then
-    log "$LOG_INFO" "Getting external IPv4 address"
-    EXTERNAL_IPV4="$(make_request GET "https://$identity_service" --ip-version 4)"
-    log "$LOG_INFO" "External IPv4: $EXTERNAL_IPV4"
+    EXTERNAL_IPV4=$(fetch_external_ip 4)
   fi
 
   if [[ "$IPV6_ONLY" == true ]] || { [[ "$IPV6_SUPPORTED" -eq 0 ]] && [[ "$IPV4_ONLY" != true ]]; }; then
-    log "$LOG_INFO" "Getting external IPv6 address"
-    EXTERNAL_IPV6="$(make_request GET "https://$identity_service" --ip-version 6)"
-    log "$LOG_INFO" "External IPv6: $EXTERNAL_IPV6"
+    EXTERNAL_IPV6=$(fetch_external_ip 6)
+  fi
+
+  if [[ -z "$EXTERNAL_IPV4" ]] && [[ -z "$EXTERNAL_IPV6" ]]; then
+    error_exit "Failed to obtain external IPv4 or IPv6 address"
   fi
 }
 
@@ -1784,7 +1829,7 @@ main() {
   check_ip_support 6
   IPV6_SUPPORTED=$?
 
-  get_external_ip
+  discover_external_ips
   get_asn
 
   if [[ "$JSON_OUTPUT" != true && "$VERBOSE" != true ]]; then
