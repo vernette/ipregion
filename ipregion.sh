@@ -131,6 +131,7 @@ declare -A CUSTOM_SERVICES=(
   [OOKLA_SPEEDTEST]="Ookla Speedtest"
   [JETBRAINS]="JetBrains"
   [PLAYSTATION]="PlayStation"
+  [MICROSOFT]="Microsoft"
 )
 
 CUSTOM_SERVICES_ORDER=(
@@ -151,6 +152,7 @@ CUSTOM_SERVICES_ORDER=(
   "OOKLA_SPEEDTEST"
   "JETBRAINS"
   "PLAYSTATION"
+  "MICROSOFT"
 )
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
@@ -174,6 +176,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [OOKLA_SPEEDTEST]="lookup_ookla_speedtest"
   [JETBRAINS]="lookup_jetbrains"
   [PLAYSTATION]="lookup_playstation"
+  [MICROSOFT]="lookup_microsoft"
 )
 
 declare -A CDN_SERVICES=(
@@ -1755,6 +1758,16 @@ lookup_playstation() {
 
   response=$(make_request HEAD "https://www.playstation.com" --ip-version "$ip_version")
   grep_wrapper --perl 'country=\K[^;]*' <<<"$response" | head -n1
+}
+
+lookup_microsoft() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request GET "https://www.microsoft.com" --ip-version "$ip_version" \
+    --user-agent "$USER_AGENT" \
+    --header "Accept-Language: en-US,en;q=0.9")
+  grep_wrapper --perl 'data-country_code="\K[^"]*' <<<"$response"
 }
 
 main() {
