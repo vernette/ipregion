@@ -1822,10 +1822,8 @@ lookup_microsoft() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://www.microsoft.com" --ip-version "$ip_version" \
-    --user-agent "$USER_AGENT" \
-    --header "Accept-Language: en-US,en;q=0.9")
-  grep_wrapper --perl 'data-country_code="\K[^"]*' <<<"$response"
+  response=$(make_request GET "https://login.live.com" --ip-version "$ip_version")
+  grep_wrapper --perl '"sRequestCountry":"\K[^"]*' <<<"$response"
 }
 
 main() {
