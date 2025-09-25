@@ -992,7 +992,6 @@ make_request() {
     curl_args+=(-6)
   fi
 
-  headers+=("Accept-Encoding: gzip, deflate, br, zstd")
   for h in "${headers[@]}"; do
     curl_args+=(-H "$h")
   done
