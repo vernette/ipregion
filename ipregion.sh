@@ -68,7 +68,7 @@ declare -A PRIMARY_SERVICES=(
   [IPINFO_IO]="ipinfo.io|ipinfo.io|/widget/demo/{ip}"
   [IPREGISTRY]="ipregistry.co|api.ipregistry.co|/{ip}?hostname=true&key=sb69ksjcajfs4c"
   [IPAPI_CO]="ipapi.co|ipapi.co|/{ip}/json"
-  [CLOUDFLARE]="cloudflare.com|www.cloudflare.com|/cdn-cgi/trace"
+  [CLOUDFLARE]="cloudflare.com|speed.cloudflare.com|/meta"
   [IFCONFIG_CO]="ifconfig.co|ifconfig.co|/country-iso?ip={ip}|plain"
   [IPLOCATION_COM]="iplocation.com|iplocation.com"
   [COUNTRY_IS]="country.is|api.country.is|/{ip}"
@@ -101,7 +101,6 @@ PRIMARY_SERVICES_ORDER=(
 )
 
 declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
-  [CLOUDFLARE]="lookup_cloudflare"
   [IPLOCATION_COM]="lookup_iplocation_com"
 )
 
@@ -1135,6 +1134,9 @@ process_response() {
     IPAPI_CO)
       jq_filter='.country'
       ;;
+    CLOUDFLARE)
+      jq_filter='.country'
+      ;;
     COUNTRY_IS)
       jq_filter='.country'
       ;;
@@ -1528,16 +1530,7 @@ lookup_ipapi_co() {
 }
 
 lookup_cloudflare() {
-  local ip_version="$1"
-  local response
-
-  response=$(make_request GET "https://www.cloudflare.com/cdn-cgi/trace" --ip-version "$ip_version")
-  while IFS='=' read -r key value; do
-    if [[ "$key" == "loc" ]]; then
-      echo "$value"
-      break
-    fi
-  done <<<"$response"
+  process_service "CLOUDFLARE"
 }
 
 lookup_ifconfig_co() {
@@ -1764,14 +1757,9 @@ lookup_cloudflare_cdn() {
   local ip_version="$1"
   local response iata location
 
-  response=$(make_request GET "https://www.cloudflare.com/cdn-cgi/trace" --ip-version "$ip_version")
-  while IFS='=' read -r key value; do
-    if [[ "$key" == "colo" ]]; then
-      iata="$value"
-      break
-    fi
-  done <<<"$response"
+  response=$(make_request GET "https://speed.cloudflare.com/meta" --ip-version "$ip_version")
 
+  iata=$(process_json "$response" ".colo")
   location=$(get_iata_location "$iata")
   echo "$location ($iata)"
 }
