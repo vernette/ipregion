@@ -848,6 +848,17 @@ get_asn() {
   log "$LOG_INFO" "ASN info: AS$asn $asn_name"
 }
 
+get_registered_country() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request GET "https://geoip.maxmind.com/geoip/v2.1/city/me" \
+    --header "Referer: https://www.maxmind.com" \
+    --ip-version "$ip_version")
+
+  process_json "$response" ".registered_country.names.en"
+}
+
 get_iata_location() {
   local iata_code="$1"
   local url="https://www.air-port-codes.com/api/v1/single"
@@ -1331,6 +1342,7 @@ finalize_json() {
     t_cdn=$(printf '%s\n' "${ARR_CDN[@]//|||/$'\t'}")
   fi
 
+  # TODO: Add registered country to the JSON output
   RESULT_JSON=$(
     jq -n \
       --rawfile p <(printf "%s" "$t_primary") \
@@ -1453,12 +1465,13 @@ print_header() {
 
   printf "%s\n%s\n\n" "$(color URL "Made with ")$(color HEART "<3")$(color URL " by vernette")" "$(color URL "$SCRIPT_URL")"
 
-  if [[ -n "$EXTERNAL_IPV4" ]]; then
-    printf "%s: %s\n" "$(color HEADER 'IPv4')" "$(bold "$(mask_ipv4 "$ipv4")")"
+  # TODO: Get registered country while initializing
+  if [[ "$ipv4" != "null" ]]; then
+    printf "%s: %s, %s %s\n" "$(color HEADER 'IPv4')" "$(bold "$(mask_ipv4 "$ipv4")")" "registered in" "$(bold "$(get_registered_country 4)")"
   fi
 
-  if [[ -n "$EXTERNAL_IPV6" ]]; then
-    printf "%s: %s\n" "$(color HEADER 'IPv6')" "$(bold "$(mask_ipv6 "$ipv6")")"
+  if [[ "$ipv6" != "null" ]]; then
+    printf "%s: %s, %s %s\n" "$(color HEADER 'IPv6')" "$(bold "$(mask_ipv6 "$ipv6")")" "registered in" "$(bold "$(get_registered_country 6)")"
   fi
 
   printf "%s: %s\n\n" "$(color HEADER 'ASN')" "$(bold "AS$asn $asn_name")"
