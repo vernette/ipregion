@@ -46,6 +46,11 @@ LOG_INFO="INFO"
 LOG_WARN="WARNING"
 LOG_ERROR="ERROR"
 
+STATUS_NA="N/A"
+STATUS_DENIED="Denied"
+STATUS_RATE_LIMIT="Rate-limit"
+STATUS_SERVER_ERROR="Server error"
+
 declare -A DEPENDENCIES=(
   [jq]="jq"
   [curl]="curl"
@@ -576,18 +581,32 @@ is_valid_json() {
 process_json() {
   local json="$1"
   local jq_filter="$2"
+
+  if is_status_string "$json"; then
+    echo "$json"
+    return
+  fi
+
   jq -r "$jq_filter" <<<"$json"
 }
 
 format_value() {
   local value="$1"
-  local not_available="$2"
 
-  if [[ "$value" == "$not_available" ]]; then
-    color NULL "$value"
-  else
-    bold "$value"
-  fi
+  case "$value" in
+    "$STATUS_NA")
+      color NULL "$value"
+      ;;
+    "$STATUS_DENIED" | "$STATUS_SERVER_ERROR")
+      color ERROR "$value"
+      ;;
+    "$STATUS_RATE_LIMIT")
+      color WARN "$value"
+      ;;
+    *)
+      bold "$value"
+      ;;
+  esac
 }
 
 print_value_or_colored() {
@@ -674,6 +693,41 @@ parse_arguments() {
         ;;
     esac
   done
+}
+
+is_status_string() {
+  local value="$1"
+
+  case "$value" in
+    "$STATUS_DENIED" | "$STATUS_SERVER_ERROR" | "$STATUS_RATE_LIMIT" | "$STATUS_NA")
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+status_from_http_code() {
+  local code="$1"
+
+  case "$code" in
+    403)
+      echo "$STATUS_DENIED"
+      ;;
+    429)
+      echo "$STATUS_RATE_LIMIT"
+      ;;
+    5*)
+      echo "$STATUS_SERVER_ERROR"
+      ;;
+    4*)
+      echo "$STATUS_NA"
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
 }
 
 check_ip_interfaces() {
@@ -1039,7 +1093,7 @@ make_request() {
   response=$(head -n -1 <<<"$response_with_code")
 
   if [[ "$http_code" == 4* || "$http_code" == 5* ]]; then
-    echo ""
+    echo "$(status_from_http_code "$http_code")"
     return 0
   fi
 
@@ -1103,8 +1157,13 @@ process_response() {
   local response_format="${4:-json}"
   local jq_filter
 
+  if is_status_string "$response"; then
+    echo "$response"
+    return
+  fi
+
   if [[ -z "$response" || "$response" == *"<html"* ]]; then
-    echo "N/A"
+    echo "$STATUS_NA"
     return
   fi
 
@@ -1444,14 +1503,14 @@ print_table_group() {
         if [[ "$v4" == "null" || -z "$v4" ]]; then
           v4="$na"
         fi
-        printf "%s%s" "$separator" "$(format_value "$v4" "$na")"
+        printf "%s%s" "$separator" "$(format_value "$v4")"
       fi
 
       if [[ $show_ipv6 -eq 1 ]]; then
         if [[ "$v6" == "null" || -z "$v6" ]]; then
           v6="$na"
         fi
-        printf "%s%s" "$separator" "$(format_value "$v6" "$na")"
+        printf "%s%s" "$separator" "$(format_value "$v6")"
       fi
 
       printf "\n"
@@ -1600,9 +1659,10 @@ lookup_netflix() {
 
   if is_valid_json "$response"; then
     process_json "$response" ".client.location.country"
-  else
-    echo ""
+    return
   fi
+
+  echo "$response"
 }
 
 lookup_spotify() {
