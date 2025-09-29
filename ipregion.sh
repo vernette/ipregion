@@ -1706,7 +1706,7 @@ lookup_reddit_guest_access() {
 
   response=$(make_request GET "https://www.reddit.com" --ip-version "$ip_version" --user-agent "$USER_AGENT")
 
-  if [[ -n "$response" ]]; then
+  if [[ "$response" != "Denied" ]]; then
     is_available="Yes"
     color_name="SERVICE"
   else
