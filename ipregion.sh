@@ -799,6 +799,7 @@ check_ip_support() {
   local -a checks=("interfaces" "connectivity" "dns")
   local -a failed=()
 
+  spinner_update "IPv$version support"
   log "$LOG_INFO" "Starting comprehensive IPv${version} support check"
 
   for check in "${checks[@]}"; do
@@ -847,6 +848,7 @@ fetch_external_ip() {
   local ip_version="$1"
   local service ip
 
+  spinner_update "External IPv$ip_version address"
   log "$LOG_INFO" "Getting external IPv${ip_version} address"
 
   shuffle_identity_services
@@ -892,6 +894,7 @@ get_asn() {
     ip_version=6
   fi
 
+  spinner_update "ASN info"
   log "$LOG_INFO" "Getting ASN info for IP $ip"
 
   response=$(make_request GET "https://api.ipbase.com/v2/info?apikey=$ipbase_api_key&ip=$ip" --ip-version "$ip_version")
@@ -1897,6 +1900,10 @@ main() {
   detect_distro
   install_dependencies
 
+  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" ]]; then
+    spinner_start
+  fi
+
   check_ip_support 4
   IPV4_SUPPORTED=$?
 
@@ -1905,10 +1912,6 @@ main() {
 
   discover_external_ips
   get_asn
-
-  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" ]]; then
-    spinner_start
-  fi
 
   case "$GROUPS_TO_SHOW" in
     primary)
