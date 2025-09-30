@@ -1097,7 +1097,7 @@ make_request() {
   response=$(head -n -1 <<<"$response_with_code")
 
   if [[ "$http_code" == 4* || "$http_code" == 5* ]]; then
-    echo "$(status_from_http_code "$http_code")"
+    status_from_http_code "$http_code"
     return 0
   fi
 
