@@ -1,6 +1,6 @@
 # ipregion
 
-![image](https://i.imgur.com/3DXpWkr.png)
+[![asciicast](https://asciinema.org/a/8KYmEbSHlzhO8HsE75MJXh4Yc.svg)](https://asciinema.org/a/8KYmEbSHlzhO8HsE75MJXh4Yc)
 
 ## Features
 
