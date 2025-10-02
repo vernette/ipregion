@@ -1845,8 +1845,8 @@ lookup_steam() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://store.steampowered.com" --ip-version "$ip_version")
-  grep_wrapper --perl '"countrycode":"\K[^"]*' <<<"$response"
+  response=$(make_request HEAD "https://store.steampowered.com" --ip-version "$ip_version")
+  grep_wrapper --perl 'steamCountry=\K[^%;]*' <<<"$response"
 }
 
 lookup_tiktok() {
