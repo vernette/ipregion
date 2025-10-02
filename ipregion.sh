@@ -134,8 +134,6 @@ declare -A CUSTOM_SERVICES=(
   [APPLE]="Apple"
   [STEAM]="Steam"
   [TIKTOK]="Tiktok"
-  [CLOUDFLARE_CDN]="Cloudflare CDN"
-  [YOUTUBE_CDN]="YouTube CDN"
   [OOKLA_SPEEDTEST]="Ookla Speedtest"
   [JETBRAINS]="JetBrains"
   [PLAYSTATION]="PlayStation"
@@ -1301,17 +1299,26 @@ process_service() {
 process_custom_service() {
   local service="$1"
   local ipv4_result ipv6_result
-  local display_name="${CUSTOM_SERVICES[$service]:-$service}"
-  local handler_func="${CUSTOM_SERVICES_HANDLERS[$service]}"
+  local display_name handler_func group
 
-  if [[ -z "$display_name" ]]; then
+  if [[ -n "${CUSTOM_SERVICES[$service]}" ]]; then
+    display_name="${CUSTOM_SERVICES[$service]}"
+    handler_func="${CUSTOM_SERVICES_HANDLERS[$service]}"
+    group="custom"
+  elif [[ -n "${CDN_SERVICES[$service]}" ]]; then
+    display_name="${CDN_SERVICES[$service]}"
+    handler_func="${CUSTOM_SERVICES_HANDLERS[$service]}"
+    group="cdn"
+  else
     display_name="$service"
+    handler_func="${CUSTOM_SERVICES_HANDLERS[$service]}"
+    group="custom"
   fi
 
   spinner_update "$display_name"
 
   if [[ -z "$handler_func" ]]; then
-    log "$LOG_WARN" "Unknown custom service: $service"
+    log "$LOG_WARN" "Unknown service handler: $service"
     return
   fi
 
@@ -1329,7 +1336,7 @@ process_custom_service() {
     ipv6_result=""
   fi
 
-  add_result "custom" "$display_name" "$ipv4_result" "$ipv6_result"
+  add_result "$group" "$display_name" "$ipv4_result" "$ipv6_result"
 }
 
 run_service_group() {
@@ -1349,29 +1356,19 @@ run_service_group() {
       continue
     fi
 
-    if [[ "$group" == "custom" ]]; then
-      is_custom=true
-    else
-      is_custom=false
-    fi
-
-    if [[ "$group" == "cdn" ]]; then
-      is_cdn=true
-    else
-      is_cdn=false
-    fi
+    case "$group" in
+      custom)
+        is_custom=true
+        ;;
+      cdn)
+        is_cdn=true
+        ;;
+    esac
 
     if [[ "$is_custom" == true ]]; then
       process_service "$service_name" true
     elif [[ "$is_cdn" == true ]]; then
-      handler_func="${CUSTOM_SERVICES_HANDLERS[$service_name]}"
-      display_name="${CDN_SERVICES[$service_name]}"
-
-      if [[ -n "$handler_func" ]]; then
-        spinner_update "$display_name"
-        result=$("$handler_func" 4)
-        add_result "cdn" "$display_name" "$result" ""
-      fi
+      process_custom_service "$service_name"
     else
       process_service "$service_name"
     fi
