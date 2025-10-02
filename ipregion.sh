@@ -12,6 +12,8 @@ TWITCH_CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
 CHATGPT_STATSIG_API_KEY="client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG"
 REDDIT_BASIC_ACCESS_TOKEN="b2hYcG9xclpZdWIxa2c6"
 YOUTUBE_SOCS_COOKIE="CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY"
+DISNEY_PLUS_API_KEY="ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
+DISNEY_PLUS_JSON_BODY='{"query":"\n     mutation registerDevice($registerDevice: RegisterDeviceInput!) {\n       registerDevice(registerDevice: $registerDevice) {\n         __typename\n       }\n     }\n     ","variables":{"registerDevice":{"applicationRuntime":"android","attributes":{"operatingSystem":"Android","operatingSystemVersion":"13"},"deviceFamily":"android","deviceLanguage":"en","deviceProfile":"phone","devicePlatformId":"android"}},"operationName":"registerDevice"}'
 
 VERBOSE=false
 JSON_OUTPUT=false
@@ -123,10 +125,12 @@ declare -A CUSTOM_SERVICES=(
   [NETFLIX]="Netflix"
   [SPOTIFY]="Spotify"
   [REDDIT]="Reddit"
+  [DISNEY_PLUS]="Disney+"
   [REDDIT_GUEST_ACCESS]="Reddit (Guest Access)"
   [YOUTUBE_PREMIUM]="YouTube Premium"
   [GOOGLE_SEARCH_CAPTCHA]="Google Search Captcha"
   [SPOTIFY_SIGNUP]="Spotify Signup"
+  [DISNEY_PLUS_ACCESS]="Disney+ Access"
   [APPLE]="Apple"
   [STEAM]="Steam"
   [TIKTOK]="Tiktok"
@@ -146,10 +150,12 @@ CUSTOM_SERVICES_ORDER=(
   "NETFLIX"
   "SPOTIFY"
   "REDDIT"
+  "DISNEY_PLUS"
   "REDDIT_GUEST_ACCESS"
   "YOUTUBE_PREMIUM"
   "GOOGLE_SEARCH_CAPTCHA"
   "SPOTIFY_SIGNUP"
+  "DISNEY_PLUS_ACCESS"
   "APPLE"
   "STEAM"
   "TIKTOK"
@@ -167,10 +173,12 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [NETFLIX]="lookup_netflix"
   [SPOTIFY]="lookup_spotify"
   [REDDIT]="lookup_reddit"
+  [DISNEY_PLUS]="lookup_disney_plus"
   [REDDIT_GUEST_ACCESS]="lookup_reddit_guest_access"
   [YOUTUBE_PREMIUM]="lookup_youtube_premium"
   [GOOGLE_SEARCH_CAPTCHA]="lookup_google_search_captcha"
   [SPOTIFY_SIGNUP]="lookup_spotify_signup"
+  [DISNEY_PLUS_ACCESS]="lookup_disney_plus_access"
   [APPLE]="lookup_apple"
   [STEAM]="lookup_steam"
   [TIKTOK]="lookup_tiktok"
@@ -1703,6 +1711,18 @@ lookup_reddit() {
   process_json "$response" ".data.userLocation.countryCode"
 }
 
+lookup_disney_plus() {
+  local ip_version="$1"
+  local response
+
+  response=$(make_request POST "https://disney.api.edge.bamgrid.com/graph/v1/device/graphql" \
+    --header "Authorization: Bearer $DISNEY_PLUS_API_KEY" \
+    --json "$DISNEY_PLUS_JSON_BODY" \
+    --ip-version "$ip_version")
+
+  process_json "$response" ".extensions.sdk.session.location.countryCode"
+}
+
 lookup_reddit_guest_access() {
   local ip_version="$1"
   local response is_available color_name
@@ -1794,6 +1814,29 @@ lookup_spotify_signup() {
   fi
 
   print_value_or_colored "$available" "$color_name"
+}
+
+lookup_disney_plus_access() {
+  local ip_version="$1"
+  local response errors_count in_supported_location is_available color_name
+
+  response=$(make_request POST "https://disney.api.edge.bamgrid.com/graph/v1/device/graphql" \
+    --header "Authorization: Bearer $DISNEY_PLUS_API_KEY" \
+    --json "$DISNEY_PLUS_JSON_BODY" \
+    --ip-version "$ip_version")
+
+  errors_count=$(process_json "$response" ".errors | length")
+  in_supported_location=$(process_json "$response" ".extensions.sdk.session.inSupportedLocation")
+
+  if [[ "$errors_count" == "0" && "$in_supported_location" == "true" ]]; then
+    is_available="Yes"
+    color_name="SERVICE"
+  else
+    is_available="No"
+    color_name="HEART"
+  fi
+
+  print_value_or_colored "$is_available" "$color_name"
 }
 
 lookup_apple() {
