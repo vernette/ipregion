@@ -823,6 +823,30 @@ check_ip_support() {
   fi
 }
 
+ipv4_enabled() {
+  [[ "$IPV6_ONLY" != true ]] && [[ "$IPV4_SUPPORTED" -eq 0 ]]
+}
+
+ipv6_enabled() {
+  [[ "$IPV4_ONLY" != true ]] && [[ "$IPV6_SUPPORTED" -eq 0 ]]
+}
+
+can_use_ipv4() {
+  ipv4_enabled && [[ -n "$EXTERNAL_IPV4" ]]
+}
+
+can_use_ipv6() {
+  ipv6_enabled && [[ "$IPV6_SUPPORTED" -eq 0 ]] && [[ -n "$EXTERNAL_IPV6" ]]
+}
+
+preferred_ip_version() {
+  can_use_ipv4 && echo 4 || echo 6
+}
+
+preferred_ip() {
+  can_use_ipv4 && echo "$EXTERNAL_IPV4" || echo "$EXTERNAL_IPV6"
+}
+
 shuffle_identity_services() {
   local i tmp size rand_idx
   size=${#IDENTITY_SERVICES[@]}
@@ -875,16 +899,16 @@ fetch_external_ip() {
 }
 
 discover_external_ips() {
-  if [[ "$IPV4_ONLY" == true ]] || [[ "$IPV6_ONLY" != true ]]; then
+  if ipv4_enabled; then
     EXTERNAL_IPV4=$(fetch_external_ip 4)
   fi
 
-  if [[ "$IPV6_ONLY" == true ]] || { [[ "$IPV6_SUPPORTED" -eq 0 ]] && [[ "$IPV4_ONLY" != true ]]; }; then
+  if ipv6_enabled; then
     EXTERNAL_IPV6=$(fetch_external_ip 6)
   fi
 
   if [[ -z "$EXTERNAL_IPV4" ]] && [[ -z "$EXTERNAL_IPV6" ]]; then
-    error_exit "Failed to obtain external IPv4 or IPv6 address"
+    error_exit "Failed to obtain external IPv4 and IPv6 address"
   fi
 }
 
@@ -892,13 +916,8 @@ get_asn() {
   local ipbase_api_key="sgiPfh4j3aXFR3l2CnjWqdKQzxpqGn9pX5b3CUsz"
   local ip ip_version response connection_data
 
-  if [[ -n "$EXTERNAL_IPV4" ]]; then
-    ip="$EXTERNAL_IPV4"
-    ip_version=4
-  else
-    ip="$EXTERNAL_IPV6"
-    ip_version=6
-  fi
+  ip="$(preferred_ip)"
+  ip_version="$(preferred_ip_version)"
 
   spinner_update "ASN info"
   log "$LOG_INFO" "Getting ASN info for IP $ip"
@@ -928,13 +947,14 @@ get_iata_location() {
   local payload="iata=$iata_code"
   local apc_auth="96dc04b3fb"
   local referer="https://www.air-port-codes.com/"
+  local ip_version=4
   local response
 
   response=$(make_request POST "$url" \
     --header "APC-Auth: $apc_auth" \
     --header "Referer: $referer" \
     --data "$payload" \
-    --ip-version 4)
+    --ip-version "$ip_version")
 
   process_json "$response" ".airport.country.iso"
 }
@@ -1475,11 +1495,11 @@ print_table_group() {
   local show_ipv6=0
   local separator=$'\t'
 
-  if [[ "$IPV6_ONLY" != true && -n "$EXTERNAL_IPV4" ]]; then
+  if can_use_ipv4; then
     show_ipv4=1
   fi
 
-  if [[ "$IPV4_ONLY" != true && -n "$EXTERNAL_IPV6" ]]; then
+  if can_use_ipv6; then
     show_ipv6=1
   fi
 
@@ -1609,11 +1629,7 @@ lookup_iplocation_com() {
   local ip_version="$1"
   local response ip
 
-  if [[ -n "$EXTERNAL_IPV4" ]]; then
-    ip="$EXTERNAL_IPV4"
-  else
-    ip="$EXTERNAL_IPV6"
-  fi
+  ip="$(preferred_ip)"
 
   response=$(make_request POST "https://iplocation.com" --ip-version "$ip_version" --user-agent "$USER_AGENT" --data "ip=$ip")
   process_json "$response" ".country_code"
@@ -1944,11 +1960,15 @@ main() {
     spinner_start
   fi
 
-  check_ip_support 4
-  IPV4_SUPPORTED=$?
+  if ipv4_enabled; then
+    check_ip_support 4
+    IPV4_SUPPORTED=$?
+  fi
 
-  check_ip_support 6
-  IPV6_SUPPORTED=$?
+  if ipv6_enabled; then
+    check_ip_support 6
+    IPV6_SUPPORTED=$?
+  fi
 
   discover_external_ips
   get_asn
