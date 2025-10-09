@@ -1,6 +1,6 @@
 # ipregion
 
-[![asciicast](https://asciinema.org/a/8KYmEbSHlzhO8HsE75MJXh4Yc.svg)](https://asciinema.org/a/8KYmEbSHlzhO8HsE75MJXh4Yc)
+[![asciicast](https://asciinema.org/a/i92ClDWxWOFRlkIglRwAP43rI.svg)](https://asciinema.org/a/i92ClDWxWOFRlkIglRwAP43rI)
 
 ## Features
 
