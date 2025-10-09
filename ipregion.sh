@@ -1258,17 +1258,67 @@ process_response() {
   process_json "$response" "$jq_filter"
 }
 
+process_with_custom_handler() {
+  local service="$1"
+  local display_name="$2"
+  local handler_func="${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}"
+  local ipv4_result=""
+  local ipv6_result=""
+
+  if can_use_ipv4; then
+    log "$LOG_INFO" "Checking $display_name via IPv4 (custom handler)"
+    ipv4_result=$("$handler_func" 4 4)
+  fi
+
+  if can_use_ipv6; then
+    local transport=6
+    local log_msg="Checking $display_name via IPv6 (custom handler)"
+
+    if is_ipv6_over_ipv4_service "$service"; then
+      transport=4
+      log_msg="Checking $display_name (IPv6 address, IPv4 transport) (custom handler)"
+    fi
+
+    log "$LOG_INFO" "$log_msg"
+    ipv6_result=$("$handler_func" "$transport" 6)
+  fi
+
+  add_result "primary" "$display_name" "$ipv4_result" "$ipv6_result"
+}
+
+process_with_probe() {
+  local service="$1"
+  local display_name="$2"
+  local ipv4_result=""
+  local ipv6_result=""
+
+  if can_use_ipv4; then
+    log "$LOG_INFO" "Checking $display_name via IPv4"
+    ipv4_result=$(probe_service "$service" 4 "$EXTERNAL_IPV4")
+  fi
+
+  if can_use_ipv6; then
+    local log_msg="Checking $display_name via IPv6"
+
+    if is_ipv6_over_ipv4_service "$service"; then
+      log_msg="Checking $display_name (IPv6 address, IPv4 transport)"
+    fi
+
+    log "$LOG_INFO" "$log_msg"
+    ipv6_result=$(probe_service "$service" 6 "$EXTERNAL_IPV6")
+  fi
+
+  add_result "primary" "$display_name" "$ipv4_result" "$ipv6_result"
+}
+
 process_service() {
   local service="$1"
   local custom="${2:-false}"
   local service_config="${PRIMARY_SERVICES[$service]}"
-  local display_name domain url_template response_format ipv4_result ipv6_result handler_func
+  local display_name domain url_template response_format handler_func
 
   IFS='|' read -r display_name domain url_template response_format <<<"$service_config"
-
-  if [[ -z "$display_name" ]]; then
-    display_name="$service"
-  fi
+  display_name="${display_name:-$service}"
 
   spinner_update "$display_name"
 
@@ -1278,47 +1328,17 @@ process_service() {
   fi
 
   if [[ -n "${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}" ]]; then
-    handler_func="${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}"
-
-    log "$LOG_INFO" "Checking $display_name via IPv4 (custom handler)"
-
-    ipv4_result=$("$handler_func" 4)
-
-    if [[ "$IPV6_ONLY" == true ]] || { [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]] && [[ "$IPV4_ONLY" != true ]]; }; then
-      log "$LOG_INFO" "Checking $display_name via IPv6 (custom handler)"
-      ipv6_result=$("$handler_func" 6)
-    else
-      ipv6_result=""
-    fi
-
-    add_result "primary" "$display_name" "$ipv4_result" "$ipv6_result"
+    process_with_custom_handler "$service" "$display_name"
     return
   fi
 
-  if [[ "$IPV6_ONLY" != true ]]; then
-    if [[ -n "$EXTERNAL_IPV4" ]]; then
-      log "$LOG_INFO" "Checking $display_name via IPv4"
-      ipv4_result=$(probe_service "$service" 4 "$EXTERNAL_IPV4")
-    fi
-  fi
-
-  if [[ "$IPV4_ONLY" != true ]]; then
-    if [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
-      if is_ipv6_over_ipv4_service "$service"; then
-        log "$LOG_INFO" "Checking $display_name (IPv6 address, IPv4 transport)"
-      else
-        log "$LOG_INFO" "Checking $display_name via IPv6"
-      fi
-      ipv6_result=$(probe_service "$service" 6 "$EXTERNAL_IPV6")
-    fi
-  fi
-
-  add_result "primary" "$display_name" "$ipv4_result" "$ipv6_result"
+  process_with_probe "$service" "$display_name"
 }
 
 process_custom_service() {
   local service="$1"
-  local ipv4_result ipv6_result
+  local ipv4_result=""
+  local ipv6_result=""
   local display_name handler_func group
 
   if [[ -n "${CUSTOM_SERVICES[$service]}" ]]; then
@@ -1342,18 +1362,14 @@ process_custom_service() {
     return
   fi
 
-  if [[ "$IPV6_ONLY" != true ]]; then
+  if can_use_ipv4; then
     log "$LOG_INFO" "Checking $display_name via IPv4"
     ipv4_result=$("$handler_func" 4)
-  else
-    ipv4_result=""
   fi
 
-  if [[ "$IPV4_ONLY" != true ]] && [[ "$IPV6_SUPPORTED" -eq 0 && -n "$EXTERNAL_IPV6" ]]; then
+  if can_use_ipv6; then
     log "$LOG_INFO" "Checking $display_name via IPv6"
     ipv6_result=$("$handler_func" 6)
-  else
-    ipv6_result=""
   fi
 
   add_result "$group" "$display_name" "$ipv4_result" "$ipv6_result"
