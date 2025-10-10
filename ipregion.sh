@@ -761,18 +761,20 @@ check_ip_connectivity() {
   local test_hosts_v6=("2001:4860:4860::8888" "2001:4860:4860::8844" "2606:4700:4700::1111" "2606:4700:4700::1001" "2620:fe::9")
   local timeout=3
   local count=1
-  local test_hosts
+  local test_hosts ping_cmd
 
   log "$LOG_INFO" "Checking IPv${version} connectivity"
 
   if [[ "$version" == "4" ]]; then
     test_hosts=("${test_hosts_v4[@]}")
+    ping_cmd="ping"
   else
     test_hosts=("${test_hosts_v6[@]}")
+    ping_cmd="ping6"
   fi
 
   for host in "${test_hosts[@]}"; do
-    if ping -"${version}" -c "$count" -W "$timeout" "$host" >/dev/null 2>&1; then
+    if "$ping_cmd" -c "$count" -W "$timeout" "$host" >/dev/null 2>&1; then
       log "$LOG_INFO" "IPv${version} connectivity confirmed via $host"
       return 0
     fi
