@@ -2,19 +2,6 @@
 
 [![asciicast](https://asciinema.org/a/i92ClDWxWOFRlkIglRwAP43rI.svg)](https://asciinema.org/a/i92ClDWxWOFRlkIglRwAP43rI)
 
-## Features
-
-- Multiple GeoIP APIs and web services (YouTube, Netflix, ChatGPT, Spotify, etc.)
-- IPv4/IPv6 support with SOCKS5 proxy and custom network interface
-- JSON output and color-coded tables
-
-## Dependencies
-
-- bash
-- curl
-- jq
-- util-linux/bsdmainutils
-
 ## Usage
 
 Download and run locally:
@@ -29,6 +16,18 @@ Or run directly from GitHub:
 ```bash
 bash <(wget -qO- https://ipregion.vrnt.xyz)
 ```
+## Features
+
+- Multiple GeoIP APIs and web services (YouTube, Netflix, ChatGPT, Spotify, etc.)
+- IPv4/IPv6 support with SOCKS5 proxy and custom network interface
+- JSON output and color-coded tables
+
+## Dependencies
+
+- bash
+- curl
+- jq
+- util-linux/bsdmainutils
 
 ## Key Options
 
