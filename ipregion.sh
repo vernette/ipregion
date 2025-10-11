@@ -1101,13 +1101,11 @@ curl_wrapper() {
   fi
 
   if [[ -n "$json" ]]; then
-    curl_args+=(--data "$json")
-    curl_args+=(-H 'Content-Type: application/json')
+    curl_args+=(--json "$json")
   fi
 
   if [[ -n "$data" ]]; then
     curl_args+=(--data "$data")
-    curl_args+=(-H 'Content-Type: application/x-www-form-urlencoded')
   fi
 
   if [[ -n "$file" ]]; then
