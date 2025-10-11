@@ -363,7 +363,7 @@ extract_debug_url() {
 upload_debug() {
   local ip_version=4
   local response
-  response=$(make_request POST "https://bashupload.com" --file "$DEBUG_LOG_FILE" --ip-version "$ip_version")
+  response=$(curl_wrapper POST "https://bashupload.com" --file "$DEBUG_LOG_FILE" --ip-version "$ip_version")
   extract_debug_url "$response"
 }
 
@@ -873,7 +873,7 @@ fetch_ip_from_service() {
   local ip_version="$2"
   local response
 
-  response=$(make_request GET "https://$service" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "https://$service" --ip-version "$ip_version")
 
   if [[ -n "$response" ]]; then
     echo "$response"
@@ -928,7 +928,7 @@ get_asn() {
   spinner_update "ASN info"
   log "$LOG_INFO" "Getting ASN info for IP $ip"
 
-  response=$(make_request GET "https://api.ipbase.com/v2/info?apikey=$ipbase_api_key&ip=$ip" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "https://api.ipbase.com/v2/info?apikey=$ipbase_api_key&ip=$ip" --ip-version "$ip_version")
   connection_data=$(process_json "$response" ".data.connection")
   asn=$(process_json "$connection_data" ".asn")
   asn_name=$(process_json "$connection_data" ".organization")
@@ -940,7 +940,7 @@ get_registered_country() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://geoip.maxmind.com/geoip/v2.1/city/me" \
+  response=$(curl_wrapper GET "https://geoip.maxmind.com/geoip/v2.1/city/me" \
     --header "Referer: https://www.maxmind.com" \
     --ip-version "$ip_version")
 
@@ -956,7 +956,7 @@ get_iata_location() {
   local ip_version=4
   local response
 
-  response=$(make_request POST "$url" \
+  response=$(curl_wrapper POST "$url" \
     --header "APC-Auth: $apc_auth" \
     --header "Referer: $referer" \
     --data "$payload" \
@@ -1032,7 +1032,7 @@ spinner_cleanup() {
   exit 130
 }
 
-make_request() {
+curl_wrapper() {
   local method="$1"
   local url="$2"
   shift 2
@@ -1181,7 +1181,7 @@ probe_service() {
     ip_version="4"
   fi
 
-  response=$(make_request GET "$url" "${request_params[@]}" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "$url" "${request_params[@]}" --ip-version "$ip_version")
 
   process_response "$service" "$response" "$display_name" "$response_format"
 }
@@ -1653,7 +1653,7 @@ lookup_iplocation_com() {
 
   ip="$(preferred_ip)"
 
-  response=$(make_request POST "https://iplocation.com" --ip-version "$ip_version" --user-agent "$USER_AGENT" --data "ip=$ip")
+  response=$(curl_wrapper POST "https://iplocation.com" --ip-version "$ip_version" --user-agent "$USER_AGENT" --data "ip=$ip")
   process_json "$response" ".country_code"
 }
 
@@ -1661,7 +1661,7 @@ lookup_google() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://www.google.com" \
+  response=$(curl_wrapper GET "https://www.google.com" \
     --user-agent "$USER_AGENT" \
     --ip-version "$ip_version")
 
@@ -1672,7 +1672,7 @@ lookup_youtube() {
   local ip_version="$1"
   local response json_result
 
-  response=$(make_request GET "https://www.youtube.com/sw.js_data" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "https://www.youtube.com/sw.js_data" --ip-version "$ip_version")
 
   json_result=$(tail -n +3 <<<"$response")
   process_json "$json_result" ".[0][2][0][0][1]"
@@ -1682,7 +1682,7 @@ lookup_twitch() {
   local ip_version="$1"
   local response
 
-  response=$(make_request POST "https://gql.twitch.tv/gql" \
+  response=$(curl_wrapper POST "https://gql.twitch.tv/gql" \
     --header "Client-Id: $TWITCH_CLIENT_ID" \
     --json '[{"operationName":"VerifyEmail_CurrentUser","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f9e7dcdf7e99c314c82d8f7f725fab5f99d1df3d7359b53c9ae122deec590198"}}}]' \
     --ip-version "$ip_version")
@@ -1693,7 +1693,7 @@ lookup_chatgpt() {
   local ip_version="$1"
   local response
 
-  response=$(make_request POST "https://ab.chatgpt.com/v1/initialize" --ip-version "$ip_version" \
+  response=$(curl_wrapper POST "https://ab.chatgpt.com/v1/initialize" --ip-version "$ip_version" \
     --header "Statsig-Api-Key: $CHATGPT_STATSIG_API_KEY")
   process_json "$response" ".derived_fields.country"
 }
@@ -1702,7 +1702,7 @@ lookup_netflix() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=$NETFLIX_API_KEY&urlCount=1" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=$NETFLIX_API_KEY&urlCount=1" --ip-version "$ip_version")
 
   if is_valid_json "$response"; then
     process_json "$response" ".client.location.country"
@@ -1716,7 +1716,7 @@ lookup_spotify() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=$SPOTIFY_API_KEY" \
+  response=$(curl_wrapper GET "https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=$SPOTIFY_API_KEY" \
     --header "X-Client-Id: $SPOTIFY_CLIENT_ID" \
     --ip-version "$ip_version")
 
@@ -1729,7 +1729,7 @@ lookup_reddit() {
   local user_agent="Reddit/Version 2025.29.0/Build 2529021/Android 13"
   local response access_token
 
-  response=$(make_request POST "https://www.reddit.com/auth/v2/oauth/access-token/loid" \
+  response=$(curl_wrapper POST "https://www.reddit.com/auth/v2/oauth/access-token/loid" \
     --ip-version "$ip_version" \
     --user-agent "$user_agent" \
     --header "Authorization: $basic_access_token" \
@@ -1737,7 +1737,7 @@ lookup_reddit() {
 
   access_token=$(process_json "$response" ".access_token")
 
-  response=$(make_request POST "https://gql-fed.reddit.com" \
+  response=$(curl_wrapper POST "https://gql-fed.reddit.com" \
     --ip-version "$ip_version" \
     --user-agent "$user_agent" \
     --header "Authorization: Bearer $access_token" \
@@ -1750,7 +1750,7 @@ lookup_disney_plus() {
   local ip_version="$1"
   local response
 
-  response=$(make_request POST "https://disney.api.edge.bamgrid.com/graph/v1/device/graphql" \
+  response=$(curl_wrapper POST "https://disney.api.edge.bamgrid.com/graph/v1/device/graphql" \
     --header "Authorization: Bearer $DISNEY_PLUS_API_KEY" \
     --json "$DISNEY_PLUS_JSON_BODY" \
     --ip-version "$ip_version")
@@ -1762,7 +1762,7 @@ lookup_reddit_guest_access() {
   local ip_version="$1"
   local response is_available color_name
 
-  response=$(make_request GET "https://www.reddit.com" --ip-version "$ip_version" --user-agent "$USER_AGENT")
+  response=$(curl_wrapper GET "https://www.reddit.com" --ip-version "$ip_version" --user-agent "$USER_AGENT")
 
   if [[ "$response" != "Denied" ]]; then
     is_available="Yes"
@@ -1779,7 +1779,7 @@ lookup_youtube_premium() {
   local ip_version="$1"
   local response is_available
 
-  response=$(make_request GET "https://www.youtube.com/premium" \
+  response=$(curl_wrapper GET "https://www.youtube.com/premium" \
     --ip-version "$ip_version" \
     --user-agent "$USER_AGENT" \
     --header "Cookie: SOCS=$YOUTUBE_SOCS_COOKIE" \
@@ -1807,7 +1807,7 @@ lookup_google_search_captcha() {
   local ip_version="$1"
   local response is_captcha color_name
 
-  response=$(make_request GET "https://www.google.com/search?q=cats" --ip-version "$ip_version" \
+  response=$(curl_wrapper GET "https://www.google.com/search?q=cats" --ip-version "$ip_version" \
     --user-agent "$USER_AGENT" \
     --header "Accept-Language: en-US,en;q=0.9")
 
@@ -1833,7 +1833,7 @@ lookup_spotify_signup() {
   local ip_version="$1"
   local response status is_country_launched available color_name
 
-  response=$(make_request GET "https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=$SPOTIFY_API_KEY" \
+  response=$(curl_wrapper GET "https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=$SPOTIFY_API_KEY" \
     --header "X-Client-Id: $SPOTIFY_CLIENT_ID" \
     --ip-version "$ip_version")
 
@@ -1855,7 +1855,7 @@ lookup_disney_plus_access() {
   local ip_version="$1"
   local response errors_count in_supported_location is_available color_name
 
-  response=$(make_request POST "https://disney.api.edge.bamgrid.com/graph/v1/device/graphql" \
+  response=$(curl_wrapper POST "https://disney.api.edge.bamgrid.com/graph/v1/device/graphql" \
     --header "Authorization: Bearer $DISNEY_PLUS_API_KEY" \
     --json "$DISNEY_PLUS_JSON_BODY" \
     --ip-version "$ip_version")
@@ -1876,14 +1876,14 @@ lookup_disney_plus_access() {
 
 lookup_apple() {
   local ip_version="$1"
-  make_request GET "https://gspe1-ssl.ls.apple.com/pep/gcc" --ip-version "$ip_version"
+  curl_wrapper GET "https://gspe1-ssl.ls.apple.com/pep/gcc" --ip-version "$ip_version"
 }
 
 lookup_steam() {
   local ip_version="$1"
   local response
 
-  response=$(make_request HEAD "https://store.steampowered.com" --ip-version "$ip_version")
+  response=$(curl_wrapper HEAD "https://store.steampowered.com" --ip-version "$ip_version")
   grep_wrapper --perl 'steamCountry=\K[^%;]*' <<<"$response"
 }
 
@@ -1891,7 +1891,7 @@ lookup_tiktok() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://www.tiktok.com/api/v1/web-cookie-privacy/config?appId=1988" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "https://www.tiktok.com/api/v1/web-cookie-privacy/config?appId=1988" --ip-version "$ip_version")
   process_json "$response" ".body.appProps.region"
 }
 
@@ -1899,7 +1899,7 @@ lookup_cloudflare_cdn() {
   local ip_version="$1"
   local response iata location
 
-  response=$(make_request GET "https://speed.cloudflare.com/meta" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "https://speed.cloudflare.com/meta" --ip-version "$ip_version")
 
   iata=$(process_json "$response" ".colo")
   location=$(get_iata_location "$iata")
@@ -1910,7 +1910,7 @@ lookup_youtube_cdn() {
   local ip_version="$1"
   local response iata location
 
-  response=$(make_request GET "https://redirector.googlevideo.com/report_mapping?di=no" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "https://redirector.googlevideo.com/report_mapping?di=no" --ip-version "$ip_version")
   iata=$(echo "$response" | awk '{print $3}' | cut -f2 -d'-' | cut -c1-3)
   iata=${iata^^}
 
@@ -1927,7 +1927,7 @@ lookup_netflix_cdn() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=$NETFLIX_API_KEY&urlCount=1" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=$NETFLIX_API_KEY&urlCount=1" --ip-version "$ip_version")
 
   if is_valid_json "$response"; then
     process_json "$response" ".targets[0].location.country"
@@ -1940,7 +1940,7 @@ lookup_ookla_speedtest() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://www.speedtest.net/api/js/config-sdk" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "https://www.speedtest.net/api/js/config-sdk" --ip-version "$ip_version")
   process_json "$response" ".location.countryCode"
 }
 
@@ -1948,7 +1948,7 @@ lookup_jetbrains() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://data.services.jetbrains.com/geo" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "https://data.services.jetbrains.com/geo" --ip-version "$ip_version")
   process_json "$response" ".code"
 }
 
@@ -1956,7 +1956,7 @@ lookup_playstation() {
   local ip_version="$1"
   local response
 
-  response=$(make_request HEAD "https://www.playstation.com" --ip-version "$ip_version")
+  response=$(curl_wrapper HEAD "https://www.playstation.com" --ip-version "$ip_version")
   grep_wrapper --perl 'country=\K[^;]*' <<<"$response" | head -n1
 }
 
@@ -1964,7 +1964,7 @@ lookup_microsoft() {
   local ip_version="$1"
   local response
 
-  response=$(make_request GET "https://login.live.com" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "https://login.live.com" --ip-version "$ip_version")
   grep_wrapper --perl '"sRequestCountry":"\K[^"]*' <<<"$response"
 }
 
