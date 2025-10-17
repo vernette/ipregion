@@ -303,7 +303,7 @@ IPRegion — determines your IP geolocation using various GeoIP services and pop
 Options:
   -h, --help           Show this help message and exit
   -v, --verbose        Enable verbose logging
-  -d, --debug          Enable full debug trace and save full trace to file and upload it to bashupload.com
+  -d, --debug          Enable full debug trace and save full trace to file and upload it to 0x0.st
   -j, --json           Output results in JSON format
   -g, --group GROUP    Run only one group: 'primary', 'custom', 'cdn', or 'all' (default: all)
   -t, --timeout SEC    Set curl request timeout in seconds (default: $CURL_TIMEOUT)
@@ -323,7 +323,7 @@ Examples:
   $0 -i eth1               # Use network interface eth1
   $0 -j                    # Output result as JSON
   $0 -v                    # Enable verbose logging
-  $0 -d                    # Enable debug and save full trace to file and upload it to bashupload.com
+  $0 -d                    # Enable debug and save full trace to file and upload it to 0x0.st
 
 EOF
 }
@@ -353,18 +353,16 @@ grep_wrapper() {
   grep "${grep_args[@]}" "$@"
 }
 
-extract_debug_url() {
-  local response="$1"
-  url=$(grep_wrapper bashupload.com <<<"$response")
-  url=${url##* }
-  echo "$url"
-}
-
 upload_debug() {
   local ip_version=4
-  local response
-  response=$(curl_wrapper POST "https://bashupload.com" --file "$DEBUG_LOG_FILE" --ip-version "$ip_version")
-  extract_debug_url "$response"
+  local user_agent="ipregion-script/1.0 (github.com/vernette/ipregion)"
+
+  curl_wrapper POST "https://0x0.st" \
+    --user-agent "$user_agent" \
+    --form "file=@$DEBUG_LOG_FILE" \
+    --form "secret=" \
+    --form "expires=24" \
+    --ip-version "$ip_version"
 }
 
 cleanup_debug() {
@@ -379,10 +377,12 @@ cleanup_debug() {
 
   debug_url="$(upload_debug)"
 
-  printf "\n%s\n  %s\n  %s\n\n%s\n" \
+  printf "\n%s\n  %s\n  %s\n\n%s\n%s\n\n%s\n" \
     "$(color WARN 'Debug information:')" \
     "Local file: $DEBUG_LOG_FILE" \
     "Remote URL: $debug_url" \
+    "$(color INFO 'PRIVACY NOTICE: This file is uploaded to 0x0.st - a public file hoster.')" \
+    "$(color INFO 'The file will be automatically deleted in 24 hours.')" \
     "$(color INFO 'If you open a GitHub Issue, please download the log and attach it')"
 }
 
@@ -1036,7 +1036,7 @@ curl_wrapper() {
   local method="$1"
   local url="$2"
   shift 2
-  local ip_version user_agent json data file headers response_with_code response http_code
+  local ip_version user_agent json data file forms headers response_with_code response http_code
   local curl_args=(
     --silent
     --compressed
@@ -1083,6 +1083,10 @@ curl_wrapper() {
         file="$2"
         shift 2
         ;;
+      --form)
+        forms+=("$2")
+        shift 2
+        ;;
     esac
   done
 
@@ -1111,6 +1115,10 @@ curl_wrapper() {
   if [[ -n "$file" ]]; then
     curl_args+=(--upload-file "$file")
   fi
+
+  for f in "${forms[@]}"; do
+    curl_args+=(-F "$f")
+  done
 
   if [[ -n "$PROXY_ADDR" ]]; then
     curl_args+=(--proxy "socks5://$PROXY_ADDR")
