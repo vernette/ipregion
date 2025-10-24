@@ -741,6 +741,30 @@ status_from_http_code() {
   esac
 }
 
+get_ping_command() {
+  local version="$1"
+  local ping_cmd
+
+  if [[ "$version" == "4" ]]; then
+    if is_command_available "ping"; then
+      ping_cmd="ping"
+    fi
+  else
+    if is_command_available "ping6"; then
+      ping_cmd="ping6"
+    elif is_command_available "ping"; then
+      ping_cmd="ping -6"
+    fi
+  fi
+
+  if [[ -n "$ping_cmd" ]]; then
+    echo "$ping_cmd"
+    return 0
+  else
+    return 1
+  fi
+}
+
 check_ip_interfaces() {
   local version="$1"
 
@@ -765,12 +789,17 @@ check_ip_connectivity() {
 
   log "$LOG_INFO" "Checking IPv${version} connectivity"
 
+  ping_cmd=$(get_ping_command "$version")
+
+  if [[ -z "$ping_cmd" ]]; then
+    log "$LOG_ERROR" "Ping command for IPv${version} is not available"
+    return 1
+  fi
+
   if [[ "$version" == "4" ]]; then
     test_hosts=("${test_hosts_v4[@]}")
-    ping_cmd="ping"
   else
     test_hosts=("${test_hosts_v6[@]}")
-    ping_cmd="ping6"
   fi
 
   for host in "${test_hosts[@]}"; do
