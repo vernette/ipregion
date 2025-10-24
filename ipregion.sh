@@ -789,9 +789,9 @@ check_ip_connectivity() {
 
   log "$LOG_INFO" "Checking IPv${version} connectivity"
 
-  ping_cmd=$(get_ping_command "$version")
+  ping_cmd=($(get_ping_command "$version"))
 
-  if [[ -z "$ping_cmd" ]]; then
+  if [[ ${#ping_cmd[@]} -eq 0 ]]; then
     log "$LOG_ERROR" "Ping command for IPv${version} is not available"
     return 1
   fi
@@ -803,7 +803,7 @@ check_ip_connectivity() {
   fi
 
   for host in "${test_hosts[@]}"; do
-    if "$ping_cmd" -c "$count" -W "$timeout" "$host" >/dev/null 2>&1; then
+    if "${ping_cmd[@]}" -c "$count" -W "$timeout" "$host" >/dev/null 2>&1; then
       log "$LOG_INFO" "IPv${version} connectivity confirmed via $host"
       return 0
     fi
