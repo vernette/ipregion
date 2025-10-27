@@ -1,6 +1,6 @@
 # ipregion
 
-[![asciicast](https://asciinema.org/a/i92ClDWxWOFRlkIglRwAP43rI.svg)](https://asciinema.org/a/i92ClDWxWOFRlkIglRwAP43rI)
+![image](https://i.imgur.com/CRxBuVR.gif)
 
 ## Usage
 
