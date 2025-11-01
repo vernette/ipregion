@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+SCRIPT_NAME="ipregion.sh"
 SCRIPT_URL="https://github.com/vernette/ipregion"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
@@ -18,7 +19,7 @@ DISNEY_PLUS_JSON_BODY='{"query":"\n     mutation registerDevice($registerDevice:
 VERBOSE=false
 JSON_OUTPUT=false
 GROUPS_TO_SHOW="all"
-CURL_TIMEOUT=10
+CURL_TIMEOUT=5
 CURL_RETRIES=1
 IPV4_ONLY=false
 IPV6_ONLY=false
@@ -296,7 +297,7 @@ error_exit() {
 display_help() {
   cat <<EOF
 
-Usage: $0 [OPTIONS]
+Usage: $SCRIPT_NAME [OPTIONS]
 
 IPRegion — determines your IP geolocation using various GeoIP services and popular websites
 
@@ -313,17 +314,17 @@ Options:
   -i, --interface IF   Use specified network interface (e.g. eth1)
 
 Examples:
-  $0                       # Check all services with default settings
-  $0 -g primary            # Check only GeoIP services
-  $0 -g custom             # Check only popular websites
-  $0 -g cdn                # Check only CDN endpoints
-  $0 -4                    # Test only IPv4
-  $0 -6                    # Test only IPv6
-  $0 -p 127.0.0.1:1080     # Use SOCKS5 proxy
-  $0 -i eth1               # Use network interface eth1
-  $0 -j                    # Output result as JSON
-  $0 -v                    # Enable verbose logging
-  $0 -d                    # Enable debug and save full trace to file and upload it to 0x0.st
+  $SCRIPT_NAME                       # Check all services with default settings
+  $SCRIPT_NAME -g primary            # Check only GeoIP services
+  $SCRIPT_NAME -g custom             # Check only popular websites
+  $SCRIPT_NAME -g cdn                # Check only CDN endpoints
+  $SCRIPT_NAME -4                    # Test only IPv4
+  $SCRIPT_NAME -6                    # Test only IPv6
+  $SCRIPT_NAME -p 127.0.0.1:1080     # Use SOCKS5 proxy
+  $SCRIPT_NAME -i eth1               # Use network interface eth1
+  $SCRIPT_NAME -j                    # Output result as JSON
+  $SCRIPT_NAME -v                    # Enable verbose logging
+  $SCRIPT_NAME -d                    # Enable debug and save full trace to file and upload it to 0x0.st
 
 EOF
 }
