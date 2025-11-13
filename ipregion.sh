@@ -78,6 +78,7 @@ declare -A PRIMARY_SERVICES=(
   [IPAPI_CO]="ipapi.co|ipapi.co|/{ip}/json"
   [CLOUDFLARE]="cloudflare.com|speed.cloudflare.com|/meta"
   [IFCONFIG_CO]="ifconfig.co|ifconfig.co|/country-iso?ip={ip}|plain"
+  [IP2LOCATION_IO]="ip2location.io|api.ip2location.io|/?ip={ip}"
   [IPLOCATION_COM]="iplocation.com|iplocation.com"
   [COUNTRY_IS]="country.is|api.country.is|/{ip}"
   [GEOAPIFY_COM]="geoapify.com|api.geoapify.com|/v1/ipinfo?&ip={ip}&apiKey=b8568cb9afc64fad861a69edbddb2658"
@@ -97,6 +98,7 @@ PRIMARY_SERVICES_ORDER=(
   "IPREGISTRY"
   "IPAPI_CO"
   "IFCONFIG_CO"
+  "IP2LOCATION_IO"
   "IPLOCATION_COM"
   "COUNTRY_IS"
   "GEOAPIFY_COM"
@@ -226,6 +228,7 @@ IDENTITY_SERVICES=(
 IPV6_OVER_IPV4_SERVICES=(
   "IPINFO_IO"
   "IPAPI_IS"
+  "IP2LOCATION_IO"
   "IPLOCATION_COM"
   "IPWHO_IS"
   "IPAPI_COM"
@@ -1256,6 +1259,9 @@ process_response() {
     RIPE)
       jq_filter='.country'
       ;;
+    IP2LOCATION_IO)
+      jq_filter='.country_code'
+      ;;
     IPINFO_IO)
       jq_filter='.data.country'
       ;;
@@ -1661,6 +1667,10 @@ lookup_maxmind() {
 
 lookup_ripe() {
   process_service "RIPE"
+}
+
+lookup_ip2location_io() {
+  process_service "IP2LOCATION_IO"
 }
 
 lookup_ipinfo_io() {
