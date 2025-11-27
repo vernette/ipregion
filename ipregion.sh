@@ -951,19 +951,18 @@ discover_external_ips() {
 }
 
 get_asn() {
-  local ipbase_api_key="sgiPfh4j3aXFR3l2CnjWqdKQzxpqGn9pX5b3CUsz"
-  local ip ip_version response connection_data
-
-  ip="$(preferred_ip)"
-  ip_version="$(preferred_ip_version)"
+  local ip_version=4
+  local response traits
 
   spinner_update "ASN info"
   log "$LOG_INFO" "Getting ASN info for IP $ip"
 
-  response=$(curl_wrapper GET "https://api.ipbase.com/v2/info?apikey=$ipbase_api_key&ip=$ip" --ip-version "$ip_version")
-  connection_data=$(process_json "$response" ".data.connection")
-  asn=$(process_json "$connection_data" ".asn")
-  asn_name=$(process_json "$connection_data" ".organization")
+  response=$(curl_wrapper GET "https://geoip.maxmind.com/geoip/v2.1/city/me" \
+    --header "Referer: https://www.maxmind.com" \
+    --ip-version "$ip_version")
+  traits=$(process_json "$response" ".traits")
+  asn=$(process_json "$traits" ".autonomous_system_number")
+  asn_name=$(process_json "$traits" ".autonomous_system_organization")
 
   log "$LOG_INFO" "ASN info: AS$asn $asn_name"
 }
