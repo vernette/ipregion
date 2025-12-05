@@ -118,6 +118,7 @@ declare -A SERVICE_HEADERS=(
   [IPREGISTRY]="Origin: https://ipregistry.co"
   [MAXMIND]="Referer: https://www.maxmind.com"
   [IPAPI_COM]="Origin: https://ip-api.com"
+  [CLOUDFLARE]="Referer: https://speed.cloudflare.com"
 )
 
 declare -A CUSTOM_SERVICES=(
@@ -1943,7 +1944,9 @@ lookup_cloudflare_cdn() {
   local ip_version="$1"
   local response iata location
 
-  response=$(curl_wrapper GET "https://speed.cloudflare.com/meta" --ip-version "$ip_version")
+  response=$(curl_wrapper GET "https://speed.cloudflare.com/meta" \
+    --header "Referer: https://speed.cloudflare.com" \
+    --ip-version "$ip_version")
 
   iata=$(process_json "$response" ".colo")
   location=$(get_iata_location "$iata")
