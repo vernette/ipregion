@@ -1948,7 +1948,7 @@ lookup_cloudflare_cdn() {
     --header "Referer: https://speed.cloudflare.com" \
     --ip-version "$ip_version")
 
-  iata=$(process_json "$response" ".colo")
+  iata=$(process_json "$response" ".colo.iata")
   location=$(get_iata_location "$iata")
   echo "$location ($iata)"
 }
