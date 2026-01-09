@@ -142,6 +142,7 @@ declare -A CUSTOM_SERVICES=(
   [JETBRAINS]="JetBrains"
   [PLAYSTATION]="PlayStation"
   [MICROSOFT]="Microsoft"
+  [FUBO_TV]="FuboTV"
 )
 
 CUSTOM_SERVICES_ORDER=(
@@ -165,6 +166,7 @@ CUSTOM_SERVICES_ORDER=(
   "JETBRAINS"
   "PLAYSTATION"
   "MICROSOFT"
+  "FUBO_TV"
 )
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
@@ -191,6 +193,7 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [JETBRAINS]="lookup_jetbrains"
   [PLAYSTATION]="lookup_playstation"
   [MICROSOFT]="lookup_microsoft"
+  [FUBO_TV]="lookup_fubo_tv"
 )
 
 declare -A CDN_SERVICES=(
@@ -1543,6 +1546,14 @@ add_result() {
   ipv6=${ipv6//$'\n'/}
   ipv6=${ipv6//$'\t'/ }
 
+  # For FuboTV, we only store the status (Yes/No/N/A) in the JSON output, ignoring country_code and postal
+  if [[ "$service" == "FuboTV" && "$ipv4" =~ ^(.*)\|(.*)\|(.*)$ ]]; then
+    ipv4="${BASH_REMATCH[1]}"
+  fi
+  if [[ "$service" == "FuboTV" && "$ipv6" =~ ^(.*)\|(.*)\|(.*)$ ]]; then
+    ipv6="${BASH_REMATCH[1]}"
+  fi
+
   case "$group" in
     primary) ARR_PRIMARY+=("$service|||$ipv4|||$ipv6") ;;
     custom) ARR_CUSTOM+=("$service|||$ipv4|||$ipv6") ;;
@@ -1595,12 +1606,32 @@ print_table_group() {
         if [[ "$v4" == "null" || -z "$v4" ]]; then
           v4="$na"
         fi
+        if [[ "$s" == "FuboTV" && "$v4" =~ ^(.*)\|(.*)\|(.*)$ ]]; then
+          local status="${BASH_REMATCH[1]}"
+          local country_code="${BASH_REMATCH[2]}"
+          local postal="${BASH_REMATCH[3]}"
+          if [[ "$country_code" == "US" && "$postal" != "N/A" ]]; then
+            v4="$status ($country_code, $postal)"
+          else
+            v4="$status ($country_code)"
+          fi
+        fi
         printf "%s%s" "$separator" "$(format_value "$v4")"
       fi
 
       if [[ $show_ipv6 -eq 1 ]]; then
         if [[ "$v6" == "null" || -z "$v6" ]]; then
           v6="$na"
+        fi
+        if [[ "$s" == "FuboTV" && "$v6" =~ ^(.*)\|(.*)\|(.*)$ ]]; then
+          local status="${BASH_REMATCH[1]}"
+          local country_code="${BASH_REMATCH[2]}"
+          local postal="${BASH_REMATCH[3]}"
+          if [[ "$country_code" == "US" && "$postal" != "N/A" ]]; then
+            v6="$status ($country_code, $postal)"
+          else
+            v6="$status ($country_code)"
+          fi
         fi
         printf "%s%s" "$separator" "$(format_value "$v6")"
       fi
@@ -2013,6 +2044,52 @@ lookup_microsoft() {
 
   response=$(curl_wrapper GET "https://login.live.com" --ip-version "$ip_version")
   grep_wrapper --perl '"sRequestCountry":"\K[^"]*' <<<"$response"
+}
+
+lookup_fubo_tv() {
+  local ip_version="$1"
+  local response is_available color_name country_code postal
+
+  response=$(curl_wrapper GET "https://api.fubo.tv/v3/location" \
+    --ip-version "$ip_version" \
+    --user-agent "$USER_AGENT")
+
+  if [[ "$response" == "$STATUS_DENIED" || "$response" == "$STATUS_SERVER_ERROR" || "$response" == "$STATUS_RATE_LIMIT" ]]; then
+    is_available="No"
+    color_name="HEART"
+    country_code="N/A"
+    postal="N/A"
+  elif ! is_valid_json "$response"; then
+    is_available="N/A"
+    color_name="NULL"
+    country_code="N/A"
+    postal="N/A"
+  else
+    is_allowed=$(process_json "$response" ".network_allowed")
+    country_code=$(process_json "$response" ".country_code2 // \"N/A\"")
+    if [[ "$is_allowed" == "true" ]]; then
+      is_available="Yes"
+      color_name="SERVICE"
+    else
+      is_available="No"
+      color_name="HEART"
+    fi
+    if [[ "$country_code" == "US" ]]; then
+      postal=$(process_json "$response" ".postal // \"N/A\"")
+    else
+      postal="N/A"
+    fi
+  fi
+
+  if [[ "$JSON_OUTPUT" == true ]]; then
+    echo "$is_available|$country_code|$postal"
+  else
+    if [[ "$country_code" == "US" && "$postal" != "N/A" ]]; then
+      print_value_or_colored "$is_available ($country_code, $postal)" "$color_name"
+    else
+      print_value_or_colored "$is_available ($country_code)" "$color_name"
+    fi
+  fi
 }
 
 main() {
