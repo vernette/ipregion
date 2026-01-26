@@ -6,8 +6,6 @@ USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
 
-SPOTIFY_API_KEY="142b583129b2df829de3656f9eb484e6"
-SPOTIFY_CLIENT_ID="9a8d2f0ce77a4e248bb71fefcb557637"
 NETFLIX_API_KEY="YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm"
 TWITCH_CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
 CHATGPT_STATSIG_API_KEY="client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG"
@@ -127,13 +125,11 @@ declare -A CUSTOM_SERVICES=(
   [TWITCH]="Twitch"
   [CHATGPT]="ChatGPT"
   [NETFLIX]="Netflix"
-  [SPOTIFY]="Spotify"
   [REDDIT]="Reddit"
   [DISNEY_PLUS]="Disney+"
   [REDDIT_GUEST_ACCESS]="Reddit (Guest Access)"
   [YOUTUBE_PREMIUM]="YouTube Premium"
   [GOOGLE_SEARCH_CAPTCHA]="Google Search Captcha"
-  [SPOTIFY_SIGNUP]="Spotify Signup"
   [DISNEY_PLUS_ACCESS]="Disney+ Access"
   [APPLE]="Apple"
   [STEAM]="Steam"
@@ -150,13 +146,11 @@ CUSTOM_SERVICES_ORDER=(
   "TWITCH"
   "CHATGPT"
   "NETFLIX"
-  "SPOTIFY"
   "REDDIT"
   "DISNEY_PLUS"
   "REDDIT_GUEST_ACCESS"
   "YOUTUBE_PREMIUM"
   "GOOGLE_SEARCH_CAPTCHA"
-  "SPOTIFY_SIGNUP"
   "DISNEY_PLUS_ACCESS"
   "APPLE"
   "STEAM"
@@ -173,13 +167,11 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [TWITCH]="lookup_twitch"
   [CHATGPT]="lookup_chatgpt"
   [NETFLIX]="lookup_netflix"
-  [SPOTIFY]="lookup_spotify"
   [REDDIT]="lookup_reddit"
   [DISNEY_PLUS]="lookup_disney_plus"
   [REDDIT_GUEST_ACCESS]="lookup_reddit_guest_access"
   [YOUTUBE_PREMIUM]="lookup_youtube_premium"
   [GOOGLE_SEARCH_CAPTCHA]="lookup_google_search_captcha"
-  [SPOTIFY_SIGNUP]="lookup_spotify_signup"
   [DISNEY_PLUS_ACCESS]="lookup_disney_plus_access"
   [APPLE]="lookup_apple"
   [STEAM]="lookup_steam"
@@ -1823,17 +1815,6 @@ lookup_netflix() {
   echo "$response"
 }
 
-lookup_spotify() {
-  local ip_version="$1"
-  local response
-
-  response=$(curl_wrapper GET "https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=$SPOTIFY_API_KEY" \
-    --header "X-Client-Id: $SPOTIFY_CLIENT_ID" \
-    --ip-version "$ip_version")
-
-  process_json "$response" ".country"
-}
-
 lookup_reddit() {
   local ip_version="$1"
   local basic_access_token="Basic $REDDIT_BASIC_ACCESS_TOKEN"
@@ -1938,28 +1919,6 @@ lookup_google_search_captcha() {
   fi
 
   print_value_or_colored "$is_captcha" "$color_name"
-}
-
-lookup_spotify_signup() {
-  local ip_version="$1"
-  local response status is_country_launched available color_name
-
-  response=$(curl_wrapper GET "https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=$SPOTIFY_API_KEY" \
-    --header "X-Client-Id: $SPOTIFY_CLIENT_ID" \
-    --ip-version "$ip_version")
-
-  status=$(process_json "$response" ".status")
-  is_country_launched=$(process_json "$response" ".is_country_launched")
-
-  if [[ "$status" == "120" || "$status" == "320" || "$is_country_launched" == "false" ]]; then
-    available="No"
-    color_name="HEART"
-  else
-    available="Yes"
-    color_name="SERVICE"
-  fi
-
-  print_value_or_colored "$available" "$color_name"
 }
 
 lookup_disney_plus_access() {
