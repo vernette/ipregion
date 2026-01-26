@@ -50,7 +50,7 @@ docker run --rm --network=host vernette/ipregion:latest --interface eth1
 
 ## Features
 
-- Multiple GeoIP APIs and web services (YouTube, ChatGPT, Spotify, etc.)
+- Multiple GeoIP APIs and web services (YouTube, Spotify, etc.)
 - IPv4/IPv6 support with SOCKS5 proxy and custom network interface
 - JSON output and color-coded tables
 

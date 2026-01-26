@@ -6,7 +6,6 @@ USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
 
-CHATGPT_STATSIG_API_KEY="client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG"
 REDDIT_BASIC_ACCESS_TOKEN="b2hYcG9xclpZdWIxa2c6"
 YOUTUBE_SOCS_COOKIE="CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY"
 DISNEY_PLUS_API_KEY="ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
@@ -120,7 +119,6 @@ declare -A SERVICE_HEADERS=(
 declare -A CUSTOM_SERVICES=(
   [GOOGLE]="Google"
   [YOUTUBE]="YouTube"
-  [CHATGPT]="ChatGPT"
   [REDDIT]="Reddit"
   [DISNEY_PLUS]="Disney+"
   [REDDIT_GUEST_ACCESS]="Reddit (Guest Access)"
@@ -139,7 +137,6 @@ declare -A CUSTOM_SERVICES=(
 CUSTOM_SERVICES_ORDER=(
   "GOOGLE"
   "YOUTUBE"
-  "CHATGPT"
   "REDDIT"
   "DISNEY_PLUS"
   "REDDIT_GUEST_ACCESS"
@@ -158,7 +155,6 @@ CUSTOM_SERVICES_ORDER=(
 declare -A CUSTOM_SERVICES_HANDLERS=(
   [GOOGLE]="lookup_google"
   [YOUTUBE]="lookup_youtube"
-  [CHATGPT]="lookup_chatgpt"
   [REDDIT]="lookup_reddit"
   [DISNEY_PLUS]="lookup_disney_plus"
   [REDDIT_GUEST_ACCESS]="lookup_reddit_guest_access"
@@ -1768,15 +1764,6 @@ lookup_youtube() {
 
   json_result=$(tail -n +3 <<<"$response")
   process_json "$json_result" ".[0][2][0][0][1]"
-}
-
-lookup_chatgpt() {
-  local ip_version="$1"
-  local response
-
-  response=$(curl_wrapper POST "https://ab.chatgpt.com/v1/initialize" --ip-version "$ip_version" \
-    --header "Statsig-Api-Key: $CHATGPT_STATSIG_API_KEY")
-  process_json "$response" ".derived_fields.country"
 }
 
 lookup_reddit() {
