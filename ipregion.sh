@@ -660,7 +660,7 @@ is_valid_port() {
     return 1
   fi
 
-  ((port >= 1 && port <= 65535))
+  ((10#$port >= 1 && 10#$port <= 65535))
 }
 
 is_valid_proxy_addr() {
