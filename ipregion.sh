@@ -983,8 +983,12 @@ discover_external_ips() {
 }
 
 get_asn() {
-  local ip_version=4
+  local ip_version
+  local ip
   local response traits
+
+  ip_version=$(preferred_ip_version)
+  ip=$(preferred_ip)
 
   spinner_update "ASN info"
   log "$LOG_INFO" "Getting ASN info for IP $ip"

@@ -19,7 +19,7 @@ bash <(wget -qO- https://ipregion.vladon.sh)
 
 ## Features
 
-- Multiple GeoIP APIs and web services (YouTube, Spotify, etc.)
+- Multiple GeoIP APIs and web services (YouTube, Google, etc.)
 - IPv4/IPv6 support with SOCKS5 proxy and custom network interface
 - JSON output and color-coded tables
 
