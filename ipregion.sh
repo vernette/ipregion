@@ -23,6 +23,7 @@ PARALLEL_PIDS=()
 FORCE_SPINNER=false
 PROGRESS_LOG=false
 LAST_PROGRESS_MSG=""
+HEADER_PRINTED=false
 
 RESULT_JSON=""
 ARR_PRIMARY=()
@@ -291,7 +292,7 @@ print_startup_message() {
   local iface="${INTERFACE_NAME:-auto}"
 
   if (( PARALLEL_JOBS <= 0 )); then
-    parallel_display="auto"
+    parallel_display="unknown"
   fi
 
   if [[ "$IPV4_ONLY" == true ]]; then
@@ -1789,12 +1790,12 @@ process_service() {
   IFS='|' read -r display_name domain url_template response_format <<<"$service_config"
   display_name="${display_name:-$service}"
 
-  spinner_update "$display_name"
-
   if [[ "$custom" == true ]]; then
     process_custom_service "$service"
     return
   fi
+
+  spinner_update "$display_name"
 
   if [[ -n "${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}" ]]; then
     process_with_custom_handler "$service" "$display_name"
@@ -2173,7 +2174,9 @@ print_results() {
     return
   fi
 
-  print_header
+  if [[ "$HEADER_PRINTED" != true ]]; then
+    print_header
+  fi
 
   case "$GROUPS_TO_SHOW" in
     primary)
@@ -2386,6 +2389,10 @@ main() {
 
   trap spinner_cleanup EXIT INT TERM
 
+  if (( PARALLEL_JOBS <= 0 )); then
+    PARALLEL_JOBS=$(detect_parallel_jobs)
+  fi
+
   print_startup_message
 
   if [[ "$JSON_OUTPUT" != true ]]; then
@@ -2396,10 +2403,6 @@ main() {
 
   detect_distro
   install_dependencies
-
-  if (( PARALLEL_JOBS <= 0 )); then
-    PARALLEL_JOBS=$(detect_parallel_jobs)
-  fi
 
   if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" && "$PROGRESS_LOG" != true && ( "$PARALLEL_JOBS" -le 1 || "$FORCE_SPINNER" == true ) ]]; then
     spinner_start
@@ -2421,6 +2424,11 @@ main() {
 
   discover_external_ips
   get_asn
+
+  if [[ "$JSON_OUTPUT" != "true" ]]; then
+    print_header
+    HEADER_PRINTED=true
+  fi
 
   case "$GROUPS_TO_SHOW" in
     primary)
