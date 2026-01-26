@@ -16,8 +16,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install lftp
-        run: sudo apt-get update && sudo apt-get install -y lftp
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq lftp
+
+      - name: Run tests
+        run: bash tests/run.sh
 
       - name: Upload files via FTPS
         env:
