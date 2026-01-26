@@ -7,6 +7,7 @@ on:
     paths:
       - ipregion.sh
       - index.php
+  workflow_dispatch:
 
 jobs:
   deploy:
