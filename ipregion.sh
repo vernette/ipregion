@@ -6,7 +6,6 @@ USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE=""
 
-
 VERBOSE=false
 JSON_OUTPUT=false
 GROUPS_TO_SHOW="all"
