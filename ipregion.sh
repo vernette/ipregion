@@ -489,6 +489,12 @@ install_packages() {
     fi
   fi
 
+  for pkg in "${packages[@]}"; do
+    if ! is_valid_package_name "$pkg"; then
+      error_exit "Invalid package name: $pkg"
+    fi
+  done
+
   read -ra install_args <<<"$(get_install_args "$pkg_manager")"
   install_cmd+=("${cmd_prefix[@]}" "${install_args[@]}" "${packages[@]}")
 
@@ -735,6 +741,11 @@ is_valid_proxy_addr() {
 is_valid_interface_name() {
   local name="$1"
   [[ "$name" =~ ^[A-Za-z0-9._:@-]+$ ]]
+}
+
+is_valid_package_name() {
+  local name="$1"
+  [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9+._-]*$ ]]
 }
 
 parse_arguments() {
