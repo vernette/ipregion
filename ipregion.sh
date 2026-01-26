@@ -307,7 +307,7 @@ IPRegion — determines your IP geolocation using various GeoIP services and pop
 Options:
   -h, --help           Show this help message and exit
   -v, --verbose        Enable verbose logging
-  -d, --debug          Enable full debug trace and save full trace to file and upload it to 0x0.st
+  -d, --debug          Enable full debug trace and save full trace to file (upload on consent)
   -j, --json           Output results in JSON format
   -g, --group GROUP    Run only one group: 'primary', 'custom', 'cdn', or 'all' (default: all)
   -t, --timeout SEC    Set curl request timeout in seconds (default: $CURL_TIMEOUT)
@@ -327,7 +327,7 @@ Examples:
   $SCRIPT_NAME -i eth1               # Use network interface eth1
   $SCRIPT_NAME -j                    # Output result as JSON
   $SCRIPT_NAME -v                    # Enable verbose logging
-  $SCRIPT_NAME -d                    # Enable debug and save full trace to file and upload it to 0x0.st
+  $SCRIPT_NAME -d                    # Enable debug and save full trace to file (upload on consent)
 
 EOF
 }
@@ -379,15 +379,21 @@ cleanup_debug() {
   set +x
   exec 1>&3 2>&4 3>&- 4>&-
 
-  debug_url="$(upload_debug)"
-
-  printf "\n%s\n  %s\n  %s\n\n%s\n%s\n\n%s\n" \
+  printf "\n%s\n  %s\n" \
     "$(color WARN 'Debug information:')" \
-    "Local file: $DEBUG_LOG_FILE" \
-    "Remote URL: $debug_url" \
-    "$(color INFO 'PRIVACY NOTICE: This file is uploaded to 0x0.st - a public file hoster.')" \
-    "$(color INFO 'The file will be automatically deleted in 24 hours.')" \
-    "$(color INFO 'If you open a GitHub Issue, please download the log and attach it')"
+    "Local file: $DEBUG_LOG_FILE"
+
+  if [[ -t 0 ]] && prompt_for_debug_upload </dev/tty; then
+    debug_url="$(upload_debug)"
+    printf "  %s\n\n%s\n%s\n\n%s\n" \
+      "Remote URL: $debug_url" \
+      "$(color INFO 'PRIVACY NOTICE: This file is uploaded to 0x0.st - a public file hoster.')" \
+      "$(color INFO 'The file will be automatically deleted in 24 hours.')" \
+      "$(color INFO 'If you open a GitHub Issue, please download the log and attach it')"
+  else
+    printf "\n%s\n" \
+      "$(color INFO 'Upload skipped. You can share the local file manually if needed.')"
+  fi
 }
 
 is_command_available() {
@@ -539,6 +545,26 @@ prompt_for_installation() {
     "$(color WARN 'Missing dependencies:')" \
     "$formatted_deps" \
     "$(color INFO 'Do you want to install them? [y/N]:')"
+
+  read -r response
+  response=${response,,}
+
+  case "$response" in
+    y | yes)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+prompt_for_debug_upload() {
+  local response
+
+  printf "\n%s %s " \
+    "$(color WARN 'Debug log upload?')" \
+    "$(color INFO 'This will upload to 0x0.st (public). Proceed? [y/N]:')"
 
   read -r response
   response=${response,,}
