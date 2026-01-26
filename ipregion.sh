@@ -371,6 +371,11 @@ get_country_name_from_code() {
     return
   fi
 
+  if ! is_valid_json "$response"; then
+    echo ""
+    return
+  fi
+
   jq -r --arg code "$code" 'map(select(.Code == $code)) | .[0].Name // empty' <<<"$response"
 }
 
