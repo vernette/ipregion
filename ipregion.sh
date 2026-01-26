@@ -312,6 +312,37 @@ normalize_ascii() {
   printf "%s" "$value"
 }
 
+country_alias_for_code() {
+  local code="$1"
+
+  case "$code" in
+    RU) printf "Russia" ;;
+    IR) printf "Iran" ;;
+    KP) printf "North Korea" ;;
+    KR) printf "South Korea" ;;
+    TR) printf "Turkiye" ;;
+    GB) printf "United Kingdom" ;;
+    US) printf "United States" ;;
+  esac
+}
+
+get_country_name_from_code() {
+  local ip_version="$1"
+  local code="$2"
+  local response
+
+  response=$(curl_wrapper GET "https://datahub.io/core/country-list/r/data.csv" \
+    --ip-version "$ip_version" \
+    --user-agent "$USER_AGENT")
+
+  if [[ -z "$response" ]]; then
+    echo ""
+    return
+  fi
+
+  awk -F',' -v code="$code" 'toupper($2)==toupper(code){print $1; exit}' <<<"$response"
+}
+
 redact_debug_log() {
   local source_file="$1"
   local redacted_file
@@ -1900,10 +1931,28 @@ lookup_google() {
 
 lookup_google_gemini() {
   local ip_version="$1"
-  local response country_name normalized_country status color_name
+  local response google_country_code country_name country_alias status color_name
+  local normalized_candidate
+  local -a candidates=()
 
-  country_name=$(get_registered_country "$ip_version")
-  if [[ -z "$country_name" ]]; then
+  google_country_code=$(lookup_google "$ip_version")
+  if [[ -z "$google_country_code" ]]; then
+    echo ""
+    return
+  fi
+
+  country_name=$(get_country_name_from_code "$ip_version" "$google_country_code")
+  country_alias=$(country_alias_for_code "$google_country_code")
+
+  if [[ -n "$country_name" ]]; then
+    candidates+=("$country_name")
+  fi
+
+  if [[ -n "$country_alias" && "$country_alias" != "$country_name" ]]; then
+    candidates+=("$country_alias")
+  fi
+
+  if ((${#candidates[@]} == 0)); then
     echo ""
     return
   fi
@@ -1918,21 +1967,19 @@ lookup_google_gemini() {
     return
   fi
 
-  normalized_country=$(normalize_ascii "$country_name")
-  if [[ -z "$normalized_country" ]]; then
-    echo ""
-    return
-  fi
-
   response=$(normalize_ascii "$response")
+  for candidate in "${candidates[@]}"; do
+    normalized_candidate=$(normalize_ascii "$candidate")
+    if [[ -n "$normalized_candidate" ]] && grep_wrapper -F "$normalized_candidate" <<<"$response" >/dev/null; then
+      status="Yes"
+      color_name="SERVICE"
+      print_value_or_colored "$status" "$color_name"
+      return
+    fi
+  done
 
-  if grep_wrapper -F "$normalized_country" <<<"$response" >/dev/null; then
-    status="Yes"
-    color_name="SERVICE"
-  else
-    status="No"
-    color_name="HEART"
-  fi
+  status="No"
+  color_name="HEART"
 
   print_value_or_colored "$status" "$color_name"
 }
