@@ -676,6 +676,40 @@ mask_ipv6() {
   }'
 }
 
+is_valid_port() {
+  local port="$1"
+
+  if [[ ! "$port" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+
+  ((port >= 1 && port <= 65535))
+}
+
+is_valid_proxy_addr() {
+  local addr="$1"
+  local host port
+
+  if [[ "$addr" =~ ^\[(.+)\]:([0-9]+)$ ]]; then
+    host="${BASH_REMATCH[1]}"
+    port="${BASH_REMATCH[2]}"
+    [[ "$host" =~ ^[0-9A-Fa-f:]+$ ]] || return 1
+  elif [[ "$addr" =~ ^([^:]+):([0-9]+)$ ]]; then
+    host="${BASH_REMATCH[1]}"
+    port="${BASH_REMATCH[2]}"
+    [[ "$host" =~ ^[A-Za-z0-9.-]+$ ]] || return 1
+  else
+    return 1
+  fi
+
+  is_valid_port "$port"
+}
+
+is_valid_interface_name() {
+  local name="$1"
+  [[ "$name" =~ ^[A-Za-z0-9._:@-]+$ ]]
+}
+
 parse_arguments() {
   while [[ $# -gt 0 ]]; do
     case $1 in
@@ -720,11 +754,17 @@ parse_arguments() {
         shift
         ;;
       -p | --proxy)
+        if ! is_valid_proxy_addr "$2"; then
+          error_exit "Invalid proxy address: $2. Expected host:port or [ipv6]:port"
+        fi
         PROXY_ADDR="$2"
         log "$LOG_INFO" "Using SOCKS5 proxy: $PROXY_ADDR"
         shift 2
         ;;
       -i | --interface)
+        if ! is_valid_interface_name "$2"; then
+          error_exit "Invalid interface name: $2"
+        fi
         INTERFACE_NAME="$2"
         log "$LOG_INFO" "Using interface: $INTERFACE_NAME"
         shift 2
