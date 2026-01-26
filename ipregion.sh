@@ -647,13 +647,13 @@ process_json() {
   fi
 
   if [[ -z "$json" ]]; then
-    echo "$STATUS_NA"
+    echo ""
     return
   fi
 
   if ! is_valid_json "$json"; then
     log "$LOG_WARN" "Invalid JSON input for filter: $jq_filter"
-    echo "$STATUS_NA"
+    echo ""
     return
   fi
 
