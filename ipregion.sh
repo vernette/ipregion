@@ -310,8 +310,12 @@ redact_debug_log() {
     -e 's/([A-Fa-f0-9]{0,4}:){2,}[A-Fa-f0-9]{0,4}/[REDACTED_IPV6]/g' \
     -e 's/\b([0-9]{1,3}\.){3}[0-9]{1,3}\b/[REDACTED_IPV4]/g' \
     -e 's/(Authorization:)[^[:cntrl:]]*/\1 [REDACTED]/I' \
+    -e 's/(Proxy-Authorization:)[^[:cntrl:]]*/\1 [REDACTED]/I' \
+    -e 's/(X-Api-Key:)[^[:cntrl:]]*/\1 [REDACTED]/I' \
+    -e 's/(X-Auth-Token:)[^[:cntrl:]]*/\1 [REDACTED]/I' \
     -e 's/(Cookie:)[^[:cntrl:]]*/\1 [REDACTED]/I' \
     -e 's/(Set-Cookie:)[^[:cntrl:]]*/\1 [REDACTED]/I' \
+    -e 's/([?&](token|access_token|refresh_token|api_key|apikey|password)=)[^&#[:space:]]+/\1[REDACTED]/Ig' \
     "$source_file" >"$redacted_file"
 
   printf "%s" "$redacted_file"
