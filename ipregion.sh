@@ -107,6 +107,7 @@ declare -A SERVICE_HEADERS=(
 
 declare -A CUSTOM_SERVICES=(
   [GOOGLE]="Google"
+  [GOOGLE_GEMINI]="Google Gemini"
   [YOUTUBE]="YouTube"
   [YOUTUBE_PREMIUM]="YouTube Premium"
   [GOOGLE_SEARCH_CAPTCHA]="Google Search Captcha"
@@ -121,6 +122,7 @@ declare -A CUSTOM_SERVICES=(
 
 CUSTOM_SERVICES_ORDER=(
   "GOOGLE"
+  "GOOGLE_GEMINI"
   "YOUTUBE"
   "YOUTUBE_PREMIUM"
   "GOOGLE_SEARCH_CAPTCHA"
@@ -135,6 +137,7 @@ CUSTOM_SERVICES_ORDER=(
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
   [GOOGLE]="lookup_google"
+  [GOOGLE_GEMINI]="lookup_google_gemini"
   [YOUTUBE]="lookup_youtube"
   [YOUTUBE_PREMIUM]="lookup_youtube_premium"
   [GOOGLE_SEARCH_CAPTCHA]="lookup_google_search_captcha"
@@ -871,12 +874,31 @@ get_ping_command() {
 
 check_ip_interfaces() {
   local version="$1"
+  local ifconfig_output
 
   log "$LOG_INFO" "Checking for IPv${version} interfaces"
 
-  if [[ -n $(ip -"${version}" addr show scope global 2>/dev/null) ]]; then
-    log "$LOG_INFO" "IPv${version} global interfaces found"
-    return 0
+  if is_command_available "ip"; then
+    if [[ -n $(ip -"${version}" addr show scope global 2>/dev/null) ]]; then
+      log "$LOG_INFO" "IPv${version} global interfaces found"
+      return 0
+    fi
+  elif is_command_available "ifconfig"; then
+    ifconfig_output=$(ifconfig -a 2>/dev/null)
+    if [[ "$version" == "4" ]]; then
+      if echo "$ifconfig_output" | grep -E '\binet [0-9]+' | grep -Ev '\binet 127\.' >/dev/null; then
+        log "$LOG_INFO" "IPv${version} global interfaces found (ifconfig)"
+        return 0
+      fi
+    else
+      if echo "$ifconfig_output" | grep -E '\binet6 [0-9A-Fa-f:]+' | grep -Ev '\binet6 (fe80:|::1)' >/dev/null; then
+        log "$LOG_INFO" "IPv${version} global interfaces found (ifconfig)"
+        return 0
+      fi
+    fi
+  else
+    log "$LOG_WARN" "Neither ip nor ifconfig is available to check IPv${version} interfaces"
+    return 1
   fi
 
   log "$LOG_ERROR" "No global IPv${version} addresses found on interfaces"
@@ -921,6 +943,7 @@ check_ip_dns() {
   local version="$1"
   local test_domain="google.com"
   local record_type
+  local dig_result
 
   log "$LOG_INFO" "Checking IPv${version} DNS resolution"
 
@@ -930,9 +953,25 @@ check_ip_dns() {
     record_type="AAAA"
   fi
 
-  if nslookup -type="$record_type" "$test_domain" >/dev/null 2>&1; then
-    log "$LOG_INFO" "IPv${version} DNS resolution works via nslookup"
-    return 0
+  if is_command_available "nslookup"; then
+    if nslookup -type="$record_type" "$test_domain" >/dev/null 2>&1; then
+      log "$LOG_INFO" "IPv${version} DNS resolution works via nslookup"
+      return 0
+    fi
+  elif is_command_available "dig"; then
+    dig_result=$(dig +short -t "$record_type" "$test_domain" 2>/dev/null)
+    if [[ -n "$dig_result" ]]; then
+      log "$LOG_INFO" "IPv${version} DNS resolution works via dig"
+      return 0
+    fi
+  elif is_command_available "host"; then
+    if host -t "$record_type" "$test_domain" >/dev/null 2>&1; then
+      log "$LOG_INFO" "IPv${version} DNS resolution works via host"
+      return 0
+    fi
+  else
+    log "$LOG_WARN" "Neither nslookup, dig, nor host is available to check IPv${version} DNS resolution"
+    return 1
   fi
 
   log "$LOG_ERROR" "IPv${version} DNS resolution failed"
@@ -1787,6 +1826,33 @@ lookup_google() {
     --ip-version "$ip_version")
 
   grep_wrapper --perl '"MgUcDb":"\K[^"]*' <<<"$response"
+}
+
+lookup_google_gemini() {
+  local ip_version="$1"
+  local response is_blocked status color_name
+
+  response=$(curl_wrapper GET "https://gemini.google.com/app" \
+    --ip-version "$ip_version" \
+    --user-agent "$USER_AGENT" \
+    --header "Accept-Language: en-US,en;q=0.9")
+
+  if [[ -z "$response" ]]; then
+    echo ""
+    return
+  fi
+
+  is_blocked=$(grep_wrapper -iE "not (available|supported) in your (country|region)|isn't (available|supported) in your (country|region)|unsupported (country|region)" <<<"$response")
+
+  if [[ -z "$is_blocked" ]]; then
+    status="Yes"
+    color_name="SERVICE"
+  else
+    status="No"
+    color_name="HEART"
+  fi
+
+  print_value_or_colored "$status" "$color_name"
 }
 
 lookup_youtube() {
