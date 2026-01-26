@@ -24,5 +24,5 @@ jobs:
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASS: ${{ secrets.FTP_PASS }}
         run: |
-          lftp -e "set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate yes; put -O / ipregion.sh; put -O / index.php; bye" \
+          lftp -e "set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate yes; set ftp:passive-mode true; set net:timeout 20; set net:max-retries 2; set net:reconnect-interval-base 5; set net:reconnect-interval-max 5; set cmd:fail-exit true; put -O / ipregion.sh; put -O / index.php; bye" \
             "ftps://$FTP_USER:$FTP_PASS@$FTP_HOST"
