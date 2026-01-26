@@ -18,6 +18,7 @@ INTERFACE_NAME=""
 DEBUG=false
 IPV4_SUPPORTED=0
 IPV6_SUPPORTED=0
+PARALLEL_JOBS=0
 
 RESULT_JSON=""
 ARR_PRIMARY=()
@@ -252,6 +253,7 @@ Options:
   -j, --json           Output results in JSON format
   -g, --group GROUP    Run only one group: 'primary', 'custom', or 'all' (default: all)
   -t, --timeout SEC    Set curl request timeout in seconds (default: $CURL_TIMEOUT)
+  -P, --parallel N     Run up to N services in parallel (default: auto)
   -4, --ipv4           Test only IPv4
   -6, --ipv6           Test only IPv6
   -p, --proxy ADDR     Use SOCKS5 proxy (format: host:port)
@@ -268,6 +270,7 @@ Examples:
   $SCRIPT_NAME -j                    # Output result as JSON
   $SCRIPT_NAME -v                    # Enable verbose logging
   $SCRIPT_NAME -d                    # Enable debug and save full trace to file (upload on consent)
+  $SCRIPT_NAME -P 6                  # Check services using 6 parallel jobs
 
 EOF
 }
@@ -412,6 +415,22 @@ cleanup_debug() {
 is_command_available() {
   local cmd="$1"
   command -v "$cmd" >/dev/null 2>&1
+}
+
+detect_parallel_jobs() {
+  local cpus=""
+
+  if is_command_available "nproc"; then
+    cpus=$(nproc 2>/dev/null)
+  elif is_command_available "getconf"; then
+    cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null)
+  fi
+
+  if [[ "$cpus" =~ ^[0-9]+$ ]] && ((10#$cpus >= 1)); then
+    echo "$cpus"
+  else
+    echo 4
+  fi
 }
 
 detect_distro() {
@@ -914,6 +933,14 @@ parse_arguments() {
           CURL_TIMEOUT="$2"
         else
           error_exit "Invalid timeout value: $2. Timeout must be a positive integer"
+        fi
+        shift 2
+        ;;
+      -P | --parallel)
+        if [[ "$2" =~ ^[0-9]+$ ]] && ((10#$2 >= 1)); then
+          PARALLEL_JOBS="$2"
+        else
+          error_exit "Invalid parallel value: $2. Parallel jobs must be a positive integer"
         fi
         shift 2
         ;;
@@ -1746,6 +1773,59 @@ run_service_group() {
   done
 }
 
+run_service_group_parallel() {
+  local group="$1"
+  local services_string="${SERVICE_GROUPS[$group]}"
+  local is_custom=false
+  local services_array service_name temp_dir result_file
+
+  read -ra services_array <<<"$services_string"
+
+  if [[ "$group" == "custom" ]]; then
+    is_custom=true
+  fi
+
+  temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/ipregion_parallel_XXXXXX")
+
+  for service_name in "${services_array[@]}"; do
+    if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep_wrapper -Fxq "$service_name"; then
+      log "$LOG_INFO" "Skipping service: $service_name"
+      continue
+    fi
+
+    result_file="$temp_dir/$service_name"
+    (
+      RESULT_FILE="$result_file"
+      if [[ "$is_custom" == true ]]; then
+        process_service "$service_name" true
+      else
+        process_service "$service_name"
+      fi
+    ) &
+
+    while (( $(jobs -rp | wc -l) >= PARALLEL_JOBS )); do
+      wait -n
+    done
+  done
+
+  wait
+
+  for service_name in "${services_array[@]}"; do
+    if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep_wrapper -Fxq "$service_name"; then
+      continue
+    fi
+
+    result_file="$temp_dir/$service_name"
+    if [[ -f "$result_file" ]]; then
+      while IFS= read -r line; do
+        [[ -n "$line" ]] && add_result_line "$line"
+      done <"$result_file"
+    fi
+  done
+
+  rm -rf "$temp_dir"
+}
+
 run_all_services() {
   local service_name
 
@@ -1824,6 +1904,28 @@ add_result() {
   ipv4=${ipv4//$'\t'/ }
   ipv6=${ipv6//$'\n'/}
   ipv6=${ipv6//$'\t'/ }
+
+  if [[ -n "$RESULT_FILE" ]]; then
+    printf "%s|||%s|||%s|||%s\n" "$group" "$service" "$ipv4" "$ipv6" >>"$RESULT_FILE"
+    return
+  fi
+
+  case "$group" in
+    primary) ARR_PRIMARY+=("$service|||$ipv4|||$ipv6") ;;
+    custom) ARR_CUSTOM+=("$service|||$ipv4|||$ipv6") ;;
+  esac
+}
+
+add_result_line() {
+  local line="$1"
+  local group rest service ipv4 ipv6
+
+  group="${line%%|||*}"
+  rest="${line#*|||}"
+  service="${rest%%|||*}"
+  rest="${rest#*|||}"
+  ipv4="${rest%%|||*}"
+  ipv6="${rest#*|||}"
 
   case "$group" in
     primary) ARR_PRIMARY+=("$service|||$ipv4|||$ipv6") ;;
@@ -2190,7 +2292,11 @@ main() {
   detect_distro
   install_dependencies
 
-  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" ]]; then
+  if (( PARALLEL_JOBS <= 0 )); then
+    PARALLEL_JOBS=$(detect_parallel_jobs)
+  fi
+
+  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" && "$PARALLEL_JOBS" -le 1 ]]; then
     spinner_start
   fi
 
@@ -2213,18 +2319,31 @@ main() {
 
   case "$GROUPS_TO_SHOW" in
     primary)
-      run_service_group "primary"
+      if (( PARALLEL_JOBS > 1 )); then
+        run_service_group_parallel "primary"
+      else
+        run_service_group "primary"
+      fi
       ;;
     custom)
-      run_service_group "custom"
+      if (( PARALLEL_JOBS > 1 )); then
+        run_service_group_parallel "custom"
+      else
+        run_service_group "custom"
+      fi
       ;;
     *)
-      run_service_group "primary"
-      run_service_group "custom"
+      if (( PARALLEL_JOBS > 1 )); then
+        run_service_group_parallel "primary"
+        run_service_group_parallel "custom"
+      else
+        run_service_group "primary"
+        run_service_group "custom"
+      fi
       ;;
   esac
 
-  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" ]]; then
+  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" && "$PARALLEL_JOBS" -le 1 ]]; then
     spinner_stop
   fi
 

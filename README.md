@@ -22,6 +22,7 @@ bash <(wget -qO- https://ipregion.vladon.sh)
 - Multiple GeoIP APIs and web services (YouTube, Google, etc.)
 - IPv4/IPv6 support with SOCKS5 proxy and custom network interface
 - JSON output and color-coded tables
+- Parallel checks by default (auto-detected)
 
 ## Dependencies
 
@@ -41,6 +42,7 @@ bash <(wget -qO- https://ipregion.vladon.sh)
 ./ipregion.sh --proxy 127.0.0.1:1080 # Use SOCKS5 proxy
 ./ipregion.sh --json # JSON output
 ./ipregion.sh --debug # Debug mode
+./ipregion.sh --parallel 6 # Run checks in parallel
 ```
 
 > [!NOTE]
