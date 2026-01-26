@@ -694,6 +694,9 @@ install_packages() {
   done
 
   read -ra install_args <<<"$(get_install_args "$pkg_manager")"
+  if ((${#install_args[@]} == 0)); then
+    error_exit "No install arguments available for package manager: $pkg_manager"
+  fi
   install_cmd+=("${cmd_prefix[@]}" "${install_args[@]}" "${packages[@]}")
 
   log "$LOG_INFO" "Running: ${install_cmd[*]}"
