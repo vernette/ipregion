@@ -363,10 +363,11 @@ redact_debug_log() {
 }
 
 upload_debug() {
-  local ip_version=4
+  local ip_version
   local user_agent="ipregion-script/1.0 (github.com/vernette/ipregion)"
   local upload_file
 
+  ip_version=$(preferred_ip_version)
   upload_file=$(redact_debug_log "$DEBUG_LOG_FILE")
 
   curl_wrapper POST "https://0x0.st" \
