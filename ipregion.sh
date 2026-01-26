@@ -942,6 +942,26 @@ is_valid_interface_name() {
   [[ "$name" =~ ^[A-Za-z0-9._:@-]+$ ]]
 }
 
+is_valid_ipv4() {
+  local ip="$1"
+  local IFS=.
+  local -a parts
+  local part
+
+  [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+  read -r -a parts <<<"$ip"
+  for part in "${parts[@]}"; do
+    [[ "$part" =~ ^[0-9]+$ ]] || return 1
+    ((10#$part >= 0 && 10#$part <= 255)) || return 1
+  done
+  return 0
+}
+
+is_valid_ipv6() {
+  local ip="$1"
+  [[ -n "$ip" && "$ip" == *:* && "$ip" =~ ^[0-9A-Fa-f:]+$ ]]
+}
+
 is_valid_package_name() {
   local name="$1"
   [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9+._-]*$ ]]
@@ -2067,7 +2087,27 @@ lookup_iplocation_com() {
     ip="$EXTERNAL_IPV6"
   fi
 
-  response=$(curl_wrapper POST "https://iplocation.com" --ip-version "$ip_version" --user-agent "$USER_AGENT" --data "ip=$ip")
+  if [[ -z "$ip" ]]; then
+    log "$LOG_WARN" "Skipping iplocation.com lookup: empty IP for IPv${ip_version}"
+    echo ""
+    return
+  fi
+
+  if [[ "$ip_version" -eq 4 ]]; then
+    if ! is_valid_ipv4 "$ip"; then
+      log "$LOG_WARN" "Skipping iplocation.com lookup: invalid IPv4 address"
+      echo ""
+      return
+    fi
+  else
+    if ! is_valid_ipv6 "$ip"; then
+      log "$LOG_WARN" "Skipping iplocation.com lookup: invalid IPv6 address"
+      echo ""
+      return
+    fi
+  fi
+
+  response=$(curl_wrapper POST "https://iplocation.com" --ip-version "$ip_version" --user-agent "$USER_AGENT" --data-urlencode "ip=$ip")
   process_json "$response" ".country_code"
 }
 
