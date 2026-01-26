@@ -569,8 +569,7 @@ is_command_available() {
 
 detect_distro() {
   if [[ -f /etc/os-release ]]; then
-    source /etc/os-release
-    distro="$ID"
+    distro=$(sed -n 's/^ID=//p' /etc/os-release | head -n 1 | tr -d '"')
   elif [[ -f /etc/redhat-release ]]; then
     distro="rhel"
   elif [[ -d /data/data/com.termux ]]; then
