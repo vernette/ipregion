@@ -6,7 +6,6 @@ USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
 
-TWITCH_CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
 CHATGPT_STATSIG_API_KEY="client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG"
 REDDIT_BASIC_ACCESS_TOKEN="b2hYcG9xclpZdWIxa2c6"
 YOUTUBE_SOCS_COOKIE="CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY"
@@ -121,7 +120,6 @@ declare -A SERVICE_HEADERS=(
 declare -A CUSTOM_SERVICES=(
   [GOOGLE]="Google"
   [YOUTUBE]="YouTube"
-  [TWITCH]="Twitch"
   [CHATGPT]="ChatGPT"
   [REDDIT]="Reddit"
   [DISNEY_PLUS]="Disney+"
@@ -141,7 +139,6 @@ declare -A CUSTOM_SERVICES=(
 CUSTOM_SERVICES_ORDER=(
   "GOOGLE"
   "YOUTUBE"
-  "TWITCH"
   "CHATGPT"
   "REDDIT"
   "DISNEY_PLUS"
@@ -161,7 +158,6 @@ CUSTOM_SERVICES_ORDER=(
 declare -A CUSTOM_SERVICES_HANDLERS=(
   [GOOGLE]="lookup_google"
   [YOUTUBE]="lookup_youtube"
-  [TWITCH]="lookup_twitch"
   [CHATGPT]="lookup_chatgpt"
   [REDDIT]="lookup_reddit"
   [DISNEY_PLUS]="lookup_disney_plus"
@@ -1772,17 +1768,6 @@ lookup_youtube() {
 
   json_result=$(tail -n +3 <<<"$response")
   process_json "$json_result" ".[0][2][0][0][1]"
-}
-
-lookup_twitch() {
-  local ip_version="$1"
-  local response
-
-  response=$(curl_wrapper POST "https://gql.twitch.tv/gql" \
-    --header "Client-Id: $TWITCH_CLIENT_ID" \
-    --json '[{"operationName":"VerifyEmail_CurrentUser","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f9e7dcdf7e99c314c82d8f7f725fab5f99d1df3d7359b53c9ae122deec590198"}}}]' \
-    --ip-version "$ip_version")
-  process_json "$response" ".[0].data.requestInfo.countryCode"
 }
 
 lookup_chatgpt() {
