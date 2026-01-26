@@ -755,7 +755,17 @@ parse_arguments() {
         shift
         ;;
       -g | --group)
-        GROUPS_TO_SHOW="$2"
+        case "$2" in
+          primary | custom | all)
+            GROUPS_TO_SHOW="$2"
+            ;;
+          "")
+            error_exit "Missing value for --group. Expected: primary, custom, or all"
+            ;;
+          *)
+            error_exit "Invalid group: $2. Expected: primary, custom, or all"
+            ;;
+        esac
         shift 2
         ;;
       -t | --timeout)
