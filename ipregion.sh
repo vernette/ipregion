@@ -1139,6 +1139,21 @@ fetch_external_ip() {
 
   for service in "${IDENTITY_SERVICES[@]}"; do
     ip=$(fetch_ip_from_service "$service" "$ip_version")
+    ip=${ip//$'\r'/}
+    ip=${ip//$'\n'/}
+    ip=${ip//[[:space:]]/}
+
+    if [[ "$ip_version" == "4" ]]; then
+      if ! is_valid_ipv4 "$ip"; then
+        log "$LOG_WARN" "Invalid IPv4 from $service: $ip"
+        continue
+      fi
+    else
+      if ! is_valid_ipv6 "$ip"; then
+        log "$LOG_WARN" "Invalid IPv6 from $service: $ip"
+        continue
+      fi
+    fi
 
     if [[ -n "$ip" ]]; then
       log "$LOG_INFO" "Successfully obtained IPv${ip_version} address from $service: $ip"
