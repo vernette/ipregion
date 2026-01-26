@@ -992,6 +992,8 @@ get_asn() {
 
   spinner_update "ASN info"
   log "$LOG_INFO" "Getting ASN info for IP $ip"
+  asn=""
+  asn_name=""
 
   response=$(curl_wrapper GET "https://geoip.maxmind.com/geoip/v2.1/city/me" \
     --header "Referer: https://www.maxmind.com" \
