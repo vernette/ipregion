@@ -316,13 +316,7 @@ html_decode() {
   local value="$1"
 
   if command -v python3 >/dev/null 2>&1; then
-    python3 - <<'PY' <<<"$value"
-import html
-import sys
-
-data = sys.stdin.read()
-sys.stdout.write(html.unescape(data))
-PY
+    python3 -c 'import html,sys; sys.stdout.write(html.unescape(sys.stdin.read()))' <<<"$value"
     return
   fi
 
