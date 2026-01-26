@@ -1677,46 +1677,90 @@ print_table_group() {
 
   printf "%s\n\n" "$(color HEADER "$group_title")"
 
-  {
-    printf "%s" "$(color TABLE_HEADER 'Service')"
-
-    if [[ $show_ipv4 -eq 1 ]]; then
-      printf "%s%s" "$separator" "$(color TABLE_HEADER 'IPv4')"
-    fi
-
-    if [[ $show_ipv6 -eq 1 ]]; then
-      printf "%s%s" "$separator" "$(color TABLE_HEADER 'IPv6')"
-    fi
-
-    printf "\n"
-
-    jq -r --arg group "$group" '
-      (.results // {}) as $r
-      | ($r[$group] // [])
-      | .[]
-      | [ .service, (.ipv4 // "N/A"), (.ipv6 // "N/A") ]
-      | @tsv
-    ' <<<"$RESULT_JSON" | while IFS=$'\t' read -r s v4 v6; do
-
-      printf "%s" "$(color SERVICE "$s")"
+  if is_command_available "column"; then
+    {
+      printf "%s" "$(color TABLE_HEADER 'Service')"
 
       if [[ $show_ipv4 -eq 1 ]]; then
-        if [[ "$v4" == "null" || -z "$v4" ]]; then
-          v4="$na"
-        fi
-        printf "%s%s" "$separator" "$(format_value "$v4")"
+        printf "%s%s" "$separator" "$(color TABLE_HEADER 'IPv4')"
       fi
 
       if [[ $show_ipv6 -eq 1 ]]; then
-        if [[ "$v6" == "null" || -z "$v6" ]]; then
-          v6="$na"
-        fi
-        printf "%s%s" "$separator" "$(format_value "$v6")"
+        printf "%s%s" "$separator" "$(color TABLE_HEADER 'IPv6')"
       fi
 
       printf "\n"
-    done
-  } | column -t -s "$separator"
+
+      jq -r --arg group "$group" '
+        (.results // {}) as $r
+        | ($r[$group] // [])
+        | .[]
+        | [ .service, (.ipv4 // "N/A"), (.ipv6 // "N/A") ]
+        | @tsv
+      ' <<<"$RESULT_JSON" | while IFS=$'\t' read -r s v4 v6; do
+
+        printf "%s" "$(color SERVICE "$s")"
+
+        if [[ $show_ipv4 -eq 1 ]]; then
+          if [[ "$v4" == "null" || -z "$v4" ]]; then
+            v4="$na"
+          fi
+          printf "%s%s" "$separator" "$(format_value "$v4")"
+        fi
+
+        if [[ $show_ipv6 -eq 1 ]]; then
+          if [[ "$v6" == "null" || -z "$v6" ]]; then
+            v6="$na"
+          fi
+          printf "%s%s" "$separator" "$(format_value "$v6")"
+        fi
+
+        printf "\n"
+      done
+    } | column -t -s "$separator"
+  else
+    log "$LOG_WARN" "column is not available; displaying unaligned output"
+    {
+      printf "%s" "$(color TABLE_HEADER 'Service')"
+
+      if [[ $show_ipv4 -eq 1 ]]; then
+        printf "%s%s" "$separator" "$(color TABLE_HEADER 'IPv4')"
+      fi
+
+      if [[ $show_ipv6 -eq 1 ]]; then
+        printf "%s%s" "$separator" "$(color TABLE_HEADER 'IPv6')"
+      fi
+
+      printf "\n"
+
+      jq -r --arg group "$group" '
+        (.results // {}) as $r
+        | ($r[$group] // [])
+        | .[]
+        | [ .service, (.ipv4 // "N/A"), (.ipv6 // "N/A") ]
+        | @tsv
+      ' <<<"$RESULT_JSON" | while IFS=$'\t' read -r s v4 v6; do
+
+        printf "%s" "$(color SERVICE "$s")"
+
+        if [[ $show_ipv4 -eq 1 ]]; then
+          if [[ "$v4" == "null" || -z "$v4" ]]; then
+            v4="$na"
+          fi
+          printf "%s%s" "$separator" "$(format_value "$v4")"
+        fi
+
+        if [[ $show_ipv6 -eq 1 ]]; then
+          if [[ "$v6" == "null" || -z "$v6" ]]; then
+            v6="$na"
+          fi
+          printf "%s%s" "$separator" "$(format_value "$v6")"
+        fi
+
+        printf "\n"
+      done
+    }
+  fi
 }
 
 print_header() {
