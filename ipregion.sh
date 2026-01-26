@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 SCRIPT_NAME="ipregion.sh"
-SCRIPT_URL="https://github.com/vernette/ipregion"
+SCRIPT_URL="https://github.com/vladon/ipregion"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE=""
@@ -1605,8 +1605,6 @@ print_header() {
 
   ipv4=$(process_json "$RESULT_JSON" ".ipv4")
   ipv6=$(process_json "$RESULT_JSON" ".ipv6")
-
-  printf "%s\n%s\n\n" "$(color URL "Made with ")$(color HEART "<3")$(color URL " by vernette")" "$(color URL "$SCRIPT_URL")"
 
   # TODO: Get registered country while initializing
   if [[ "$ipv4" != "null" ]]; then
