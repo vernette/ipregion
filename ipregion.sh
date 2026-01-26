@@ -331,7 +331,7 @@ get_country_name_from_code() {
   local code="$2"
   local response
 
-  response=$(curl_wrapper GET "https://datahub.io/core/country-list/r/data.csv" \
+  response=$(curl_wrapper GET "https://datahub.io/core/country-list/r/data.json" \
     --ip-version "$ip_version" \
     --user-agent "$USER_AGENT")
 
@@ -340,7 +340,7 @@ get_country_name_from_code() {
     return
   fi
 
-  awk -F',' -v code="$code" 'toupper($2)==toupper(code){print $1; exit}' <<<"$response"
+  jq -r --arg code "$code" 'map(select(.Code == $code)) | .[0].Name // empty' <<<"$response"
 }
 
 redact_debug_log() {
