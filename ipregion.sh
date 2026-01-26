@@ -1606,6 +1606,8 @@ print_table_group() {
 
 print_header() {
   local ipv4 ipv6
+  local na="N/A"
+  local asn_value asn_name_value asn_display
 
   ipv4=$(process_json "$RESULT_JSON" ".ipv4")
   ipv6=$(process_json "$RESULT_JSON" ".ipv6")
@@ -1619,7 +1621,18 @@ print_header() {
     printf "%s: %s, %s %s\n" "$(color HEADER 'IPv6')" "$(bold "$(mask_ipv6 "$ipv6")")" "registered in" "$(bold "$(get_registered_country 6)")"
   fi
 
-  printf "%s: %s\n\n" "$(color HEADER 'ASN')" "$(bold "AS$asn $asn_name")"
+  asn_value="$asn"
+  asn_name_value="$asn_name"
+
+  if [[ -z "$asn_value" || "$asn_value" == "null" ]]; then
+    asn_display="$na"
+  elif [[ -z "$asn_name_value" || "$asn_name_value" == "null" ]]; then
+    asn_display="AS$asn_value"
+  else
+    asn_display="AS$asn_value $asn_name_value"
+  fi
+
+  printf "%s: %s\n\n" "$(color HEADER 'ASN')" "$(bold "$asn_display")"
 }
 
 print_results() {
