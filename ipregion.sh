@@ -6,7 +6,6 @@ USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
 
-NETFLIX_API_KEY="YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm"
 TWITCH_CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
 CHATGPT_STATSIG_API_KEY="client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG"
 REDDIT_BASIC_ACCESS_TOKEN="b2hYcG9xclpZdWIxa2c6"
@@ -124,7 +123,6 @@ declare -A CUSTOM_SERVICES=(
   [YOUTUBE]="YouTube"
   [TWITCH]="Twitch"
   [CHATGPT]="ChatGPT"
-  [NETFLIX]="Netflix"
   [REDDIT]="Reddit"
   [DISNEY_PLUS]="Disney+"
   [REDDIT_GUEST_ACCESS]="Reddit (Guest Access)"
@@ -145,7 +143,6 @@ CUSTOM_SERVICES_ORDER=(
   "YOUTUBE"
   "TWITCH"
   "CHATGPT"
-  "NETFLIX"
   "REDDIT"
   "DISNEY_PLUS"
   "REDDIT_GUEST_ACCESS"
@@ -166,7 +163,6 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [YOUTUBE]="lookup_youtube"
   [TWITCH]="lookup_twitch"
   [CHATGPT]="lookup_chatgpt"
-  [NETFLIX]="lookup_netflix"
   [REDDIT]="lookup_reddit"
   [DISNEY_PLUS]="lookup_disney_plus"
   [REDDIT_GUEST_ACCESS]="lookup_reddit_guest_access"
@@ -178,7 +174,6 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [TIKTOK]="lookup_tiktok"
   [CLOUDFLARE_CDN]="lookup_cloudflare_cdn"
   [YOUTUBE_CDN]="lookup_youtube_cdn"
-  [NETFLIX_CDN]="lookup_netflix_cdn"
   [OOKLA_SPEEDTEST]="lookup_ookla_speedtest"
   [JETBRAINS]="lookup_jetbrains"
   [PLAYSTATION]="lookup_playstation"
@@ -188,13 +183,11 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
 declare -A CDN_SERVICES=(
   [CLOUDFLARE_CDN]="Cloudflare CDN"
   [YOUTUBE_CDN]="YouTube CDN"
-  [NETFLIX_CDN]="Netflix CDN"
 )
 
 CDN_SERVICES_ORDER=(
   "CLOUDFLARE_CDN"
   "YOUTUBE_CDN"
-  "NETFLIX_CDN"
 )
 
 declare -A SERVICE_GROUPS=(
@@ -1801,20 +1794,6 @@ lookup_chatgpt() {
   process_json "$response" ".derived_fields.country"
 }
 
-lookup_netflix() {
-  local ip_version="$1"
-  local response
-
-  response=$(curl_wrapper GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=$NETFLIX_API_KEY&urlCount=1" --ip-version "$ip_version")
-
-  if is_valid_json "$response"; then
-    process_json "$response" ".client.location.country"
-    return
-  fi
-
-  echo "$response"
-}
-
 lookup_reddit() {
   local ip_version="$1"
   local basic_access_token="Basic $REDDIT_BASIC_ACCESS_TOKEN"
@@ -1993,19 +1972,6 @@ lookup_youtube_cdn() {
 
   location=$(get_iata_location "$iata")
   echo "$location ($iata)"
-}
-
-lookup_netflix_cdn() {
-  local ip_version="$1"
-  local response
-
-  response=$(curl_wrapper GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=$NETFLIX_API_KEY&urlCount=1" --ip-version "$ip_version")
-
-  if is_valid_json "$response"; then
-    process_json "$response" ".targets[0].location.country"
-  else
-    echo ""
-  fi
 }
 
 lookup_ookla_speedtest() {
