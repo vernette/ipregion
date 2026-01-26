@@ -1,5 +1,7 @@
 # ipregion
 
+[![Deploy to FTPS](https://github.com/vladon/ipregion/actions/workflows/deploy.yml/badge.svg)](https://github.com/vladon/ipregion/actions/workflows/deploy.yml)
+
 ## Usage
 
 ### Download and run locally
