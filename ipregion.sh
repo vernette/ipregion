@@ -1940,6 +1940,7 @@ lookup_google_gemini() {
     echo ""
     return
   fi
+  google_country_code=${google_country_code^^}
 
   country_name=$(get_country_name_from_code "$ip_version" "$google_country_code")
   country_alias=$(country_alias_for_code "$google_country_code")
