@@ -65,14 +65,14 @@ declare -A PRIMARY_SERVICES=(
   [MAXMIND]="maxmind.com|geoip.maxmind.com|/geoip/v2.1/city/me"
   [RIPE]="rdap.db.ripe.net|rdap.db.ripe.net|/ip/{ip}"
   [IPINFO_IO]="ipinfo.io|ipinfo.io|/widget/demo/{ip}"
-  [IPREGISTRY]="ipregistry.co|api.ipregistry.co|/{ip}?hostname=true&key=sb69ksjcajfs4c"
+  [IPREGISTRY]="ipregistry.co|api.ipregistry.co|/{ip}?hostname=true"
   [IPAPI_CO]="ipapi.co|ipapi.co|/{ip}/json"
   [CLOUDFLARE]="cloudflare.com|speed.cloudflare.com|/meta"
   [IFCONFIG_CO]="ifconfig.co|ifconfig.co|/country-iso?ip={ip}|plain"
   [IP2LOCATION_IO]="ip2location.io|api.ip2location.io|/?ip={ip}"
   [IPLOCATION_COM]="iplocation.com|iplocation.com"
   [COUNTRY_IS]="country.is|api.country.is|/{ip}"
-  [GEOAPIFY_COM]="geoapify.com|api.geoapify.com|/v1/ipinfo?&ip={ip}&apiKey=b8568cb9afc64fad861a69edbddb2658"
+  [GEOAPIFY_COM]="geoapify.com|api.geoapify.com|/v1/ipinfo?&ip={ip}"
   [GEOJS_IO]="geojs.io|get.geojs.io|/v1/ip/country.json?ip={ip}"
   [IPAPI_IS]="ipapi.is|api.ipapi.is|/?q={ip}"
   [IPBASE_COM]="ipbase.com|api.ipbase.com|/v2/info?ip={ip}"
@@ -1010,10 +1010,16 @@ get_iata_location() {
   local iata_code="$1"
   local url="https://www.air-port-codes.com/api/v1/single"
   local payload="iata=$iata_code"
-  local apc_auth="96dc04b3fb"
+  local apc_auth="${APC_AUTH:-}"
   local referer="https://www.air-port-codes.com/"
   local ip_version=4
   local response
+
+  if [[ -z "$apc_auth" ]]; then
+    log "$LOG_WARN" "Missing APC_AUTH for air-port-codes.com lookup"
+    echo "$STATUS_NA"
+    return
+  fi
 
   response=$(curl_wrapper POST "$url" \
     --header "APC-Auth: $apc_auth" \
@@ -1214,6 +1220,15 @@ service_build_request() {
 
   url="https://$domain${url_template//\{ip\}/$ip}"
 
+  case "$service" in
+    IPREGISTRY)
+      url="${url}&key=${IPREGISTRY_API_KEY}"
+      ;;
+    GEOAPIFY_COM)
+      url="${url}&apiKey=${GEOAPIFY_API_KEY}"
+      ;;
+  esac
+
   if [[ -n "${SERVICE_HEADERS[$service]}" ]]; then
     headers_str="${SERVICE_HEADERS[$service]}"
   fi
@@ -1226,6 +1241,23 @@ probe_service() {
   local ip_version="$2"
   local ip="$3"
   local built display_name url response_format headers_line request_params response
+
+  case "$service" in
+    IPREGISTRY)
+      if [[ -z "${IPREGISTRY_API_KEY:-}" ]]; then
+        log "$LOG_WARN" "Skipping IPREGISTRY (missing IPREGISTRY_API_KEY)"
+        echo "$STATUS_NA"
+        return
+      fi
+      ;;
+    GEOAPIFY_COM)
+      if [[ -z "${GEOAPIFY_API_KEY:-}" ]]; then
+        log "$LOG_WARN" "Skipping GEOAPIFY_COM (missing GEOAPIFY_API_KEY)"
+        echo "$STATUS_NA"
+        return
+      fi
+      ;;
+  esac
 
   mapfile -t built < <(service_build_request "$service" "$ip" "$ip_version")
   display_name="${built[0]}"
@@ -1834,6 +1866,11 @@ lookup_cloudflare_cdn() {
 
   iata=$(process_json "$response" ".colo.iata")
   location=$(get_iata_location "$iata")
+  if is_status_string "$location" || [[ -z "$location" ]]; then
+    echo "$location"
+    return
+  fi
+
   echo "$location ($iata)"
 }
 
@@ -1851,6 +1888,11 @@ lookup_youtube_cdn() {
   fi
 
   location=$(get_iata_location "$iata")
+  if is_status_string "$location" || [[ -z "$location" ]]; then
+    echo "$location"
+    return
+  fi
+
   echo "$location ($iata)"
 }
 
