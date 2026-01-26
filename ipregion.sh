@@ -6,7 +6,6 @@ USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
 
-YOUTUBE_SOCS_COOKIE="CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY"
 
 VERBOSE=false
 JSON_OUTPUT=false
@@ -1758,7 +1757,6 @@ lookup_youtube_premium() {
   response=$(curl_wrapper GET "https://www.youtube.com/premium" \
     --ip-version "$ip_version" \
     --user-agent "$USER_AGENT" \
-    --header "Cookie: SOCS=$YOUTUBE_SOCS_COOKIE" \
     --header "Accept-Language: en-US,en;q=0.9")
 
   if [[ -z "$response" ]]; then
