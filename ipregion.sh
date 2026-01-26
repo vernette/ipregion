@@ -19,6 +19,7 @@ DEBUG=false
 IPV4_SUPPORTED=0
 IPV6_SUPPORTED=0
 PARALLEL_JOBS=0
+PARALLEL_PIDS=()
 
 RESULT_JSON=""
 ARR_PRIMARY=()
@@ -275,6 +276,33 @@ Examples:
 EOF
 }
 
+print_startup_message() {
+  local parallel_display="$PARALLEL_JOBS"
+  local ipv4="auto" ipv6="auto"
+  local proxy="${PROXY_ADDR:-none}"
+  local iface="${INTERFACE_NAME:-auto}"
+
+  if (( PARALLEL_JOBS <= 0 )); then
+    parallel_display="auto"
+  fi
+
+  if [[ "$IPV4_ONLY" == true ]]; then
+    ipv4="only"
+    ipv6="off"
+  elif [[ "$IPV6_ONLY" == true ]]; then
+    ipv4="off"
+    ipv6="only"
+  fi
+
+  if [[ "$JSON_OUTPUT" == true ]]; then
+    return
+  fi
+
+  printf "%s %s\n" \
+    "$(color INFO '[INFO]')" \
+    "Starting with group=$GROUPS_TO_SHOW timeout=${CURL_TIMEOUT}s parallel=$parallel_display ipv4=$ipv4 ipv6=$ipv6 proxy=$proxy interface=$iface verbose=$VERBOSE debug=$DEBUG" >&2
+}
+
 setup_debug() {
   if [[ "$DEBUG" != true ]]; then
     return 1
@@ -415,6 +443,50 @@ cleanup_debug() {
 is_command_available() {
   local cmd="$1"
   command -v "$cmd" >/dev/null 2>&1
+}
+
+supports_wait_n() {
+  local major minor
+  major=${BASH_VERSINFO[0]:-0}
+  minor=${BASH_VERSINFO[1]:-0}
+
+  (( major > 4 || (major == 4 && minor >= 3) ))
+}
+
+prune_parallel_pids() {
+  local pid
+  local -a remaining=()
+
+  for pid in "${PARALLEL_PIDS[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      remaining+=("$pid")
+    else
+      wait "$pid" 2>/dev/null
+    fi
+  done
+
+  PARALLEL_PIDS=("${remaining[@]}")
+}
+
+wait_for_parallel_slot() {
+  while (( ${#PARALLEL_PIDS[@]} >= PARALLEL_JOBS )); do
+    if supports_wait_n; then
+      wait -n 2>/dev/null || true
+      prune_parallel_pids
+    else
+      log "$LOG_INFO" "Bash < 4.3 detected; using legacy parallel wait loop"
+      prune_parallel_pids
+      if (( ${#PARALLEL_PIDS[@]} < PARALLEL_JOBS )); then
+        break
+      fi
+      sleep 0.1
+    fi
+  done
+}
+
+register_parallel_pid() {
+  local pid="$1"
+  PARALLEL_PIDS+=("$pid")
 }
 
 detect_parallel_jobs() {
@@ -1803,12 +1875,12 @@ run_service_group_parallel() {
       fi
     ) &
 
-    while (( $(jobs -rp | wc -l) >= PARALLEL_JOBS )); do
-      wait -n
-    done
+    register_parallel_pid "$!"
+    wait_for_parallel_slot
   done
 
   wait
+  PARALLEL_PIDS=()
 
   for service_name in "${services_array[@]}"; do
     if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep_wrapper -Fxq "$service_name"; then
@@ -2288,6 +2360,14 @@ main() {
   setup_debug
 
   trap spinner_cleanup EXIT INT TERM
+
+  print_startup_message
+
+  if [[ "$JSON_OUTPUT" != true ]]; then
+    printf "%s %s\n" \
+      "$(color INFO '[INFO]')" \
+      "Checking dependencies..." >&2
+  fi
 
   detect_distro
   install_dependencies
