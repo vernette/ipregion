@@ -43,6 +43,8 @@ bash <(wget -qO- https://ipregion.vladon.sh)
 ./ipregion.sh --json # JSON output
 ./ipregion.sh --debug # Debug mode
 ./ipregion.sh --parallel 6 # Run checks in parallel
+./ipregion.sh --force-spinner # Force spinner even in parallel mode
+./ipregion.sh --progress-log # Progress lines instead of spinner
 ```
 
 > [!NOTE]

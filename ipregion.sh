@@ -20,6 +20,9 @@ IPV4_SUPPORTED=0
 IPV6_SUPPORTED=0
 PARALLEL_JOBS=0
 PARALLEL_PIDS=()
+FORCE_SPINNER=false
+PROGRESS_LOG=false
+LAST_PROGRESS_MSG=""
 
 RESULT_JSON=""
 ARR_PRIMARY=()
@@ -255,6 +258,9 @@ Options:
   -g, --group GROUP    Run only one group: 'primary', 'custom', or 'all' (default: all)
   -t, --timeout SEC    Set curl request timeout in seconds (default: $CURL_TIMEOUT)
   -P, --parallel N     Run up to N services in parallel (default: auto)
+  -S, --force-spinner  Always show spinner (even in parallel mode)
+  --force-spinner      Always show spinner (even in parallel mode)
+  --progress-log       Print progress lines instead of spinner
   -4, --ipv4           Test only IPv4
   -6, --ipv6           Test only IPv6
   -p, --proxy ADDR     Use SOCKS5 proxy (format: host:port)
@@ -272,6 +278,8 @@ Examples:
   $SCRIPT_NAME -v                    # Enable verbose logging
   $SCRIPT_NAME -d                    # Enable debug and save full trace to file (upload on consent)
   $SCRIPT_NAME -P 6                  # Check services using 6 parallel jobs
+  $SCRIPT_NAME --force-spinner       # Force spinner even with parallel checks
+  $SCRIPT_NAME --progress-log        # Print progress lines instead of spinner
 
 EOF
 }
@@ -1016,6 +1024,14 @@ parse_arguments() {
         fi
         shift 2
         ;;
+      -S | --force-spinner)
+        FORCE_SPINNER=true
+        shift
+        ;;
+      --progress-log)
+        PROGRESS_LOG=true
+        shift
+        ;;
       -4 | --ipv4)
         IPV4_ONLY=true
         shift
@@ -1434,6 +1450,15 @@ spinner_update() {
 
   if [[ -n "$SPINNER_SERVICE_FILE" ]]; then
     echo "$value" >"$SPINNER_SERVICE_FILE"
+  fi
+
+  if [[ "$PROGRESS_LOG" == true && "$JSON_OUTPUT" != "true" ]]; then
+    if [[ "$value" != "$LAST_PROGRESS_MSG" ]]; then
+      LAST_PROGRESS_MSG="$value"
+      printf "%s %s\n" \
+        "$(color INFO '[INFO]')" \
+        "Checking: $value" >&2
+    fi
   fi
 }
 
@@ -2376,7 +2401,7 @@ main() {
     PARALLEL_JOBS=$(detect_parallel_jobs)
   fi
 
-  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" && "$PARALLEL_JOBS" -le 1 ]]; then
+  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" && "$PROGRESS_LOG" != true && ( "$PARALLEL_JOBS" -le 1 || "$FORCE_SPINNER" == true ) ]]; then
     spinner_start
   fi
 
@@ -2423,7 +2448,7 @@ main() {
       ;;
   esac
 
-  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" && "$PARALLEL_JOBS" -le 1 ]]; then
+  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" && "$PROGRESS_LOG" != true && ( "$PARALLEL_JOBS" -le 1 || "$FORCE_SPINNER" == true ) ]]; then
     spinner_stop
   fi
 
