@@ -21,7 +21,6 @@ DEBUG=false
 RESULT_JSON=""
 ARR_PRIMARY=()
 ARR_CUSTOM=()
-ARR_CDN=()
 
 COLOR_HEADER="1;36"
 COLOR_SERVICE="1;32"
@@ -65,14 +64,12 @@ declare -A PRIMARY_SERVICES=(
   [MAXMIND]="maxmind.com|geoip.maxmind.com|/geoip/v2.1/city/me"
   [RIPE]="rdap.db.ripe.net|rdap.db.ripe.net|/ip/{ip}"
   [IPINFO_IO]="ipinfo.io|ipinfo.io|/widget/demo/{ip}"
-  [IPREGISTRY]="ipregistry.co|api.ipregistry.co|/{ip}?hostname=true"
   [IPAPI_CO]="ipapi.co|ipapi.co|/{ip}/json"
   [CLOUDFLARE]="cloudflare.com|speed.cloudflare.com|/meta"
   [IFCONFIG_CO]="ifconfig.co|ifconfig.co|/country-iso?ip={ip}|plain"
   [IP2LOCATION_IO]="ip2location.io|api.ip2location.io|/?ip={ip}"
   [IPLOCATION_COM]="iplocation.com|iplocation.com"
   [COUNTRY_IS]="country.is|api.country.is|/{ip}"
-  [GEOAPIFY_COM]="geoapify.com|api.geoapify.com|/v1/ipinfo?&ip={ip}"
   [GEOJS_IO]="geojs.io|get.geojs.io|/v1/ip/country.json?ip={ip}"
   [IPAPI_IS]="ipapi.is|api.ipapi.is|/?q={ip}"
   [IPBASE_COM]="ipbase.com|api.ipbase.com|/v2/info?ip={ip}"
@@ -86,13 +83,11 @@ PRIMARY_SERVICES_ORDER=(
   "RIPE"
   "IPINFO_IO"
   "CLOUDFLARE"
-  "IPREGISTRY"
   "IPAPI_CO"
   "IFCONFIG_CO"
   "IP2LOCATION_IO"
   "IPLOCATION_COM"
   "COUNTRY_IS"
-  "GEOAPIFY_COM"
   "GEOJS_IO"
   "IPAPI_IS"
   "IPBASE_COM"
@@ -106,7 +101,6 @@ declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
 )
 
 declare -A SERVICE_HEADERS=(
-  [IPREGISTRY]="Origin: https://ipregistry.co"
   [MAXMIND]="Referer: https://www.maxmind.com"
   [IPAPI_COM]="Origin: https://ip-api.com"
   [CLOUDFLARE]="Referer: https://speed.cloudflare.com"
@@ -148,33 +142,19 @@ declare -A CUSTOM_SERVICES_HANDLERS=(
   [APPLE]="lookup_apple"
   [STEAM]="lookup_steam"
   [TIKTOK]="lookup_tiktok"
-  [CLOUDFLARE_CDN]="lookup_cloudflare_cdn"
-  [YOUTUBE_CDN]="lookup_youtube_cdn"
   [OOKLA_SPEEDTEST]="lookup_ookla_speedtest"
   [JETBRAINS]="lookup_jetbrains"
   [PLAYSTATION]="lookup_playstation"
   [MICROSOFT]="lookup_microsoft"
 )
 
-declare -A CDN_SERVICES=(
-  [CLOUDFLARE_CDN]="Cloudflare CDN"
-  [YOUTUBE_CDN]="YouTube CDN"
-)
-
-CDN_SERVICES_ORDER=(
-  "CLOUDFLARE_CDN"
-  "YOUTUBE_CDN"
-)
-
 declare -A SERVICE_GROUPS=(
   [primary]="${PRIMARY_SERVICES_ORDER[*]}"
   [custom]="${CUSTOM_SERVICES_ORDER[*]}"
-  [cdn]="${CDN_SERVICES_ORDER[*]}"
 )
 
 EXCLUDED_SERVICES=(
   # "IPINFO_IO"
-  # "IPREGISTRY"
   # "IPAPI_CO"
   "GOOGLE_SEARCH_CAPTCHA"
 )
@@ -270,7 +250,7 @@ Options:
   -v, --verbose        Enable verbose logging
   -d, --debug          Enable full debug trace and save full trace to file (upload on consent)
   -j, --json           Output results in JSON format
-  -g, --group GROUP    Run only one group: 'primary', 'custom', 'cdn', or 'all' (default: all)
+  -g, --group GROUP    Run only one group: 'primary', 'custom', or 'all' (default: all)
   -t, --timeout SEC    Set curl request timeout in seconds (default: $CURL_TIMEOUT)
   -4, --ipv4           Test only IPv4
   -6, --ipv6           Test only IPv6
@@ -281,7 +261,6 @@ Examples:
   $SCRIPT_NAME                       # Check all services with default settings
   $SCRIPT_NAME -g primary            # Check only GeoIP services
   $SCRIPT_NAME -g custom             # Check only popular websites
-  $SCRIPT_NAME -g cdn                # Check only CDN endpoints
   $SCRIPT_NAME -4                    # Test only IPv4
   $SCRIPT_NAME -6                    # Test only IPv6
   $SCRIPT_NAME -p 127.0.0.1:1080     # Use SOCKS5 proxy
@@ -1006,30 +985,6 @@ get_registered_country() {
   process_json "$response" ".registered_country.names.en"
 }
 
-get_iata_location() {
-  local iata_code="$1"
-  local url="https://www.air-port-codes.com/api/v1/single"
-  local payload="iata=$iata_code"
-  local apc_auth="${APC_AUTH:-}"
-  local referer="https://www.air-port-codes.com/"
-  local ip_version=4
-  local response
-
-  if [[ -z "$apc_auth" ]]; then
-    log "$LOG_WARN" "Missing APC_AUTH for air-port-codes.com lookup"
-    echo "$STATUS_NA"
-    return
-  fi
-
-  response=$(curl_wrapper POST "$url" \
-    --header "APC-Auth: $apc_auth" \
-    --header "Referer: $referer" \
-    --data "$payload" \
-    --ip-version "$ip_version")
-
-  process_json "$response" ".airport.country.iso"
-}
-
 is_ipv6_over_ipv4_service() {
   local service="$1"
   for s in "${IPV6_OVER_IPV4_SERVICES[@]}"; do
@@ -1220,15 +1175,6 @@ service_build_request() {
 
   url="https://$domain${url_template//\{ip\}/$ip}"
 
-  case "$service" in
-    IPREGISTRY)
-      url="${url}&key=${IPREGISTRY_API_KEY}"
-      ;;
-    GEOAPIFY_COM)
-      url="${url}&apiKey=${GEOAPIFY_API_KEY}"
-      ;;
-  esac
-
   if [[ -n "${SERVICE_HEADERS[$service]}" ]]; then
     headers_str="${SERVICE_HEADERS[$service]}"
   fi
@@ -1241,23 +1187,6 @@ probe_service() {
   local ip_version="$2"
   local ip="$3"
   local built display_name url response_format headers_line request_params response
-
-  case "$service" in
-    IPREGISTRY)
-      if [[ -z "${IPREGISTRY_API_KEY:-}" ]]; then
-        log "$LOG_WARN" "Skipping IPREGISTRY (missing IPREGISTRY_API_KEY)"
-        echo "$STATUS_NA"
-        return
-      fi
-      ;;
-    GEOAPIFY_COM)
-      if [[ -z "${GEOAPIFY_API_KEY:-}" ]]; then
-        log "$LOG_WARN" "Skipping GEOAPIFY_COM (missing GEOAPIFY_API_KEY)"
-        echo "$STATUS_NA"
-        return
-      fi
-      ;;
-  esac
 
   mapfile -t built < <(service_build_request "$service" "$ip" "$ip_version")
   display_name="${built[0]}"
@@ -1323,9 +1252,6 @@ process_response() {
     IPINFO_IO)
       jq_filter='.data.country'
       ;;
-    IPREGISTRY)
-      jq_filter='.location.country.code'
-      ;;
     IPAPI_CO)
       jq_filter='.country'
       ;;
@@ -1334,9 +1260,6 @@ process_response() {
       ;;
     COUNTRY_IS)
       jq_filter='.country'
-      ;;
-    GEOAPIFY_COM)
-      jq_filter='.country.iso_code'
       ;;
     GEOJS_IO)
       jq_filter='.[0].country'
@@ -1451,10 +1374,6 @@ process_custom_service() {
     display_name="${CUSTOM_SERVICES[$service]}"
     handler_func="${CUSTOM_SERVICES_HANDLERS[$service]}"
     group="custom"
-  elif [[ -n "${CDN_SERVICES[$service]}" ]]; then
-    display_name="${CDN_SERVICES[$service]}"
-    handler_func="${CUSTOM_SERVICES_HANDLERS[$service]}"
-    group="cdn"
   else
     display_name="$service"
     handler_func="${CUSTOM_SERVICES_HANDLERS[$service]}"
@@ -1485,7 +1404,6 @@ run_service_group() {
   local group="$1"
   local services_string="${SERVICE_GROUPS[$group]}"
   local is_custom=false
-  local is_cdn=false
   local services_array service_name handler_func display_name result
 
   read -ra services_array <<<"$services_string"
@@ -1502,15 +1420,10 @@ run_service_group() {
       custom)
         is_custom=true
         ;;
-      cdn)
-        is_cdn=true
-        ;;
     esac
 
     if [[ "$is_custom" == true ]]; then
       process_service "$service_name" true
-    elif [[ "$is_cdn" == true ]]; then
-      process_custom_service "$service_name"
     else
       process_service "$service_name"
     fi
@@ -1539,7 +1452,7 @@ run_all_services() {
 }
 
 finalize_json() {
-  local t_primary t_custom t_cdn
+  local t_primary t_custom
   local IFS=$'\n'
 
   if ((${#ARR_PRIMARY[@]} > 0)); then
@@ -1550,16 +1463,11 @@ finalize_json() {
     t_custom=$(printf '%s\n' "${ARR_CUSTOM[@]//|||/$'\t'}")
   fi
 
-  if ((${#ARR_CDN[@]} > 0)); then
-    t_cdn=$(printf '%s\n' "${ARR_CDN[@]//|||/$'\t'}")
-  fi
-
   # TODO: Add registered country to the JSON output
   RESULT_JSON=$(
     jq -n \
       --rawfile p <(printf "%s" "$t_primary") \
       --rawfile c <(printf "%s" "$t_custom") \
-      --rawfile d <(printf "%s" "$t_cdn") \
       --arg ipv4 "$EXTERNAL_IPV4" \
       --arg ipv6 "$EXTERNAL_IPV6" \
       --arg version "1" '
@@ -1583,8 +1491,7 @@ finalize_json() {
           ipv6: ($ipv6 | select(length > 0) // null),
           results: {
             primary: lines_to_array($p),
-            custom:  lines_to_array($c),
-            cdn:     lines_to_array($d)
+            custom:  lines_to_array($c)
           }
         }
       '
@@ -1605,7 +1512,6 @@ add_result() {
   case "$group" in
     primary) ARR_PRIMARY+=("$service|||$ipv4|||$ipv6") ;;
     custom) ARR_CUSTOM+=("$service|||$ipv4|||$ipv6") ;;
-    cdn) ARR_CDN+=("$service|||$ipv4|||$ipv6") ;;
   esac
 }
 
@@ -1706,13 +1612,8 @@ print_results() {
     custom)
       print_table_group "custom" "Popular services"
       ;;
-    cdn)
-      print_table_group "cdn" "CDN services"
-      ;;
     *)
       print_table_group "custom" "Popular services"
-      printf "\n"
-      print_table_group "cdn" "CDN services"
       printf "\n"
       print_table_group "primary" "GeoIP services"
       ;;
@@ -1733,10 +1634,6 @@ lookup_ip2location_io() {
 
 lookup_ipinfo_io() {
   process_service "IPINFO_IO"
-}
-
-lookup_ipregistry() {
-  process_service "IPREGISTRY"
 }
 
 lookup_ipapi_co() {
@@ -1856,46 +1753,6 @@ lookup_tiktok() {
   process_json "$response" ".body.appProps.region"
 }
 
-lookup_cloudflare_cdn() {
-  local ip_version="$1"
-  local response iata location
-
-  response=$(curl_wrapper GET "https://speed.cloudflare.com/meta" \
-    --header "Referer: https://speed.cloudflare.com" \
-    --ip-version "$ip_version")
-
-  iata=$(process_json "$response" ".colo.iata")
-  location=$(get_iata_location "$iata")
-  if is_status_string "$location" || [[ -z "$location" ]]; then
-    echo "$location"
-    return
-  fi
-
-  echo "$location ($iata)"
-}
-
-lookup_youtube_cdn() {
-  local ip_version="$1"
-  local response iata location
-
-  response=$(curl_wrapper GET "https://redirector.googlevideo.com/report_mapping?di=no" --ip-version "$ip_version")
-  iata=$(echo "$response" | awk '{print $3}' | cut -f2 -d'-' | cut -c1-3)
-  iata=${iata^^}
-
-  if [[ -z "$iata" ]]; then
-    echo ""
-    return
-  fi
-
-  location=$(get_iata_location "$iata")
-  if is_status_string "$location" || [[ -z "$location" ]]; then
-    echo "$location"
-    return
-  fi
-
-  echo "$location ($iata)"
-}
-
 lookup_ookla_speedtest() {
   local ip_version="$1"
   local response
@@ -1962,13 +1819,9 @@ main() {
     custom)
       run_service_group "custom"
       ;;
-    cdn)
-      run_service_group "cdn"
-      ;;
     *)
       run_service_group "primary"
       run_service_group "custom"
-      run_service_group "cdn"
       ;;
   esac
 
