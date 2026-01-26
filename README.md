@@ -7,14 +7,14 @@
 ### Download and run locally
 
 ```bash
-wget -O ipregion.sh https://ipregion.vrnt.xyz
+wget -O ipregion.sh https://ipregion.vladon.sh
 chmod +x ipregion.sh
 ```
 
 ### Run directly from GitHub
 
 ```bash
-bash <(wget -qO- https://ipregion.vrnt.xyz)
+bash <(wget -qO- https://ipregion.vladon.sh)
 ```
 
 ## Features
@@ -60,4 +60,8 @@ Just enter the code in the search box to get the full country name.
 
 Contributions are welcome! Feel free to submit pull requests to add new services or improve the script’s functionality.
 
-![Star History Chart](https://api.star-history.com/svg?repos=vernette/ipregion&type=Date)
+## Original repository
+
+https://github.com/vernette/ipregion
+
+![Star History Chart](https://api.star-history.com/svg?repos=vladon/ipregion&type=Date)
