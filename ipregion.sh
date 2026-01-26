@@ -634,11 +634,71 @@ mask_ipv4() {
 
 mask_ipv6() {
   local ip="$1"
-  echo "$ip" | awk -F: '{
-    for(i=1;i<=NF;i++) if($i=="") $i="0";
-    while(NF<8) for(i=1;i<=8;i++) if($i=="0"){NF++; break;}
-    printf "%s:%s:%s::\n", $1, $2, $3
-  }'
+  local left_part right_part
+  local -a left_arr right_arr expanded
+  local h total missing=0
+
+  if [[ -z "$ip" || "$ip" == "null" ]]; then
+    echo "$ip"
+    return
+  fi
+
+  if [[ "$ip" == *"."* || ! "$ip" =~ ^[0-9A-Fa-f:]+$ ]]; then
+    echo "$ip"
+    return
+  fi
+
+  if [[ "$ip" == *"::"* ]]; then
+    if [[ "${ip#*::}" == *"::"* ]]; then
+      echo "$ip"
+      return
+    fi
+    left_part="${ip%%::*}"
+    right_part="${ip##*::}"
+  else
+    left_part="$ip"
+    right_part=""
+  fi
+
+  if [[ -n "$left_part" ]]; then
+    IFS=':' read -r -a left_arr <<<"$left_part"
+  fi
+
+  if [[ -n "$right_part" ]]; then
+    IFS=':' read -r -a right_arr <<<"$right_part"
+  fi
+
+  for h in "${left_arr[@]}" "${right_arr[@]}"; do
+    if [[ -z "$h" || ! "$h" =~ ^[0-9A-Fa-f]{1,4}$ ]]; then
+      echo "$ip"
+      return
+    fi
+  done
+
+  total=$(( ${#left_arr[@]} + ${#right_arr[@]} ))
+  if [[ "$ip" == *"::"* ]]; then
+    missing=$(( 8 - total ))
+    if (( missing < 1 )); then
+      echo "$ip"
+      return
+    fi
+  elif (( total != 8 )); then
+    echo "$ip"
+    return
+  fi
+
+  expanded=( "${left_arr[@]}" )
+  for ((h = 0; h < missing; h++)); do
+    expanded+=("0")
+  done
+  expanded+=( "${right_arr[@]}" )
+
+  if (( ${#expanded[@]} < 3 )); then
+    echo "$ip"
+    return
+  fi
+
+  printf "%s:%s:%s::\n" "${expanded[0]}" "${expanded[1]}" "${expanded[2]}"
 }
 
 is_valid_port() {
