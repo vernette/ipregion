@@ -163,7 +163,6 @@ IDENTITY_SERVICES=(
   "ifconfig.me"
   "api64.ipify.org"
   "ifconfig.co"
-  "ifconfig.me"
 )
 
 IPV6_OVER_IPV4_SERVICES=(
