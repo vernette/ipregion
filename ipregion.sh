@@ -1058,7 +1058,9 @@ spinner_stop() {
   spinner_running=false
 
   if [[ -n "$spinner_pid" ]]; then
-    kill "$spinner_pid" 2>/dev/null
+    if kill -0 "$spinner_pid" 2>/dev/null; then
+      kill "$spinner_pid" 2>/dev/null
+    fi
     wait "$spinner_pid" 2>/dev/null
     spinner_pid=""
     printf "\\r%*s\\r" 40 " "
