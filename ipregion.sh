@@ -1038,7 +1038,7 @@ discover_external_ips() {
   fi
 
   if [[ -z "$EXTERNAL_IPV4" ]] && [[ -z "$EXTERNAL_IPV6" ]]; then
-    error_exit "Failed to obtain external IPv4 and IPv6 address"
+    error_exit "Failed to obtain external IPv4 and IPv6 address. Check network connectivity, DNS settings, proxy configuration, and firewall rules."
   fi
 }
 
