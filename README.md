@@ -17,37 +17,6 @@ chmod +x ipregion.sh
 bash <(wget -qO- https://ipregion.vrnt.xyz)
 ```
 
-### Docker
-
-#### Run the container for IPv4 (default Docker bridge network)
-
-This runs your IP geolocation check using IPv4 only, without requiring host network mode:
-
-```bash
-docker run --rm vernette/ipregion:latest
-```
-
-You can append additional script options as needed, for example:
-
-```
-docker run --rm vernette/ipregion:latest --group geoip
-```
-
-#### Run the container with host networking (for IPv4 & IPv6 or custom interface)
-
-To access both IPv4 and IPv6 on the host real network interfaces, or to specify a custom network interface (e.g., eth1), use Docker host network mode:
-
-```bash
-docker run --rm --network=host vernette/ipregion:latest
-```
-
-```bash
-docker run --rm --network=host vernette/ipregion:latest --interface eth1
-```
-
-> [!NOTE]
-> When using `--network=host`, the container shares the host network stack, which reduces network isolation but enables full access to interfaces. Without `--network=host`, the container uses Docker bridge network, which may not expose IPv6 or allow interface selection
-
 ## Features
 
 - Multiple GeoIP APIs and web services (YouTube, Spotify, etc.)
