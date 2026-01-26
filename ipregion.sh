@@ -819,7 +819,56 @@ is_valid_ipv4() {
 
 is_valid_ipv6() {
   local ip="$1"
-  [[ -n "$ip" && "$ip" == *:* && "$ip" =~ ^[0-9A-Fa-f:]+$ ]]
+  local part
+  local -a parts
+  local group_count=0
+  local double_colon_count=0
+  local tmp
+
+  [[ -n "$ip" && "$ip" == *:* ]] || return 1
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$ip" <<'PY'
+import ipaddress
+import sys
+try:
+    ipaddress.IPv6Address(sys.argv[1])
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
+PY
+    return $?
+  fi
+
+  [[ "$ip" =~ ^[0-9A-Fa-f:]+$ ]] || return 1
+
+  tmp="$ip"
+  while [[ "$tmp" == *"::"* ]]; do
+    double_colon_count=$((double_colon_count + 1))
+    tmp="${tmp#*::}"
+  done
+
+  ((double_colon_count <= 1)) || return 1
+
+  if [[ "$ip" == *"::"* ]]; then
+    ip="${ip#::}"
+    ip="${ip%::}"
+  fi
+
+  IFS=':' read -r -a parts <<<"$ip"
+  for part in "${parts[@]}"; do
+    [[ -z "$part" ]] && continue
+    [[ "$part" =~ ^[0-9A-Fa-f]{1,4}$ ]] || return 1
+    group_count=$((group_count + 1))
+  done
+
+  if ((double_colon_count == 1)); then
+    ((group_count <= 8)) || return 1
+  else
+    ((group_count == 8)) || return 1
+  fi
+
+  return 0
 }
 
 is_valid_package_name() {
