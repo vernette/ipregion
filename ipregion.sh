@@ -6,7 +6,6 @@ USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
 
-REDDIT_BASIC_ACCESS_TOKEN="b2hYcG9xclpZdWIxa2c6"
 YOUTUBE_SOCS_COOKIE="CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY"
 DISNEY_PLUS_API_KEY="ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
 DISNEY_PLUS_JSON_BODY='{"query":"\n     mutation registerDevice($registerDevice: RegisterDeviceInput!) {\n       registerDevice(registerDevice: $registerDevice) {\n         __typename\n       }\n     }\n     ","variables":{"registerDevice":{"applicationRuntime":"android","attributes":{"operatingSystem":"Android","operatingSystemVersion":"13"},"deviceFamily":"android","deviceLanguage":"en","deviceProfile":"phone","devicePlatformId":"android"}},"operationName":"registerDevice"}'
@@ -119,9 +118,7 @@ declare -A SERVICE_HEADERS=(
 declare -A CUSTOM_SERVICES=(
   [GOOGLE]="Google"
   [YOUTUBE]="YouTube"
-  [REDDIT]="Reddit"
   [DISNEY_PLUS]="Disney+"
-  [REDDIT_GUEST_ACCESS]="Reddit (Guest Access)"
   [YOUTUBE_PREMIUM]="YouTube Premium"
   [GOOGLE_SEARCH_CAPTCHA]="Google Search Captcha"
   [DISNEY_PLUS_ACCESS]="Disney+ Access"
@@ -137,9 +134,7 @@ declare -A CUSTOM_SERVICES=(
 CUSTOM_SERVICES_ORDER=(
   "GOOGLE"
   "YOUTUBE"
-  "REDDIT"
   "DISNEY_PLUS"
-  "REDDIT_GUEST_ACCESS"
   "YOUTUBE_PREMIUM"
   "GOOGLE_SEARCH_CAPTCHA"
   "DISNEY_PLUS_ACCESS"
@@ -155,9 +150,7 @@ CUSTOM_SERVICES_ORDER=(
 declare -A CUSTOM_SERVICES_HANDLERS=(
   [GOOGLE]="lookup_google"
   [YOUTUBE]="lookup_youtube"
-  [REDDIT]="lookup_reddit"
   [DISNEY_PLUS]="lookup_disney_plus"
-  [REDDIT_GUEST_ACCESS]="lookup_reddit_guest_access"
   [YOUTUBE_PREMIUM]="lookup_youtube_premium"
   [GOOGLE_SEARCH_CAPTCHA]="lookup_google_search_captcha"
   [DISNEY_PLUS_ACCESS]="lookup_disney_plus_access"
@@ -1766,29 +1759,6 @@ lookup_youtube() {
   process_json "$json_result" ".[0][2][0][0][1]"
 }
 
-lookup_reddit() {
-  local ip_version="$1"
-  local basic_access_token="Basic $REDDIT_BASIC_ACCESS_TOKEN"
-  local user_agent="Reddit/Version 2025.29.0/Build 2529021/Android 13"
-  local response access_token
-
-  response=$(curl_wrapper POST "https://www.reddit.com/auth/v2/oauth/access-token/loid" \
-    --ip-version "$ip_version" \
-    --user-agent "$user_agent" \
-    --header "Authorization: $basic_access_token" \
-    --json '{"scopes":["email"]}')
-
-  access_token=$(process_json "$response" ".access_token")
-
-  response=$(curl_wrapper POST "https://gql-fed.reddit.com" \
-    --ip-version "$ip_version" \
-    --user-agent "$user_agent" \
-    --header "Authorization: Bearer $access_token" \
-    --json '{"operationName":"UserLocation","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f07de258c54537e24d7856080f662c1b1268210251e5789c8c08f20d76cc8ab2"}}}')
-
-  process_json "$response" ".data.userLocation.countryCode"
-}
-
 lookup_disney_plus() {
   local ip_version="$1"
   local response
@@ -1799,23 +1769,6 @@ lookup_disney_plus() {
     --ip-version "$ip_version")
 
   process_json "$response" ".extensions.sdk.session.location.countryCode"
-}
-
-lookup_reddit_guest_access() {
-  local ip_version="$1"
-  local response is_available color_name
-
-  response=$(curl_wrapper GET "https://www.reddit.com" --ip-version "$ip_version" --user-agent "$USER_AGENT")
-
-  if [[ "$response" != "Denied" ]]; then
-    is_available="Yes"
-    color_name="SERVICE"
-  else
-    is_available="No"
-    color_name="HEART"
-  fi
-
-  print_value_or_colored "$is_available" "$color_name"
 }
 
 lookup_youtube_premium() {
