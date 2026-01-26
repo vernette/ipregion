@@ -1679,7 +1679,11 @@ lookup_iplocation_com() {
   local ip_version="$1"
   local response ip
 
-  ip="$(preferred_ip)"
+  if [[ "$ip_version" -eq 4 ]]; then
+    ip="$EXTERNAL_IPV4"
+  else
+    ip="$EXTERNAL_IPV6"
+  fi
 
   response=$(curl_wrapper POST "https://iplocation.com" --ip-version "$ip_version" --user-agent "$USER_AGENT" --data "ip=$ip")
   process_json "$response" ".country_code"
