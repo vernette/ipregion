@@ -7,8 +7,6 @@ SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
 
 YOUTUBE_SOCS_COOKIE="CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY"
-DISNEY_PLUS_API_KEY="ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
-DISNEY_PLUS_JSON_BODY='{"query":"\n     mutation registerDevice($registerDevice: RegisterDeviceInput!) {\n       registerDevice(registerDevice: $registerDevice) {\n         __typename\n       }\n     }\n     ","variables":{"registerDevice":{"applicationRuntime":"android","attributes":{"operatingSystem":"Android","operatingSystemVersion":"13"},"deviceFamily":"android","deviceLanguage":"en","deviceProfile":"phone","devicePlatformId":"android"}},"operationName":"registerDevice"}'
 
 VERBOSE=false
 JSON_OUTPUT=false
@@ -118,10 +116,8 @@ declare -A SERVICE_HEADERS=(
 declare -A CUSTOM_SERVICES=(
   [GOOGLE]="Google"
   [YOUTUBE]="YouTube"
-  [DISNEY_PLUS]="Disney+"
   [YOUTUBE_PREMIUM]="YouTube Premium"
   [GOOGLE_SEARCH_CAPTCHA]="Google Search Captcha"
-  [DISNEY_PLUS_ACCESS]="Disney+ Access"
   [APPLE]="Apple"
   [STEAM]="Steam"
   [TIKTOK]="Tiktok"
@@ -134,10 +130,8 @@ declare -A CUSTOM_SERVICES=(
 CUSTOM_SERVICES_ORDER=(
   "GOOGLE"
   "YOUTUBE"
-  "DISNEY_PLUS"
   "YOUTUBE_PREMIUM"
   "GOOGLE_SEARCH_CAPTCHA"
-  "DISNEY_PLUS_ACCESS"
   "APPLE"
   "STEAM"
   "TIKTOK"
@@ -150,10 +144,8 @@ CUSTOM_SERVICES_ORDER=(
 declare -A CUSTOM_SERVICES_HANDLERS=(
   [GOOGLE]="lookup_google"
   [YOUTUBE]="lookup_youtube"
-  [DISNEY_PLUS]="lookup_disney_plus"
   [YOUTUBE_PREMIUM]="lookup_youtube_premium"
   [GOOGLE_SEARCH_CAPTCHA]="lookup_google_search_captcha"
-  [DISNEY_PLUS_ACCESS]="lookup_disney_plus_access"
   [APPLE]="lookup_apple"
   [STEAM]="lookup_steam"
   [TIKTOK]="lookup_tiktok"
@@ -1759,18 +1751,6 @@ lookup_youtube() {
   process_json "$json_result" ".[0][2][0][0][1]"
 }
 
-lookup_disney_plus() {
-  local ip_version="$1"
-  local response
-
-  response=$(curl_wrapper POST "https://disney.api.edge.bamgrid.com/graph/v1/device/graphql" \
-    --header "Authorization: Bearer $DISNEY_PLUS_API_KEY" \
-    --json "$DISNEY_PLUS_JSON_BODY" \
-    --ip-version "$ip_version")
-
-  process_json "$response" ".extensions.sdk.session.location.countryCode"
-}
-
 lookup_youtube_premium() {
   local ip_version="$1"
   local response is_available
@@ -1823,29 +1803,6 @@ lookup_google_search_captcha() {
   fi
 
   print_value_or_colored "$is_captcha" "$color_name"
-}
-
-lookup_disney_plus_access() {
-  local ip_version="$1"
-  local response errors_count in_supported_location is_available color_name
-
-  response=$(curl_wrapper POST "https://disney.api.edge.bamgrid.com/graph/v1/device/graphql" \
-    --header "Authorization: Bearer $DISNEY_PLUS_API_KEY" \
-    --json "$DISNEY_PLUS_JSON_BODY" \
-    --ip-version "$ip_version")
-
-  errors_count=$(process_json "$response" ".errors | length")
-  in_supported_location=$(process_json "$response" ".extensions.sdk.session.inSupportedLocation")
-
-  if [[ "$errors_count" == "0" && "$in_supported_location" == "true" ]]; then
-    is_available="Yes"
-    color_name="SERVICE"
-  else
-    is_available="No"
-    color_name="HEART"
-  fi
-
-  print_value_or_colored "$is_available" "$color_name"
 }
 
 lookup_apple() {
