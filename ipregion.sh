@@ -17,9 +17,6 @@ PROXY_ADDR=""
 INTERFACE_NAME=""
 DEBUG=false
 
-GEMINI_COUNTRIES_CACHE="${TMPDIR:-/tmp}/ipregion_gemini_countries.cache"
-GEMINI_COUNTRIES_CACHE_TTL=86400
-
 RESULT_JSON=""
 ARR_PRIMARY=()
 ARR_CUSTOM=()
@@ -110,7 +107,6 @@ declare -A SERVICE_HEADERS=(
 
 declare -A CUSTOM_SERVICES=(
   [GOOGLE]="Google"
-  [GOOGLE_GEMINI]="Google Gemini"
   [YOUTUBE]="YouTube"
   [YOUTUBE_PREMIUM]="YouTube Premium"
   [GOOGLE_SEARCH_CAPTCHA]="Google Search Captcha"
@@ -125,7 +121,6 @@ declare -A CUSTOM_SERVICES=(
 
 CUSTOM_SERVICES_ORDER=(
   "GOOGLE"
-  "GOOGLE_GEMINI"
   "YOUTUBE"
   "YOUTUBE_PREMIUM"
   "GOOGLE_SEARCH_CAPTCHA"
@@ -140,7 +135,6 @@ CUSTOM_SERVICES_ORDER=(
 
 declare -A CUSTOM_SERVICES_HANDLERS=(
   [GOOGLE]="lookup_google"
-  [GOOGLE_GEMINI]="lookup_google_gemini"
   [YOUTUBE]="lookup_youtube"
   [YOUTUBE_PREMIUM]="lookup_youtube_premium"
   [GOOGLE_SEARCH_CAPTCHA]="lookup_google_search_captcha"
@@ -344,156 +338,6 @@ html_decode() {
   fi
 
   printf "%s" "$value"
-}
-
-extract_supported_countries_from_html() {
-  local html="$1"
-
-  if command -v python3 >/dev/null 2>&1; then
-    python3 -c 'from html.parser import HTMLParser; import sys
-
-class Parser(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.in_h2 = False
-        self.in_li = False
-        self.capture = False
-        self.buf = []
-        self.countries = []
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "h2":
-            self.in_h2 = True
-            self.buf = []
-        elif tag == "li" and self.capture:
-            self.in_li = True
-            self.buf = []
-
-    def handle_endtag(self, tag):
-        if tag == "h2":
-            text = "".join(self.buf).strip()
-            self.in_h2 = False
-            if text.lower().startswith("supported countries"):
-                self.capture = True
-            elif text and self.capture:
-                self.capture = False
-        elif tag == "li" and self.in_li:
-            text = "".join(self.buf).strip()
-            if text:
-                self.countries.append(text)
-            self.in_li = False
-
-    def handle_data(self, data):
-        if self.in_h2 or self.in_li:
-            self.buf.append(data)
-
-parser = Parser()
-parser.feed(sys.stdin.read())
-sys.stdout.write("\n".join(parser.countries))' <<<"$html"
-    return
-  fi
-
-  html=$(html_decode "$html")
-  printf "%s\n" "$html" | awk '
-    /<h2>Supported countries/ {capture=1; next}
-    capture && /<h2>/ {exit}
-    capture && /<li>/ {
-      line=$0
-      sub(/.*<li>/, "", line)
-      sub(/<\/li>.*/, "", line)
-      if (length(line) > 0) print line
-    }
-  '
-}
-
-extract_supported_countries() {
-  local response="$1"
-  local json_body
-
-  if is_valid_json "$response"; then
-    json_body=$(jq -r '[.. | objects | .articleBody? // empty] | map(select(length > 0)) | .[0] // empty' <<<"$response")
-    if [[ -n "$json_body" ]]; then
-      extract_supported_countries_from_html "$json_body"
-      return
-    fi
-  fi
-
-  extract_supported_countries_from_html "$response"
-}
-
-get_gemini_supported_countries() {
-  local ip_version="$1"
-  local cache_file="$GEMINI_COUNTRIES_CACHE"
-  local cache_mtime now cached response supported
-
-  if [[ -f "$cache_file" ]]; then
-    cache_mtime=$(stat -c %Y "$cache_file" 2>/dev/null)
-    if [[ -n "$cache_mtime" ]]; then
-      now=$(date +%s)
-      if (( now - cache_mtime < GEMINI_COUNTRIES_CACHE_TTL )); then
-        cached=$(<"$cache_file")
-        if [[ -n "$cached" ]]; then
-          printf "%s" "$cached"
-          return
-        fi
-      fi
-    fi
-  fi
-
-  response=$(curl_wrapper GET "https://support.google.com/gemini/answer/13575153?hl=en" \
-    --ip-version "$ip_version" \
-    --user-agent "$USER_AGENT" \
-    --header "Accept-Language: en-US,en;q=0.9")
-
-  if [[ -z "$response" ]]; then
-    echo ""
-    return
-  fi
-
-  supported=$(extract_supported_countries "$response")
-  if [[ -z "$supported" ]]; then
-    echo ""
-    return
-  fi
-
-  printf "%s" "$supported" >"$cache_file"
-  printf "%s" "$supported"
-}
-
-country_alias_for_code() {
-  local code="$1"
-
-  case "$code" in
-    RU) printf "Russia" ;;
-    IR) printf "Iran" ;;
-    KP) printf "North Korea" ;;
-    KR) printf "South Korea" ;;
-    TR) printf "Turkiye" ;;
-    GB) printf "United Kingdom" ;;
-    US) printf "United States" ;;
-  esac
-}
-
-get_country_name_from_code() {
-  local ip_version="$1"
-  local code="$2"
-  local response
-
-  response=$(curl_wrapper GET "https://datahub.io/core/country-list/r/data.json" \
-    --ip-version "$ip_version" \
-    --user-agent "$USER_AGENT")
-
-  if [[ -z "$response" ]]; then
-    echo ""
-    return
-  fi
-
-  if ! is_valid_json "$response"; then
-    echo ""
-    return
-  fi
-
-  jq -r --arg code "$code" 'map(select(.Code == $code)) | .[0].Name // empty' <<<"$response"
 }
 
 redact_debug_log() {
@@ -2144,63 +1988,6 @@ lookup_google() {
     --ip-version "$ip_version")
 
   grep_wrapper --perl '"MgUcDb":"\K[^"]*' <<<"$response"
-}
-
-lookup_google_gemini() {
-  local ip_version="$1"
-  local google_country_code country_name country_alias status color_name
-  local supported_countries normalized_candidate
-  local -a candidates=()
-
-  google_country_code=$(lookup_google "$ip_version")
-  if [[ -z "$google_country_code" ]]; then
-    echo ""
-    return
-  fi
-  google_country_code=${google_country_code^^}
-
-  country_name=$(get_country_name_from_code "$ip_version" "$google_country_code")
-  country_alias=$(country_alias_for_code "$google_country_code")
-
-  if [[ -n "$country_name" ]]; then
-    candidates+=("$country_name")
-  fi
-
-  if [[ -n "$country_alias" && "$country_alias" != "$country_name" ]]; then
-    candidates+=("$country_alias")
-  fi
-
-  if ((${#candidates[@]} == 0)); then
-    echo ""
-    return
-  fi
-
-  supported_countries=$(get_gemini_supported_countries "$ip_version")
-  if [[ -z "$supported_countries" ]]; then
-    status="$STATUS_NA"
-    color_name="NULL"
-    print_value_or_colored "$status" "$color_name"
-    return
-  fi
-
-  supported_countries=$(printf "%s\n" "$supported_countries" | while IFS= read -r line; do
-    normalize_ascii "$line"
-  done)
-
-  for candidate in "${candidates[@]}"; do
-    normalized_candidate=$(normalize_ascii "$candidate")
-    if [[ -n "$normalized_candidate" ]] && grep_wrapper -Fx "$normalized_candidate" <<<"$supported_countries" >/dev/null; then
-      status="Yes"
-      color_name="SERVICE"
-      print_value_or_colored "$status" "$color_name"
-      return
-    fi
-  done
-
-  status="No"
-  color_name="HEART"
-
-  print_value_or_colored "$status" "$color_name"
 }
 
 lookup_youtube() {
