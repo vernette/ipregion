@@ -1,7 +1,5 @@
 # ipregion
 
-![image](https://i.imgur.com/CRxBuVR.gif)
-
 ## Usage
 
 ### Download and run locally
