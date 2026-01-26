@@ -24,6 +24,8 @@ jobs:
           FTP_HOST: ${{ secrets.FTP_HOST }}
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASS: ${{ secrets.FTP_PASS }}
+          FTP_CA_PEM: ${{ secrets.FTP_CA_PEM }}
         run: |
-          lftp -e "set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate yes; set ftp:passive-mode true; set net:timeout 20; set net:max-retries 2; set net:reconnect-interval-base 5; set net:reconnect-interval-max 5; set cmd:fail-exit true; pwd; ls; put -O / ipregion.sh; put -O / index.php; bye" \
+          echo "$FTP_CA_PEM" > /tmp/ftps-ca.pem
+          lftp -e "set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate yes; set ssl:ca-file /tmp/ftps-ca.pem; set ftp:passive-mode true; set net:timeout 20; set net:max-retries 2; set net:reconnect-interval-base 5; set net:reconnect-interval-max 5; set cmd:fail-exit true; pwd; ls; put -O / ipregion.sh; put -O / index.php; bye" \
             "ftp://$FTP_USER:$FTP_PASS@$FTP_HOST"
