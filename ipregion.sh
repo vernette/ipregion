@@ -4,7 +4,7 @@ SCRIPT_NAME="ipregion.sh"
 SCRIPT_URL="https://github.com/vernette/ipregion"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
-DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
+DEBUG_LOG_FILE=""
 
 
 VERBOSE=false
@@ -248,7 +248,7 @@ IPRegion — determines your IP geolocation using various GeoIP services and pop
 Options:
   -h, --help           Show this help message and exit
   -v, --verbose        Enable verbose logging
-  -d, --debug          Enable full debug trace and save full trace to file (upload on consent)
+  -d, --debug          Enable debug trace; log may contain sensitive data (uploads use redacted copy)
   -j, --json           Output results in JSON format
   -g, --group GROUP    Run only one group: 'primary', 'custom', or 'all' (default: all)
   -t, --timeout SEC    Set curl request timeout in seconds (default: $CURL_TIMEOUT)
@@ -277,6 +277,9 @@ setup_debug() {
     return 1
   fi
 
+  umask 077
+  DEBUG_LOG_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_debug_XXXXXX.log")
+
   exec 3>&1 4>&2
 
   exec 1> >(tee -a "$DEBUG_LOG_FILE" >&3)
@@ -297,16 +300,37 @@ grep_wrapper() {
   grep "${grep_args[@]}" "$@"
 }
 
+redact_debug_log() {
+  local source_file="$1"
+  local redacted_file
+  redacted_file=$(mktemp "${TMPDIR:-/tmp}/ipregion_debug_redacted_XXXXXX.log")
+
+  sed -E \
+    -e 's/([A-Fa-f0-9]{0,4}:){2,}[A-Fa-f0-9]{0,4}/[REDACTED_IPV6]/g' \
+    -e 's/\b([0-9]{1,3}\.){3}[0-9]{1,3}\b/[REDACTED_IPV4]/g' \
+    -e 's/(Authorization:)[^[:cntrl:]]*/\1 [REDACTED]/I' \
+    -e 's/(Cookie:)[^[:cntrl:]]*/\1 [REDACTED]/I' \
+    -e 's/(Set-Cookie:)[^[:cntrl:]]*/\1 [REDACTED]/I' \
+    "$source_file" >"$redacted_file"
+
+  printf "%s" "$redacted_file"
+}
+
 upload_debug() {
   local ip_version=4
   local user_agent="ipregion-script/1.0 (github.com/vernette/ipregion)"
+  local upload_file
+
+  upload_file=$(redact_debug_log "$DEBUG_LOG_FILE")
 
   curl_wrapper POST "https://0x0.st" \
     --user-agent "$user_agent" \
-    --form "file=@$DEBUG_LOG_FILE" \
+    --form "file=@$upload_file" \
     --form "secret=" \
     --form "expires=24" \
     --ip-version "$ip_version"
+
+  rm -f "$upload_file"
 }
 
 cleanup_debug() {
@@ -322,6 +346,8 @@ cleanup_debug() {
   printf "\n%s\n  %s\n" \
     "$(color WARN 'Debug information:')" \
     "Local file: $DEBUG_LOG_FILE"
+  printf "%s\n" \
+    "$(color WARN 'Privacy notice: the debug log may contain sensitive data. Upload uses a redacted copy, but review it before sharing.')"
 
   if [[ -t 0 ]] && prompt_for_debug_upload </dev/tty; then
     debug_url="$(upload_debug)"
