@@ -301,6 +301,17 @@ grep_wrapper() {
   grep "${grep_args[@]}" "$@"
 }
 
+normalize_ascii() {
+  local value="$1"
+
+  if command -v iconv >/dev/null 2>&1; then
+    printf "%s" "$value" | iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null
+    return
+  fi
+
+  printf "%s" "$value"
+}
+
 redact_debug_log() {
   local source_file="$1"
   local redacted_file
@@ -1889,9 +1900,15 @@ lookup_google() {
 
 lookup_google_gemini() {
   local ip_version="$1"
-  local response is_blocked status color_name
+  local response country_name normalized_country status color_name
 
-  response=$(curl_wrapper GET "https://gemini.google.com/app" \
+  country_name=$(get_registered_country "$ip_version")
+  if [[ -z "$country_name" ]]; then
+    echo ""
+    return
+  fi
+
+  response=$(curl_wrapper GET "https://support.google.com/gemini/answer/13575153?hl=en" \
     --ip-version "$ip_version" \
     --user-agent "$USER_AGENT" \
     --header "Accept-Language: en-US,en;q=0.9")
@@ -1901,9 +1918,15 @@ lookup_google_gemini() {
     return
   fi
 
-  is_blocked=$(grep_wrapper -iE "not (available|supported) in your (country|region)|isn't (available|supported) in your (country|region)|unsupported (country|region)" <<<"$response")
+  normalized_country=$(normalize_ascii "$country_name")
+  if [[ -z "$normalized_country" ]]; then
+    echo ""
+    return
+  fi
 
-  if [[ -z "$is_blocked" ]]; then
+  response=$(normalize_ascii "$response")
+
+  if grep_wrapper -F "$normalized_country" <<<"$response" >/dev/null; then
     status="Yes"
     color_name="SERVICE"
   else
