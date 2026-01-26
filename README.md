@@ -74,6 +74,9 @@ docker run --rm --network=host vernette/ipregion:latest --interface eth1
 ./ipregion.sh --debug # Debug mode
 ```
 
+> [!NOTE]
+> Debug mode writes a local log file and may include sensitive data. If you choose to upload it, the script uses a redacted copy, but review the file before sharing.
+
 All options can be combined.
 
 ## Country codes
