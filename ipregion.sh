@@ -870,10 +870,6 @@ parse_arguments() {
         shift
         ;;
       -6 | --ipv6)
-        if ! check_ip_support 6; then
-          error_exit "IPv6 is not supported on this system"
-        fi
-
         IPV6_ONLY=true
         shift
         ;;
@@ -2154,6 +2150,10 @@ main() {
   if ipv6_enabled; then
     check_ip_support 6
     IPV6_SUPPORTED=$?
+  fi
+
+  if [[ "$IPV6_ONLY" == true && "$IPV6_SUPPORTED" -ne 0 ]]; then
+    error_exit "IPv6 is not supported on this system"
   fi
 
   discover_external_ips
