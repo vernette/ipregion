@@ -312,6 +312,43 @@ normalize_ascii() {
   printf "%s" "$value"
 }
 
+html_decode() {
+  local value="$1"
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - <<'PY' <<<"$value"
+import html
+import sys
+
+data = sys.stdin.read()
+sys.stdout.write(html.unescape(data))
+PY
+    return
+  fi
+
+  if command -v perl >/dev/null 2>&1; then
+    perl -MHTML::Entities -pe 'decode_entities($_)' <<<"$value"
+    return
+  fi
+
+  if command -v php >/dev/null 2>&1; then
+    php -r 'echo html_entity_decode(stream_get_contents(STDIN), ENT_QUOTES | ENT_HTML5);' <<<"$value"
+    return
+  fi
+
+  if command -v sed >/dev/null 2>&1; then
+    printf "%s" "$value" | sed -E \
+      -e 's/&amp;/\&/g' \
+      -e 's/&lt;/</g' \
+      -e 's/&gt;/>/g' \
+      -e 's/&quot;/"/g' \
+      -e "s/&#39;/'/g"
+    return
+  fi
+
+  printf "%s" "$value"
+}
+
 country_alias_for_code() {
   local code="$1"
 
@@ -1968,6 +2005,7 @@ lookup_google_gemini() {
     return
   fi
 
+  response=$(html_decode "$response")
   response=$(normalize_ascii "$response")
   for candidate in "${candidates[@]}"; do
     normalized_candidate=$(normalize_ascii "$candidate")
