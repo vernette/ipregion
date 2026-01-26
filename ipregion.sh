@@ -1080,6 +1080,9 @@ spinner_update() {
 
 spinner_cleanup() {
   spinner_stop
+  if [[ "$DEBUG" == true ]]; then
+    cleanup_debug
+  fi
   exit 130
 }
 
