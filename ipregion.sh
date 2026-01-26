@@ -350,9 +350,7 @@ extract_supported_countries_from_html() {
   local html="$1"
 
   if command -v python3 >/dev/null 2>&1; then
-    python3 - <<'PY' <<<"$html"
-from html.parser import HTMLParser
-import sys
+    python3 -c 'from html.parser import HTMLParser; import sys
 
 class Parser(HTMLParser):
     def __init__(self):
@@ -391,8 +389,7 @@ class Parser(HTMLParser):
 
 parser = Parser()
 parser.feed(sys.stdin.read())
-sys.stdout.write("\n".join(parser.countries))
-PY
+sys.stdout.write("\n".join(parser.countries))' <<<"$html"
     return
   fi
 
