@@ -1430,7 +1430,8 @@ curl_wrapper() {
   local method="$1"
   local url="$2"
   shift 2
-  local ip_version user_agent json data file forms headers response_with_code response http_code
+  local ip_version user_agent json data data_urlencode file forms headers
+  local response_with_code response http_code curl_exit
   local curl_args=(
     --silent
     --compressed
@@ -1473,6 +1474,10 @@ curl_wrapper() {
         data="$2"
         shift 2
         ;;
+      --data-urlencode)
+        data_urlencode="$2"
+        shift 2
+        ;;
       --file)
         file="$2"
         shift 2
@@ -1506,6 +1511,10 @@ curl_wrapper() {
     curl_args+=(--data "$data")
   fi
 
+  if [[ -n "$data_urlencode" ]]; then
+    curl_args+=(--data-urlencode "$data_urlencode")
+  fi
+
   if [[ -n "$file" ]]; then
     curl_args+=(--upload-file "$file")
   fi
@@ -1525,10 +1534,23 @@ curl_wrapper() {
   curl_args+=("$url")
 
   response_with_code=$(curl "${curl_args[@]}")
-  http_code=$(tail -n1 <<<"$response_with_code")
-  response=$(head -n -1 <<<"$response_with_code")
+  curl_exit=$?
+  if [[ $curl_exit -ne 0 || -z "$response_with_code" ]]; then
+    log "$LOG_WARN" "curl request failed for $url"
+    echo ""
+    return
+  fi
 
-  if [[ "$http_code" == 4* || "$http_code" == 5* ]]; then
+  http_code=$(printf '%s\n' "$response_with_code" | tail -n 1)
+  response=$(printf '%s\n' "$response_with_code" | sed '$d')
+
+  if [[ ! "$http_code" =~ ^[0-9]{3}$ ]]; then
+    log "$LOG_WARN" "Unexpected HTTP code for $url"
+    echo "$response"
+    return
+  fi
+
+  if [[ "$http_code" =~ ^[45][0-9]{2}$ ]]; then
     status_from_http_code "$http_code"
     return 0
   fi
