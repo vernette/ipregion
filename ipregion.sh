@@ -2442,6 +2442,7 @@ main() {
       spinner_stop
     fi
 
+    finalize_json
     print_header
     HEADER_PRINTED=true
 
