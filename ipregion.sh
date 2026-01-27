@@ -1905,6 +1905,12 @@ run_service_group_parallel() {
     wait_for_parallel_slot
   done
 
+  if [[ "$PROGRESS_LOG" == true && "$JSON_OUTPUT" != "true" ]]; then
+    printf "%s %s\n" \
+      "$(color INFO '[INFO]')" \
+      "Waiting for remaining $group checks..." >&2
+  fi
+
   wait
   PARALLEL_PIDS=()
 
@@ -2002,6 +2008,12 @@ add_result() {
   ipv4=${ipv4//$'\t'/ }
   ipv6=${ipv6//$'\n'/}
   ipv6=${ipv6//$'\t'/ }
+
+  if [[ "$PROGRESS_LOG" == true && "$JSON_OUTPUT" != "true" ]]; then
+    printf "%s %s\n" \
+      "$(color INFO '[INFO]')" \
+      "Done: $service" >&2
+  fi
 
   if [[ -n "$RESULT_FILE" ]]; then
     printf "%s|||%s|||%s|||%s\n" "$group" "$service" "$ipv4" "$ipv6" >>"$RESULT_FILE"
@@ -2476,6 +2488,12 @@ main() {
       fi
       ;;
   esac
+
+  if [[ "$PROGRESS_LOG" == true && "$JSON_OUTPUT" != "true" ]]; then
+    printf "%s %s\n" \
+      "$(color INFO '[INFO]')" \
+      "Rendering results..." >&2
+  fi
 
   if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" && "$PROGRESS_LOG" != true && ( "$PARALLEL_JOBS" -le 1 || "$FORCE_SPINNER" == true ) ]]; then
     spinner_stop
