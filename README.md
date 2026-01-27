@@ -66,11 +66,16 @@ Contributions are welcome! Feel free to submit pull requests to add new services
 
 ## Original repository
 
-Based on the original repository, with high-quality improvements:
+Forked from the original repository and heavily rewritten, with key improvements:
 - Parallel checks by default with auto-detected worker count
 - Safer legacy fallback for parallel waiting on older bash
 - Clear startup status messages and dependency-check notice
 
 Original: https://github.com/vernette/ipregion
+
+## Credits
+
+Original author: Nikita Skryabin  
+Maintainer and rewrites: Vlad Yaroslavlev
 
 ![Star History Chart](https://api.star-history.com/svg?repos=vladon/ipregion&type=Date)
