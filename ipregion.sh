@@ -2174,6 +2174,12 @@ print_results() {
     return
   fi
 
+  local restart_spinner=false
+  if [[ "$spinner_running" == true ]]; then
+    restart_spinner=true
+    spinner_stop
+  fi
+
   if [[ "$HEADER_PRINTED" != true ]]; then
     print_header
   fi
@@ -2191,6 +2197,10 @@ print_results() {
       print_table_group "primary" "GeoIP services"
       ;;
   esac
+
+  if [[ "$restart_spinner" == true ]]; then
+    spinner_start
+  fi
 }
 
 lookup_maxmind() {
@@ -2426,8 +2436,18 @@ main() {
   get_asn
 
   if [[ "$JSON_OUTPUT" != "true" ]]; then
+    local restart_spinner=false
+    if [[ "$spinner_running" == true ]]; then
+      restart_spinner=true
+      spinner_stop
+    fi
+
     print_header
     HEADER_PRINTED=true
+
+    if [[ "$restart_spinner" == true ]]; then
+      spinner_start
+    fi
   fi
 
   case "$GROUPS_TO_SHOW" in
