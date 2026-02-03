@@ -83,7 +83,7 @@ declare -A PRIMARY_SERVICES=(
   [IPBASE_COM]="ipbase.com|api.ipbase.com|/v2/info?ip={ip}"
   [IPQUERY_IO]="ipquery.io|api.ipquery.io|/{ip}"
   [IPWHO_IS]="ipwho.is|ipwho.is|/{ip}"
-  [IPAPI_COM]="ip-api.com|demo.ip-api.com|/json/{ip}?fields=countryCode"
+  [IPAPI_COM]="ip-api.com|ip-api.com|/json/{ip}?fields=countryCode"
   [DETECTOR404]="Detector404|geoip.detector404.ru|/api/v1/ip/{ip}"
 )
 
@@ -1622,7 +1622,12 @@ service_build_request() {
     display_name="$service"
   fi
 
-  url="https://$domain${url_template//\{ip\}/$ip}"
+  # ip-api.com free tier only supports HTTP, not HTTPS
+  if [[ "$service" == "IPAPI_COM" ]]; then
+    url="http://$domain${url_template//\{ip\}/$ip}"
+  else
+    url="https://$domain${url_template//\{ip\}/$ip}"
+  fi
 
   if [[ -n "${SERVICE_HEADERS[$service]}" ]]; then
     headers_str="${SERVICE_HEADERS[$service]}"
