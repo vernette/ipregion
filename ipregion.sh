@@ -2,6 +2,7 @@
 
 SCRIPT_NAME="ipregion.sh"
 SCRIPT_URL="https://github.com/vladon/ipregion"
+SCRIPT_VERSION=$(stat -c "%y" "$0" 2>/dev/null | cut -d'.' -f1 || stat -f "%Sm" "$0" 2>/dev/null || echo "unknown")
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE=""
@@ -306,6 +307,11 @@ print_startup_message() {
   if [[ "$JSON_OUTPUT" == true ]]; then
     return
   fi
+
+  printf "%s %s: %s\n" \
+    "$(color INFO '[INFO]')" \
+    "$(color HEADER 'Version')" \
+    "$SCRIPT_VERSION" >&2
 
   printf "%s %s\n" \
     "$(color INFO '[INFO]')" \
