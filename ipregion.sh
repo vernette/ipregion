@@ -82,6 +82,7 @@ declare -A PRIMARY_SERVICES=(
   [IPAPI_IS]="ipapi.is|api.ipapi.is|/?q={ip}"
   [IPBASE_COM]="ipbase.com|api.ipbase.com|/v2/info?ip={ip}"
   [IPQUERY_IO]="ipquery.io|api.ipquery.io|/{ip}"
+  [IPWHOIS_IO]="ipwhois.io|ipwho.is|/{ip}"
   [IPWHO_IS]="ipwho.is|ipwho.is|/{ip}"
   [IPAPI_COM]="ip-api.com|ip-api.com|/json/{ip}?fields=countryCode"
   [DETECTOR404]="Detector404|geoip.detector404.ru|/api/v1/ip/{ip}"
@@ -101,6 +102,7 @@ PRIMARY_SERVICES_ORDER=(
   "IPAPI_IS"
   "IPBASE_COM"
   "IPQUERY_IO"
+  "IPWHOIS_IO"
   "IPWHO_IS"
   "IPAPI_COM"
   "DETECTOR404"
@@ -1726,6 +1728,9 @@ process_response() {
       ;;
     IPQUERY_IO)
       jq_filter='.location.country_code'
+      ;;
+    IPWHOIS_IO)
+      jq_filter='.country_code'
       ;;
     IPWHO_IS)
       jq_filter='.country_code'
