@@ -84,6 +84,7 @@ declare -A PRIMARY_SERVICES=(
   [IPQUERY_IO]="ipquery.io|api.ipquery.io|/{ip}"
   [IPWHO_IS]="ipwho.is|ipwho.is|/{ip}"
   [IPAPI_COM]="ip-api.com|demo.ip-api.com|/json/{ip}?fields=countryCode"
+  [DETECTOR404]="Detector404|geoip.detector404.ru|/api/v1/ip/{ip}"
 )
 
 PRIMARY_SERVICES_ORDER=(
@@ -102,6 +103,7 @@ PRIMARY_SERVICES_ORDER=(
   "IPQUERY_IO"
   "IPWHO_IS"
   "IPAPI_COM"
+  "DETECTOR404"
 )
 
 declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
@@ -1726,6 +1728,9 @@ process_response() {
     IPAPI_COM)
       jq_filter='.countryCode'
       ;;
+    DETECTOR404)
+      jq_filter='.data.country.ccode'
+      ;;
     *)
       echo "$response"
       ;;
@@ -2247,6 +2252,10 @@ lookup_cloudflare() {
 
 lookup_ifconfig_co() {
   process_service "IFCONFIG_CO"
+}
+
+lookup_detector404() {
+  process_service "DETECTOR404"
 }
 
 lookup_iplocation_com() {
