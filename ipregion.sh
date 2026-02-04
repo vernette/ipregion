@@ -26,6 +26,16 @@ PROGRESS_LOG=false
 LAST_PROGRESS_MSG=""
 HEADER_PRINTED=false
 
+# Cache configuration
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/ipregion"
+CACHE_FILE="$CACHE_DIR/ip_cache.json"
+CACHE_TTL=3600
+CACHE_ENABLED=true
+IP_FETCH_MAX_RETRIES=3
+IP_FETCH_RETRY_DELAY=1
+CACHE_CLEARED=false
+CACHE_SHOWN=false
+
 RESULT_JSON=""
 ARR_PRIMARY=()
 ARR_CUSTOM=()
@@ -172,10 +182,19 @@ EXCLUDED_SERVICES=(
 )
 
 IDENTITY_SERVICES=(
+  # Primary services
   "ident.me"
   "ifconfig.me"
   "api64.ipify.org"
   "ifconfig.co"
+  # Secondary services (fallback pool)
+  "icanhazip.com"
+  "checkip.amazonaws.com"
+  "ipinfo.io/ip"
+  "api.ipify.org"
+  "myip.dnsomatic.com"
+  "ipecho.net/plain"
+  "whatismyipaddress.com/plain"
 )
 
 IPV6_OVER_IPV4_SERVICES=(
@@ -271,6 +290,10 @@ Options:
   -6, --ipv6           Test only IPv6
   -p, --proxy ADDR     Use SOCKS5 proxy (format: host:port)
   -i, --interface IF   Use specified network interface (e.g. eth1)
+  --no-cache           Disable IP address caching
+  --cache-ttl SEC      Set cache TTL in seconds (default: $CACHE_TTL)
+  --clear-cache        Clear the IP cache
+  --show-cache         Show cached IP addresses
 
 Examples:
   $SCRIPT_NAME                       # Check all services with default settings
@@ -286,6 +309,10 @@ Examples:
   $SCRIPT_NAME -P 6                  # Check services using 6 parallel jobs
   $SCRIPT_NAME --force-spinner       # Force spinner even with parallel checks
   $SCRIPT_NAME --progress-log        # Print progress lines instead of spinner
+  $SCRIPT_NAME --show-cache         # Show cached IP addresses
+  $SCRIPT_NAME --clear-cache         # Clear the IP cache
+  $SCRIPT_NAME --no-cache            # Disable IP address caching
+  $SCRIPT_NAME --cache-ttl 1800      # Set cache TTL to 30 minutes
 
 EOF
 }
@@ -295,6 +322,8 @@ print_startup_message() {
   local ipv4="auto" ipv6="auto"
   local proxy="${PROXY_ADDR:-none}"
   local iface="${INTERFACE_NAME:-auto}"
+  local cache_status="${CACHE_ENABLED:-false}"
+  local cache_ttl_display="${CACHE_TTL}s"
 
   if (( PARALLEL_JOBS <= 0 )); then
     parallel_display="unknown"
@@ -308,6 +337,12 @@ print_startup_message() {
     ipv6="only"
   fi
 
+  if [[ "$CACHE_ENABLED" == true ]]; then
+    cache_status="enabled (TTL: ${CACHE_TTL}s)"
+  else
+    cache_status="disabled"
+  fi
+
   if [[ "$JSON_OUTPUT" == true ]]; then
     return
   fi
@@ -319,7 +354,7 @@ print_startup_message() {
 
   printf "%s %s\n" \
     "$(color INFO '[INFO]')" \
-    "Starting with group=$GROUPS_TO_SHOW timeout=${CURL_TIMEOUT}s parallel=$parallel_display ipv4=$ipv4 ipv6=$ipv6 proxy=$proxy interface=$iface verbose=$VERBOSE debug=$DEBUG" >&2
+    "Starting with group=$GROUPS_TO_SHOW timeout=${CURL_TIMEOUT}s parallel=$parallel_display ipv4=$ipv4 ipv6=$ipv6 proxy=$proxy interface=$iface cache=$cache_status verbose=$VERBOSE debug=$DEBUG" >&2
 }
 
 setup_debug() {
@@ -1067,6 +1102,28 @@ parse_arguments() {
         log "$LOG_INFO" "Using interface: $INTERFACE_NAME"
         shift 2
         ;;
+      --no-cache)
+        CACHE_ENABLED=false
+        log "$LOG_INFO" "Cache disabled"
+        shift
+        ;;
+      --cache-ttl)
+        if [[ "$2" =~ ^[0-9]+$ ]] && ((10#$2 >= 0)); then
+          CACHE_TTL="$2"
+          log "$LOG_INFO" "Cache TTL set to ${CACHE_TTL}s"
+        else
+          error_exit "Invalid cache TTL value: $2. TTL must be a non-negative integer"
+        fi
+        shift 2
+        ;;
+      --clear-cache)
+        CACHE_CLEARED=true
+        shift
+        ;;
+      --show-cache)
+        CACHE_SHOWN=true
+        shift
+        ;;
       *)
         error_exit "Unknown option: $1"
         ;;
@@ -1286,6 +1343,182 @@ preferred_ip() {
   can_use_ipv4 && echo "$EXTERNAL_IPV4" || echo "$EXTERNAL_IPV6"
 }
 
+# Cache Management Functions
+load_ip_cache() {
+  local ip_version="$1"
+  local cache_content cached_ip cached_timestamp current_timestamp cache_age
+
+  if [[ "$CACHE_ENABLED" != true ]]; then
+    return 1
+  fi
+
+  if [[ ! -f "$CACHE_FILE" ]]; then
+    log "$LOG_DEBUG" "Cache file not found: $CACHE_FILE"
+    return 1
+  fi
+
+  cache_content=$(cat "$CACHE_FILE" 2>/dev/null)
+
+  if [[ -z "$cache_content" ]]; then
+    log "$LOG_WARN" "Cache file is empty"
+    return 1
+  fi
+
+  if ! is_valid_json "$cache_content"; then
+    log "$LOG_WARN" "Cache file contains invalid JSON"
+    return 1
+  fi
+
+  cached_ip=$(echo "$cache_content" | jq -r --arg v "ipv$ip_version" '.[$v].address // empty' 2>/dev/null)
+  cached_timestamp=$(echo "$cache_content" | jq -r --arg v "ipv$ip_version" '.[$v].timestamp // empty' 2>/dev/null)
+
+  if [[ -z "$cached_ip" ]] || [[ -z "$cached_timestamp" ]]; then
+    log "$LOG_WARN" "Cache missing IPv${ip_version} data"
+    return 1
+  fi
+
+  current_timestamp=$(date +%s)
+  cache_age=$((current_timestamp - cached_timestamp))
+
+  if [[ $cache_age -gt $CACHE_TTL ]]; then
+    log "$LOG_INFO" "Cached IPv${ip_version} expired (age: ${cache_age}s, TTL: ${CACHE_TTL}s)"
+    return 1
+  fi
+
+  if [[ "$ip_version" == "4" ]]; then
+    if ! is_valid_ipv4 "$cached_ip"; then
+      log "$LOG_WARN" "Cached IPv4 address is invalid: $cached_ip"
+      return 1
+    fi
+  else
+    if ! is_valid_ipv6 "$cached_ip"; then
+      log "$LOG_WARN" "Cached IPv6 address is invalid: $cached_ip"
+      return 1
+    fi
+  fi
+
+  log "$LOG_INFO" "Using cached IPv${ip_version} address: $cached_ip (age: ${cache_age}s)"
+  echo "$cached_ip"
+  return 0
+}
+
+save_ip_cache() {
+  local ip_version="$1"
+  local ip_address="$2"
+  local service="$3"
+  local cache_content current_timestamp
+  local temp_file
+
+  if [[ "$CACHE_ENABLED" != true ]]; then
+    return 0
+  fi
+
+  if [[ -z "$ip_address" ]]; then
+    log "$LOG_WARN" "Cannot save empty IP address to cache"
+    return 1
+  fi
+
+  current_timestamp=$(date +%s)
+
+  if [[ -f "$CACHE_FILE" ]]; then
+    cache_content=$(cat "$CACHE_FILE" 2>/dev/null)
+  fi
+
+  if [[ -n "$cache_content" ]] && is_valid_json "$cache_content"; then
+    cache_content=$(echo "$cache_content" | jq \
+      --arg v "ipv$ip_version" \
+      --arg ip "$ip_address" \
+      --arg ts "$current_timestamp" \
+      --arg src "$service" \
+      '.[$v] = {address: $ip, timestamp: ($ts | tonumber), source: $src}')
+  else
+    cache_content=$(jq -n \
+      --arg v "ipv$ip_version" \
+      --arg ip "$ip_address" \
+      --arg ts "$current_timestamp" \
+      --arg src "$service" \
+      '{version: 1, ($v): {address: $ip, timestamp: ($ts | tonumber), source: $src}}')
+  fi
+
+  mkdir -p "$CACHE_DIR"
+  temp_file=$(mktemp "$CACHE_FILE.XXXXXX")
+  echo "$cache_content" > "$temp_file"
+  chmod 0600 "$temp_file"
+  mv "$temp_file" "$CACHE_FILE"
+
+  log "$LOG_INFO" "Saved IPv${ip_version} address to cache: $ip_address"
+}
+
+clear_ip_cache() {
+  if [[ -f "$CACHE_FILE" ]]; then
+    rm -f "$CACHE_FILE"
+    log "$LOG_INFO" "Cache file cleared: $CACHE_FILE"
+  fi
+}
+
+show_ip_cache() {
+  local cache_content cached_ipv4 cached_ipv6 ipv4_ts ipv6_ts ipv4_src ipv6_src
+  local current_timestamp ipv4_age ipv6_age ipv4_status ipv6_status
+
+  if [[ ! -f "$CACHE_FILE" ]]; then
+    echo "No cache file found at $CACHE_FILE"
+    return 0
+  fi
+
+  cache_content=$(cat "$CACHE_FILE" 2>/dev/null)
+
+  if [[ -z "$cache_content" ]] || ! is_valid_json "$cache_content"; then
+    echo "Cache file exists but contains invalid data"
+    return 1
+  fi
+
+  current_timestamp=$(date +%s)
+
+  cached_ipv4=$(echo "$cache_content" | jq -r '.ipv4.address // empty' 2>/dev/null)
+  cached_ipv6=$(echo "$cache_content" | jq -r '.ipv6.address // empty' 2>/dev/null)
+  ipv4_ts=$(echo "$cache_content" | jq -r '.ipv4.timestamp // empty' 2>/dev/null)
+  ipv6_ts=$(echo "$cache_content" | jq -r '.ipv6.timestamp // empty' 2>/dev/null)
+  ipv4_src=$(echo "$cache_content" | jq -r '.ipv4.source // empty' 2>/dev/null)
+  ipv6_src=$(echo "$cache_content" | jq -r '.ipv6.source // empty' 2>/dev/null)
+
+  echo "IP Cache Contents"
+  echo "================="
+  echo "Cache file: $CACHE_FILE"
+  echo "Cache TTL: ${CACHE_TTL}s"
+  echo ""
+
+  if [[ -n "$cached_ipv4" ]] && [[ -n "$ipv4_ts" ]]; then
+    ipv4_age=$((current_timestamp - ipv4_ts))
+    if [[ $ipv4_age -le $CACHE_TTL ]]; then
+      ipv4_status="Valid"
+    else
+      ipv4_status="Expired"
+    fi
+    echo "IPv4: $cached_ipv4"
+    echo "  Status: $ipv4_status"
+    echo "  Age: ${ipv4_age}s"
+    echo "  Source: $ipv4_src"
+  else
+    echo "IPv4: Not cached"
+  fi
+  echo ""
+
+  if [[ -n "$cached_ipv6" ]] && [[ -n "$ipv6_ts" ]]; then
+    ipv6_age=$((current_timestamp - ipv6_ts))
+    if [[ $ipv6_age -le $CACHE_TTL ]]; then
+      ipv6_status="Valid"
+    else
+      ipv6_status="Expired"
+    fi
+    echo "IPv6: $cached_ipv6"
+    echo "  Status: $ipv6_status"
+    echo "  Age: ${ipv6_age}s"
+    echo "  Source: $ipv6_src"
+  else
+    echo "IPv6: Not cached"
+  fi
+}
+
 shuffle_identity_services() {
   local i tmp size rand_idx
   size=${#IDENTITY_SERVICES[@]}
@@ -1301,21 +1534,35 @@ shuffle_identity_services() {
   done
 }
 
-fetch_ip_from_service() {
+fetch_ip_from_service_with_retry() {
   local service="$1"
   local ip_version="$2"
-  local response
+  local response attempt delay
+  local max_retries=$IP_FETCH_MAX_RETRIES
 
-  response=$(curl_wrapper GET "https://$service" --ip-version "$ip_version")
+  for ((attempt = 1; attempt <= max_retries; attempt++)); do
+    response=$(curl_wrapper GET "https://$service" --ip-version "$ip_version")
 
-  if [[ -n "$response" ]]; then
-    echo "$response"
-  fi
+    if [[ -n "$response" ]]; then
+      echo "$response"
+      return 0
+    fi
+
+    if ((attempt < max_retries)); then
+      delay=$((IP_FETCH_RETRY_DELAY * (2 ** (attempt - 1))))
+      log "$LOG_DEBUG" "Retry $attempt/$max_retries for $service after ${delay}s delay"
+      sleep "$delay"
+    fi
+  done
+
+  log "$LOG_WARN" "Failed to fetch IP from $service after $max_retries retries"
+  return 1
 }
 
 fetch_external_ip() {
   local ip_version="$1"
   local service ip
+  local from_cache=false
 
   spinner_update "External IPv$ip_version address"
   log "$LOG_INFO" "Getting external IPv${ip_version} address"
@@ -1323,7 +1570,7 @@ fetch_external_ip() {
   shuffle_identity_services
 
   for service in "${IDENTITY_SERVICES[@]}"; do
-    ip=$(fetch_ip_from_service "$service" "$ip_version")
+    ip=$(fetch_ip_from_service_with_retry "$service" "$ip_version")
     ip=${ip//$'\r'/}
     ip=${ip//$'\n'/}
     ip=${ip//[[:space:]]/}
@@ -1342,27 +1589,54 @@ fetch_external_ip() {
 
     if [[ -n "$ip" ]]; then
       log "$LOG_INFO" "Successfully obtained IPv${ip_version} address from $service: $ip"
+      save_ip_cache "$ip_version" "$ip" "$service"
       echo "$ip"
-      return
+      return 0
     else
       log "$LOG_WARN" "No response from $service for IPv${ip_version}"
     fi
   done
 
-  log "$LOG_ERROR" "Failed to obtain IPv${ip_version} address from any service"
+  log "$LOG_WARN" "Failed to obtain IPv${ip_version} address from any service, trying cache"
+  ip=$(load_ip_cache "$ip_version")
+  if [[ -n "$ip" ]]; then
+    from_cache=true
+    echo "$ip"
+    return 0
+  fi
+
+  log "$LOG_ERROR" "Failed to obtain IPv${ip_version} address from any service or cache"
+  return 1
 }
 
 discover_external_ips() {
+  local ipv4_failed=false ipv6_failed=false
+  local ipv4_from_cache=false ipv6_from_cache=false
+
   if ipv4_enabled; then
     EXTERNAL_IPV4=$(fetch_external_ip 4)
+    if [[ -z "$EXTERNAL_IPV4" ]]; then
+      ipv4_failed=true
+    fi
   fi
 
   if ipv6_enabled; then
     EXTERNAL_IPV6=$(fetch_external_ip 6)
+    if [[ -z "$EXTERNAL_IPV6" ]]; then
+      ipv6_failed=true
+    fi
   fi
 
-  if [[ -z "$EXTERNAL_IPV4" ]] && [[ -z "$EXTERNAL_IPV6" ]]; then
+  if [[ "$ipv4_failed" == true ]] && [[ "$ipv6_failed" == true ]]; then
     error_exit "Failed to obtain external IPv4 and IPv6 address. Check network connectivity, DNS settings, proxy configuration, and firewall rules."
+  fi
+
+  if [[ "$ipv4_failed" == true ]]; then
+    log "$LOG_WARN" "IPv4 address not available, continuing with IPv6 only"
+  fi
+
+  if [[ "$ipv6_failed" == true ]]; then
+    log "$LOG_WARN" "IPv6 address not available, continuing with IPv4 only"
   fi
 }
 
@@ -2431,6 +2705,17 @@ lookup_microsoft() {
 
 main() {
   parse_arguments "$@"
+
+  # Handle cache management flags early
+  if [[ "$CACHE_SHOWN" == true ]]; then
+    show_ip_cache
+    exit 0
+  fi
+
+  if [[ "$CACHE_CLEARED" == true ]]; then
+    clear_ip_cache
+    exit 0
+  fi
 
   setup_debug
 
