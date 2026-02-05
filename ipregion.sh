@@ -2,7 +2,12 @@
 
 SCRIPT_NAME="ipregion.sh"
 SCRIPT_URL="https://github.com/vladon/ipregion"
-SCRIPT_VERSION=$(stat -c "%y" "$0" 2>/dev/null | cut -d'.' -f1 || stat -f "%Sm" "$0" 2>/dev/null || echo "unknown")
+# Version metadata - injected during build/deploy
+# Format: VERSION_TYPE|VERSION_VALUE|BUILD_DATE|COMMIT_HASH
+# Examples:
+#   tag|v2.1.0|2025-01-15T10:30:00Z|1a2b3c4d
+#   commit|1a2b3c4d|2025-01-15T10:30:00Z|
+SCRIPT_VERSION_METADATA="unknown|unknown|unknown|"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE=""
@@ -350,7 +355,7 @@ print_startup_message() {
   printf "%s %s: %s\n" \
     "$(color INFO '[INFO]')" \
     "$(color HEADER 'Version')" \
-    "$SCRIPT_VERSION" >&2
+    "$(get_script_version)" >&2
 
   printf "%s %s\n" \
     "$(color INFO '[INFO]')" \
@@ -940,6 +945,35 @@ is_valid_proxy_addr() {
   fi
 
   is_valid_port "$port"
+}
+
+# Parse version metadata and return formatted version string
+get_script_version() {
+  IFS='|' read -r version_type version_value build_date commit_hash <<<"$SCRIPT_VERSION_METADATA"
+
+  case "$version_type" in
+    tag)
+      # Release build: v2.1.0 (1a2b3c4d)
+      if [[ -n "$commit_hash" ]]; then
+        echo "${version_value} (${commit_hash})"
+      else
+        echo "$version_value"
+      fi
+      ;;
+    commit)
+      # Development build: 1a2b3c4d (2025-01-15 10:30 UTC)
+      if [[ -n "$build_date" ]]; then
+        local formatted_date=$(echo "$build_date" | sed 's/T/ /; s/Z/ UTC/')
+        echo "${version_value} (${formatted_date})"
+      else
+        echo "$version_value"
+      fi
+      ;;
+    *)
+      # Fallback for unknown version
+      echo "unknown"
+      ;;
+  esac
 }
 
 is_valid_interface_name() {

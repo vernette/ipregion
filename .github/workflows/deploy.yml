@@ -7,6 +7,8 @@ on:
     paths:
       - ipregion.sh
       - index.php
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
@@ -15,9 +17,48 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for tags
 
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y jq lftp
+
+      - name: Extract version metadata
+        id: version
+        run: |
+          # Check if this is a release build
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            VERSION_TYPE="tag"
+            VERSION_VALUE="${{ github.event.release.tag_name }}"
+            COMMIT_HASH="${GITHUB_SHA:0:8}"
+          else
+            VERSION_TYPE="commit"
+            VERSION_VALUE="${GITHUB_SHA:0:8}"
+            COMMIT_HASH=""
+          fi
+
+          # Get commit date in ISO 8601 format
+          BUILD_DATE=$(git log -1 --format=%cI HEAD)
+
+          # Create version metadata string
+          VERSION_METADATA="${VERSION_TYPE}|${VERSION_VALUE}|${BUILD_DATE}|${COMMIT_HASH}"
+
+          echo "version_type=${VERSION_TYPE}" >> $GITHUB_OUTPUT
+          echo "version_value=${VERSION_VALUE}" >> $GITHUB_OUTPUT
+          echo "build_date=${BUILD_DATE}" >> $GITHUB_OUTPUT
+          echo "commit_hash=${COMMIT_HASH}" >> $GITHUB_OUTPUT
+          echo "version_metadata=${VERSION_METADATA}" >> $GITHUB_OUTPUT
+
+          echo "Version metadata: ${VERSION_METADATA}"
+
+      - name: Inject version into script
+        run: |
+          # Create a temporary copy with version injected
+          sed -i "s|^SCRIPT_VERSION_METADATA=.*|SCRIPT_VERSION_METADATA=\"${{ steps.version.outputs.version_metadata }}\"|" ipregion.sh
+
+          # Verify injection
+          echo "Injected version line:"
+          grep "^SCRIPT_VERSION_METADATA=" ipregion.sh
 
       - name: Run tests
         run: bash tests/run.sh
