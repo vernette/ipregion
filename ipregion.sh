@@ -1164,7 +1164,7 @@ curl_wrapper() {
 
   response_with_code=$(curl "${curl_args[@]}")
   http_code=$(tail -n1 <<<"$response_with_code")
-  response=$(head -n -1 <<<"$response_with_code")
+  response=$(head -n 1 <<<"$response_with_code")
 
   if [[ "$http_code" == 4* || "$http_code" == 5* ]]; then
     status_from_http_code "$http_code"
