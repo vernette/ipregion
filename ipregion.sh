@@ -130,6 +130,7 @@ declare -A CUSTOM_SERVICES=(
   [SPOTIFY]="Spotify"
   [REDDIT]="Reddit"
   [DISNEY_PLUS]="Disney+"
+  [GEMINI_SUPPORTED]="Gemini Supported"
   [REDDIT_GUEST_ACCESS]="Reddit (Guest Access)"
   [YOUTUBE_PREMIUM]="YouTube Premium"
   [GOOGLE_SEARCH_CAPTCHA]="Google Search Captcha"
@@ -153,6 +154,7 @@ CUSTOM_SERVICES_ORDER=(
   "SPOTIFY"
   "REDDIT"
   "DISNEY_PLUS"
+  "GEMINI_SUPPORTED"
   "REDDIT_GUEST_ACCESS"
   "YOUTUBE_PREMIUM"
   "GOOGLE_SEARCH_CAPTCHA"
@@ -170,6 +172,7 @@ CUSTOM_SERVICES_ORDER=(
 declare -A CUSTOM_SERVICES_HANDLERS=(
   [GOOGLE]="lookup_google"
   [YOUTUBE]="lookup_youtube"
+  [GEMINI_SUPPORTED]="lookup_gemini_supported"
   [TWITCH]="lookup_twitch"
   [CHATGPT]="lookup_chatgpt"
   [NETFLIX]="lookup_netflix"
@@ -1711,6 +1714,45 @@ lookup_google() {
     --ip-version "$ip_version")
 
   grep_wrapper --perl '"MgUcDb":"\K[^"]*' <<<"$response"
+}
+
+lookup_gemini_supported() {
+  local ip_version="$1"
+  local response country_code country_name available color_name
+  local gemini_regions_url="https://ai.google.dev/gemini-api/docs/available-regions.md.txt"
+
+  response=$(curl_wrapper GET "https://www.google.com" \
+    --user-agent "$USER_AGENT" \
+    --ip-version "$ip_version")
+
+  country_code=$(grep_wrapper --perl '"MgUcDb":"\K[^"]*' <<<"$response")
+
+  if [[ -z "$country_code" ]]; then
+    echo ""
+    return
+  fi
+
+  country_name=$(curl_wrapper GET "https://restcountries.com/v3.1/alpha/${country_code}?fields=name" \
+    --ip-version "$ip_version")
+  country_name=$(process_json "$country_name" ".name.common")
+
+  if [[ -z "$country_name" || "$country_name" == "null" ]]; then
+    echo ""
+    return
+  fi
+
+  local regions_md
+  regions_md=$(curl_wrapper GET "$gemini_regions_url" --ip-version "$ip_version")
+
+  if grep_wrapper -qi "^- ${country_name}$" <<<"$regions_md"; then
+    available="Yes"
+    color_name="SERVICE"
+  else
+    available="No"
+    color_name="HEART"
+  fi
+
+  print_value_or_colored "$available" "$color_name"
 }
 
 lookup_youtube() {
