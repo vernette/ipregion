@@ -1155,7 +1155,7 @@ curl_wrapper() {
   done
 
   if [[ -n "$PROXY_ADDR" ]]; then
-    curl_args+=(--proxy "socks5://$PROXY_ADDR")
+    curl_args+=(--proxy "socks5h://$PROXY_ADDR")
   fi
 
   if [[ -n "$INTERFACE_NAME" ]]; then
