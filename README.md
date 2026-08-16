@@ -104,4 +104,4 @@ Just enter the code in the search box to get the full country name.
 
 Contributions are welcome! Feel free to submit pull requests to add new services or improve the script’s functionality.
 
-![Star History Chart](https://api.star-history.com/svg?repos=vernette/ipregion&type=Date)
+![Star History Chart](https://star-history.dera.page/svg?repos=vernette/ipregion&type=Date)
