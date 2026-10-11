@@ -16,6 +16,33 @@ YOUTUBE_SOCS_COOKIE="CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzM
 DISNEY_PLUS_API_KEY="ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
 DISNEY_PLUS_JSON_BODY='{"query":"\n     mutation registerDevice($registerDevice: RegisterDeviceInput!) {\n       registerDevice(registerDevice: $registerDevice) {\n         __typename\n       }\n     }\n     ","variables":{"registerDevice":{"applicationRuntime":"android","attributes":{"operatingSystem":"Android","operatingSystemVersion":"13"},"deviceFamily":"android","deviceLanguage":"en","deviceProfile":"phone","devicePlatformId":"android"}},"operationName":"registerDevice"}'
 
+GEMINI_REGIONS_URL="https://ai.google.dev/gemini-api/docs/available-regions.md.txt"
+CLDR_TERRITORIES_URL="https://cdn.jsdelivr.net/npm/cldr-localenames-full/main/en/territories.json"
+GEMINI_MATCH_FILTER=$(
+  cat <<'EOF'
+def stopwords: ["the", "of", "and", "republic", "island", "islands", "saint", "st"];
+
+def words:
+  ascii_downcase
+  | [splits("[^\\p{L}]+")]
+  | map(select(. != "" and (IN(stopwords[]) | not)))
+  | unique;
+
+def gemini_regions:
+  $md | split("\n") | map(select(startswith("- ")) | .[2:] | words);
+
+def cldr_names:
+  $cldr_raw | try fromjson catch {}
+  | .main.en.localeDisplayNames.territories // {}
+  | to_entries | map(select(.key | startswith($code)) | .value);
+
+gemini_regions as $supported
+| cldr_names + [$api_name]
+| map(words)
+| any(IN($supported[]))
+EOF
+)
+
 VERBOSE=false
 JSON_OUTPUT=false
 GROUPS_TO_SHOW="all"
@@ -1717,8 +1744,7 @@ lookup_google() {
 
 lookup_gemini_supported() {
   local ip_version="$1"
-  local country_code country_name available color_name
-  local gemini_regions_url="https://ai.google.dev/gemini-api/docs/available-regions.md.txt"
+  local country_code api_name territories regions_md available color_name
 
   country_code=$(lookup_google "$ip_version")
 
@@ -1727,19 +1753,24 @@ lookup_gemini_supported() {
     return
   fi
 
-  country_name=$(curl_wrapper GET "https://www.apicountries.com/alpha/${country_code}" \
-    --ip-version "4")
-  country_name=$(process_json "$country_name" ".name")
+  regions_md=$(curl_wrapper GET "$GEMINI_REGIONS_URL" --ip-version "$ip_version")
 
-  if [[ -z "$country_name" || "$country_name" == "null" ]]; then
+  if [[ -z "$regions_md" ]] || is_status_string "$regions_md"; then
     echo ""
     return
   fi
 
-  local regions_md
-  regions_md=$(curl_wrapper GET "$gemini_regions_url" --ip-version "$ip_version")
+  territories=$(curl_wrapper GET "$CLDR_TERRITORIES_URL" --ip-version "4")
+  api_name=$(curl_wrapper GET "https://countries.dev/alpha/${country_code}" \
+    --ip-version "4")
+  api_name=$(process_json "$api_name" ".name" 2>/dev/null)
 
-  if grep_wrapper -qi "^- ${country_name}$" <<<"$regions_md"; then
+  if jq -en \
+    --arg code "$country_code" \
+    --arg md "$regions_md" \
+    --arg cldr_raw "$territories" \
+    --arg api_name "$api_name" \
+    "$GEMINI_MATCH_FILTER" >/dev/null; then
     available="Yes"
     color_name="SERVICE"
   else
