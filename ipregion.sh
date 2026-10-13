@@ -1,5 +1,34 @@
 #!/usr/bin/env bash
 
+OS_NAME="$(uname -s)"
+
+ensure_supported_bash() {
+  local major_version="${BASH_VERSINFO[0]:-0}"
+  local candidate
+
+  if [[ "$major_version" -ge 4 ]]; then
+    return 0
+  fi
+
+  if [[ "$OS_NAME" == "Darwin" ]]; then
+    for candidate in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+      if [[ -x "$candidate" ]] && "$candidate" -c '[[ "${BASH_VERSINFO[0]}" -ge 4 ]]'; then
+        exec "$candidate" "$0" "$@"
+      fi
+    done
+
+    printf '%s\n' 'ipregion requires Bash 4+ on macOS.' >&2
+    printf '%s\n' 'Install it with: brew install bash' >&2
+    printf '%s\n' 'Then run: /opt/homebrew/bin/bash ./ipregion.sh' >&2
+    exit 1
+  fi
+
+  printf '%s\n' 'ipregion requires Bash 4+.' >&2
+  exit 1
+}
+
+ensure_supported_bash "$@"
+
 SCRIPT_NAME="ipregion.sh"
 SCRIPT_URL="https://github.com/vernette/ipregion"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
@@ -378,10 +407,15 @@ setup_debug() {
 
 grep_wrapper() {
   local grep_args=()
+  local pattern
 
   if [[ "$1" == "--perl" ]]; then
-    grep_args+=("-oP")
     shift
+    pattern="$1"
+    shift
+
+    perl -ne 'BEGIN { $re = shift @ARGV; $found = 0 } while (/$re/g) { print "$&\n"; $found = 1 } END { exit($found ? 0 : 1) }' "$pattern" "$@"
+    return $?
   fi
 
   grep "${grep_args[@]}" "$@"
@@ -426,7 +460,9 @@ is_command_available() {
 }
 
 detect_distro() {
-  if [[ -f /etc/os-release ]]; then
+  if [[ "$OS_NAME" == "Darwin" ]]; then
+    distro="macos"
+  elif [[ -f /etc/os-release ]]; then
     source /etc/os-release
     distro="$ID"
   elif [[ -f /etc/redhat-release ]]; then
@@ -458,6 +494,13 @@ detect_package_manager() {
       ;;
     opensuse*)
       pkg_manager="zypper"
+      ;;
+    macos)
+      if is_command_available "brew"; then
+        pkg_manager="brew"
+      else
+        error_exit "Homebrew is required on macOS to install missing dependencies"
+      fi
       ;;
     alpine)
       pkg_manager="apk"
@@ -519,6 +562,9 @@ get_install_args() {
       ;;
     apk)
       install_args=("add" "--no-cache")
+      ;;
+    brew)
+      install_args=("install")
       ;;
   esac
 
@@ -801,10 +847,30 @@ get_ping_command() {
 
 check_ip_interfaces() {
   local version="$1"
+  local interface_output
+  local line
 
   log "$LOG_INFO" "Checking for IPv${version} interfaces"
 
-  if [[ -n $(ip -"${version}" addr show scope global 2>/dev/null) ]]; then
+  if [[ "$OS_NAME" == "Darwin" ]]; then
+    if [[ -n "$INTERFACE_NAME" ]]; then
+      interface_output=$(ifconfig "$INTERFACE_NAME" 2>/dev/null)
+    else
+      interface_output=$(ifconfig 2>/dev/null)
+    fi
+
+    while IFS= read -r line; do
+      if [[ "$version" == "4" ]]; then
+        if [[ "$line" =~ ^[[:space:]]*inet[[:space:]]+ ]] && [[ ! "$line" =~ ^[[:space:]]*inet[[:space:]]+127\. ]]; then
+          log "$LOG_INFO" "IPv${version} global interfaces found"
+          return 0
+        fi
+      elif [[ "$line" =~ ^[[:space:]]*inet6[[:space:]]+ ]] && [[ ! "$line" =~ ^[[:space:]]*inet6[[:space:]]+(fe80:|::1) ]]; then
+        log "$LOG_INFO" "IPv${version} global interfaces found"
+        return 0
+      fi
+    done <<<"$interface_output"
+  elif [[ -n $(ip -"${version}" addr show scope global 2>/dev/null) ]]; then
     log "$LOG_INFO" "IPv${version} global interfaces found"
     return 0
   fi
@@ -1192,8 +1258,8 @@ curl_wrapper() {
   curl_args+=("$url")
 
   response_with_code=$(curl "${curl_args[@]}")
-  http_code=$(tail -n1 <<<"$response_with_code")
-  response=$(head -n -1 <<<"$response_with_code")
+  http_code="${response_with_code##*$'\n'}"
+  response="${response_with_code%$'\n'*}"
 
   if [[ "$http_code" == 4* || "$http_code" == 5* ]]; then
     status_from_http_code "$http_code"
@@ -1787,7 +1853,9 @@ lookup_youtube() {
 
   response=$(curl_wrapper GET "https://www.youtube.com/sw.js_data" --ip-version "$ip_version")
 
-  json_result=$(tail -n +3 <<<"$response")
+  json_result="$response"
+  json_result="${json_result#*$'\n'}"
+  json_result="${json_result#*$'\n'}"
   process_json "$json_result" ".[0][2][0][0][1]"
 }
 

@@ -11,6 +11,17 @@ wget -O ipregion.sh https://ipregion.vrnt.xyz
 chmod +x ipregion.sh
 ```
 
+### macOS
+
+On macOS, install the required tools with Homebrew first:
+
+```bash
+brew install bash curl jq
+/opt/homebrew/bin/bash ./ipregion.sh
+```
+
+If you use Intel Mac, the Bash path may be `/usr/local/bin/bash` instead.
+
 ### Run directly from GitHub
 
 ```bash
@@ -75,7 +86,7 @@ docker run --rm --network=host vernette/ipregion:latest --interface eth1
 - bash
 - curl
 - jq
-- util-linux/bsdmainutils
+- column
 
 ## Key Options
 
