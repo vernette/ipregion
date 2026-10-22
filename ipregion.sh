@@ -673,10 +673,14 @@ mask_ipv4() {
 
 mask_ipv6() {
   local ip="$1"
-  echo "$ip" | awk -F: '{
-    for(i=1;i<=NF;i++) if($i=="") $i="0";
-    while(NF<8) for(i=1;i<=8;i++) if($i=="0"){NF++; break;}
-    printf "%s:%s:%s::\n", $1, $2, $3
+  echo "$ip" | awk '{
+    split($0, halves, "::")
+    left_count = halves[1] == "" ? 0 : split(halves[1], left, ":")
+    right_count = halves[2] == "" ? 0 : split(halves[2], right, ":")
+    for (i = 1; i <= left_count; i++) groups[i] = left[i]
+    for (i = left_count + 1; i <= 8 - right_count; i++) groups[i] = "0"
+    for (i = 1; i <= right_count; i++) groups[8 - right_count + i] = right[i]
+    printf "%s:%s:%s::\n", groups[1], groups[2], groups[3]
   }'
 }
 
