@@ -2142,4 +2142,6 @@ main() {
   trap - EXIT INT TERM
 }
 
-main "$@"
+if ! (return 0 2>/dev/null); then
+  main "$@"
+fi
