@@ -26,6 +26,30 @@ readonly SYMBOL_IPBLOCK="⊘"
 readonly SYMBOL_UNKNOWN="?"
 readonly SYMBOL_NONE="-"
 
+readonly CURL_BASE_ARGS=(--disable --silent --compressed)
+readonly CURL_WRITE_OUT='%{http_code}\n%{redirect_url}\n'
+readonly CACHE_POLL_INTERVAL=0.1
+
+readonly CURL_EXIT_OK=0
+readonly CURL_EXIT_DNS=6
+readonly CURL_EXIT_CONNECT=7
+readonly CURL_EXIT_TIMEOUT=28
+readonly CURL_EXIT_TLS_HANDSHAKE=35
+readonly CURL_EXIT_TLS_CERTIFICATE=60
+readonly CURL_EXIT_PROXY=97
+readonly HTTP_FORBIDDEN=403
+readonly HTTP_TOO_MANY_REQUESTS=429
+
+readonly REASON_DNS="DNS error"
+readonly REASON_CONNECT="connection failed"
+readonly REASON_TIMEOUT="timeout"
+readonly REASON_TLS="TLS error"
+readonly REASON_PROXY="proxy error"
+readonly REASON_NETWORK="network error"
+readonly REASON_FORBIDDEN="access denied"
+readonly REASON_RATE_LIMITED="rate limited"
+readonly REASON_SERVER_ERROR="server error"
+
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
   readonly C_VALUE=$'\033[1m'
   readonly C_DIM=$'\033[0;90m'
@@ -54,6 +78,7 @@ INTERFACE_NAME=""
 SHOW_EMOJI=false
 GEOIP_BREAKDOWN=false
 VERDICT=""
+WORK_DIR=""
 
 die() {
   local message="$1"
@@ -270,9 +295,116 @@ format_status() {
   esac
 }
 
+cleanup() {
+  if [[ -n "$WORK_DIR" ]]; then
+    rm -rf -- "$WORK_DIR"
+  fi
+}
+
+create_work_dir() {
+  WORK_DIR=$(mktemp -d)
+  trap cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+}
+
+request_cache_entry() {
+  local key
+
+  key=$(printf '%s\0' "$@" | cksum)
+  printf '%s/http-%s' "$WORK_DIR" "${key// /-}"
+}
+
+fetch_to_cache() {
+  local entry="$1"
+  local ip_version="$2"
+  local url="$3"
+  shift 3
+  local curl_exit=0
+  local curl_args=(
+    "${CURL_BASE_ARGS[@]}"
+    "-$ip_version"
+    --max-time "$CURL_TIMEOUT"
+    --output "$entry.body"
+    --write-out "$CURL_WRITE_OUT"
+  )
+
+  if [[ -n "$PROXY_ADDR" ]]; then
+    curl_args+=(--proxy "socks5h://$PROXY_ADDR")
+  fi
+
+  if [[ -n "$INTERFACE_NAME" ]]; then
+    curl_args+=(--interface "$INTERFACE_NAME")
+  fi
+
+  curl "${curl_args[@]}" "$@" "$url" >"$entry.meta" || curl_exit=$?
+  printf '%s\n' "$curl_exit" >>"$entry.meta"
+  touch -- "$entry.body"
+  : >"$entry.done"
+}
+
+wait_for_cache_entry() {
+  local entry="$1"
+
+  while [[ ! -e "$entry.done" ]]; do
+    sleep "$CACHE_POLL_INTERVAL"
+  done
+}
+
+read_cache_entry() {
+  local entry="$1"
+
+  {
+    read -r HTTP_CODE
+    read -r HTTP_REDIRECT_URL
+    read -r HTTP_CURL_EXIT
+  } <"$entry.meta"
+  HTTP_BODY=$(<"$entry.body")
+}
+
+http_request() {
+  local ip_version="$1"
+  local url="$2"
+  shift 2
+  local entry
+
+  entry=$(request_cache_entry "$ip_version" "$url" "$@")
+  if mkdir -- "$entry.lock" 2>/dev/null; then
+    fetch_to_cache "$entry" "$ip_version" "$url" "$@"
+  fi
+
+  wait_for_cache_entry "$entry"
+  read_cache_entry "$entry"
+}
+
+curl_failure_reason() {
+  case "$HTTP_CURL_EXIT" in
+    "$CURL_EXIT_DNS") printf '%s' "$REASON_DNS" ;;
+    "$CURL_EXIT_CONNECT") printf '%s' "$REASON_CONNECT" ;;
+    "$CURL_EXIT_TIMEOUT") printf '%s' "$REASON_TIMEOUT" ;;
+    "$CURL_EXIT_TLS_HANDSHAKE" | "$CURL_EXIT_TLS_CERTIFICATE") printf '%s' "$REASON_TLS" ;;
+    "$CURL_EXIT_PROXY") printf '%s' "$REASON_PROXY" ;;
+    *) printf '%s' "$REASON_NETWORK" ;;
+  esac
+}
+
+http_failure_reason() {
+  if [[ "$HTTP_CURL_EXIT" != "$CURL_EXIT_OK" ]]; then
+    curl_failure_reason
+    return
+  fi
+
+  case "$HTTP_CODE" in
+    "$HTTP_FORBIDDEN") printf '%s (%s)' "$REASON_FORBIDDEN" "$HTTP_CODE" ;;
+    "$HTTP_TOO_MANY_REQUESTS") printf '%s (%s)' "$REASON_RATE_LIMITED" "$HTTP_CODE" ;;
+    5[0-9][0-9]) printf '%s (%s)' "$REASON_SERVER_ERROR" "$HTTP_CODE" ;;
+  esac
+}
+
 main() {
   parse_args "$@"
   validate_args
+  create_work_dir
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then

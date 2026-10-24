@@ -1,10 +1,41 @@
 #!/usr/bin/env bats
 
+# shellcheck disable=SC2154 # BATS_TEST_DIRNAME and BATS_TEST_TMPDIR are set by bats
 setup() {
-  # shellcheck disable=SC2154 # BATS_TEST_DIRNAME is set by bats
   SCRIPT="$BATS_TEST_DIRNAME/../ipregion.sh"
   # shellcheck source=../ipregion.sh
   source "$SCRIPT"
+
+  mkdir "$BATS_TEST_TMPDIR/bin"
+  ln -s "$BATS_TEST_DIRNAME/fake-curl.sh" "$BATS_TEST_TMPDIR/bin/curl"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+  WORK_DIR="$BATS_TEST_TMPDIR/work"
+  mkdir "$WORK_DIR"
+  export FAKE_CURL_FIXTURES="$BATS_TEST_TMPDIR/fixtures"
+  export FAKE_CURL_LOG="$BATS_TEST_TMPDIR/curl.log"
+}
+
+add_fixture() {
+  local ip_version="$1"
+  local name="$2"
+  local body="$3"
+
+  mkdir -p "$FAKE_CURL_FIXTURES/ipv$ip_version"
+  printf '%s' "$body" >"$FAKE_CURL_FIXTURES/ipv$ip_version/$name"
+}
+
+set_fixture_field() {
+  local ip_version="$1"
+  local name="$2"
+  local field="$3"
+  local value="$4"
+
+  mkdir -p "$FAKE_CURL_FIXTURES/ipv$ip_version"
+  printf '%s' "$value" >"$FAKE_CURL_FIXTURES/ipv$ip_version/$name.$field"
+}
+
+curl_calls() {
+  wc -l <"$FAKE_CURL_LOG"
 }
 
 @test "help prints usage and exits with 0" {
@@ -198,4 +229,126 @@ print_yes_color() {
   [[ "$(format_status none 5)" == "-    " ]]
   [[ "$(format_status unknown 5)" == "?    " ]]
   [[ "$(format_status timeout 5)" == "?    " ]]
+}
+
+@test "request keeps code, body and redirect apart" {
+  add_fixture 4 example.com_old "moved"
+  set_fixture_field 4 example.com_old code 301
+  set_fixture_field 4 example.com_old redirect "https://example.com/new"
+
+  http_request 4 https://example.com/old
+
+  [[ "$HTTP_CODE" == 301 ]]
+  [[ "$HTTP_BODY" == moved ]]
+  [[ "$HTTP_REDIRECT_URL" == "https://example.com/new" ]]
+  [[ "$HTTP_CURL_EXIT" == 0 ]]
+  [[ -z "$(http_failure_reason)" ]]
+}
+
+@test "request goes over the given protocol" {
+  add_fixture 4 'example.com_ip_v_1' "203.0.113.1"
+  add_fixture 6 'example.com_ip_v_1' "2001:db8::1"
+
+  http_request 4 'https://example.com/ip?v=1'
+  [[ "$HTTP_BODY" == 203.0.113.1 ]]
+
+  http_request 6 'https://example.com/ip?v=1'
+  [[ "$HTTP_BODY" == 2001:db8::1 ]]
+  [[ "$(sed -n 2p "$FAKE_CURL_LOG")" == *" -6 "* ]]
+}
+
+@test "failed request has curl exit code and empty body" {
+  set_fixture_field 4 example.com exit 28
+
+  http_request 4 https://example.com
+
+  [[ "$HTTP_CURL_EXIT" == 28 ]]
+  [[ "$HTTP_CODE" == 000 ]]
+  [[ -z "$HTTP_BODY" ]]
+  [[ "$(http_failure_reason)" == timeout ]]
+}
+
+@test "proxy, interface, timeout and extra args reach curl" {
+  add_fixture 4 example.com ok
+  PROXY_ADDR=127.0.0.1:1080
+  INTERFACE_NAME=wg0
+  CURL_TIMEOUT=7
+
+  http_request 4 https://example.com --header 'X-Test: 1'
+
+  run cat "$FAKE_CURL_LOG"
+  [[ "$output" == *"--proxy socks5h://127.0.0.1:1080"* ]]
+  [[ "$output" == *"--interface wg0"* ]]
+  [[ "$output" == *"--max-time 7"* ]]
+  [[ "$output" == *"--header X-Test: 1 https://example.com" ]]
+}
+
+@test "identical requests hit the network once" {
+  add_fixture 4 example.com ok
+
+  http_request 4 https://example.com
+  http_request 4 https://example.com
+  [[ "$(curl_calls)" -eq 1 ]]
+
+  http_request 4 https://example.com --header 'X-Test: 1'
+  http_request 6 https://example.com
+  [[ "$(curl_calls)" -eq 3 ]]
+}
+
+@test "parallel identical requests wait for the first one" {
+  add_fixture 4 example.com ok
+  export FAKE_CURL_DELAY=0.3
+
+  http_request 4 https://example.com &
+  http_request 4 https://example.com &
+  http_request 4 https://example.com
+  wait
+
+  [[ "$HTTP_BODY" == ok ]]
+  [[ "$(curl_calls)" -eq 1 ]]
+}
+
+@test "curl exit codes map to failure reasons" {
+  local exit_code
+  local -A reasons=(
+    [6]="DNS error"
+    [7]="connection failed"
+    [28]="timeout"
+    [35]="TLS error"
+    [60]="TLS error"
+    [97]="proxy error"
+    [56]="network error"
+  )
+
+  for exit_code in "${!reasons[@]}"; do
+    HTTP_CURL_EXIT="$exit_code"
+    HTTP_CODE=000
+    [[ "$(http_failure_reason)" == "${reasons[$exit_code]}" ]]
+  done
+}
+
+@test "http codes map to failure reasons" {
+  local code
+  local -A reasons=(
+    [200]=""
+    [302]=""
+    [404]=""
+    [403]="access denied (403)"
+    [429]="rate limited (429)"
+    [500]="server error (500)"
+    [503]="server error (503)"
+  )
+
+  HTTP_CURL_EXIT=0
+  for code in "${!reasons[@]}"; do
+    HTTP_CODE="$code"
+    [[ "$(http_failure_reason)" == "${reasons[$code]}" ]]
+  done
+}
+
+@test "work dir is removed on exit" {
+  run bash -c 'source "$1"; create_work_dir; printf "%s" "$WORK_DIR"' _ "$SCRIPT"
+
+  [[ "$status" -eq 0 ]]
+  [[ -n "$output" && ! -e "$output" ]]
 }
