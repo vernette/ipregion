@@ -1129,12 +1129,16 @@ kill_process_group_stragglers() {
   done
 }
 
-spinner_cleanup() {
+cleanup() {
+  spinner_stop
+  remove_request_cache
+}
+
+interrupt_cleanup() {
   trap '' TERM
   kill -TERM 0 2>/dev/null
   kill_process_group_stragglers
-  spinner_stop
-  remove_request_cache
+  cleanup
   exit 130
 }
 
@@ -2305,7 +2309,8 @@ main() {
 
   setup_debug
 
-  trap spinner_cleanup EXIT INT TERM
+  trap cleanup EXIT
+  trap interrupt_cleanup INT TERM
 
   detect_distro
   install_dependencies
