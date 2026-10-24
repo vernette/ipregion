@@ -134,3 +134,68 @@ setup() {
     [[ "$status" -eq 0 ]]
   done
 }
+
+print_yes_color() {
+  # shellcheck source=../ipregion.sh
+  source "$SCRIPT"
+  printf '[%s]' "$C_YES"
+}
+
+@test "colors are on only on a terminal without NO_COLOR" {
+  export SCRIPT
+  export -f print_yes_color
+
+  run bash -c print_yes_color
+  [[ "$output" == "[]" ]]
+
+  run script -qec "bash -c print_yes_color" /dev/null
+  [[ "$output" == *$'[\033[1;32m]'* ]]
+
+  run script -qec "NO_COLOR=1 bash -c print_yes_color" /dev/null
+  [[ "$output" == *"[]"* ]]
+}
+
+@test "visible length ignores color codes" {
+  [[ "$(visible_length $'\033[1;32m✓\033[0m')" -eq 1 ]]
+  [[ "$(visible_length $'\033[0;90mDE\033[0m \033[1mFRA')" -eq 6 ]]
+}
+
+@test "pad fills to width and never cuts text" {
+  [[ "$(pad DE 6)" == "DE    " ]]
+  [[ "$(pad $'\033[1mDE\033[0m' 4)" == $'\033[1mDE\033[0m  ' ]]
+  [[ "$(pad PlayStation 4)" == "PlayStation" ]]
+}
+
+@test "flag is built from regional indicators" {
+  [[ "$(format_flag DE)" == "🇩🇪" ]]
+  [[ "$(format_flag US)" == "🇺🇸" ]]
+}
+
+@test "country label gets a flag only with emoji" {
+  [[ "$(label_country DE)" == "DE" ]]
+
+  SHOW_EMOJI=true
+  [[ "$(label_country DE)" == "🇩🇪 DE" ]]
+  [[ "$(label_country Germany)" == "Germany" ]]
+}
+
+@test "country cells keep their width with and without emoji" {
+  VERDICT=DE
+
+  [[ "$(format_country DE 6)" == "DE    " ]]
+  [[ "$(format_country NL 6)" == "NL    " ]]
+  [[ "$(format_country "" 6)" == "?     " ]]
+
+  SHOW_EMOJI=true
+  [[ "$(format_country DE 9)" == "🇩🇪 DE    " ]]
+  [[ "$(visible_length "$(format_country NL 9)")" -eq 9 ]]
+}
+
+@test "statuses map to symbols of the cell width" {
+  [[ "$(format_status yes 5)" == "✓    " ]]
+  [[ "$(format_status no 5)" == "✗    " ]]
+  [[ "$(format_status ipblock 5)" == "⊘    " ]]
+  [[ "$(format_status none 5)" == "-    " ]]
+  [[ "$(format_status unknown 5)" == "?    " ]]
+  [[ "$(format_status timeout 5)" == "?    " ]]
+}

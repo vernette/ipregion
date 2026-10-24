@@ -3,6 +3,7 @@
 # Shows how GeoIP databases, popular platforms, CDNs and AI services see this host over IPv4 and IPv6.
 
 set -euo pipefail
+shopt -s extglob
 
 readonly SCRIPT_NAME="ipregion.sh"
 readonly SCRIPT_URL="https://github.com/vernette/ipregion"
@@ -11,6 +12,35 @@ readonly ALL_GROUPS="all"
 readonly DEFAULT_TIMEOUT=5
 readonly TIMEOUT_PATTERN='^[1-9][0-9]*$'
 readonly PROXY_PATTERN='^([^:/[:space:]]+|\[[0-9A-Fa-f:]+\]):[0-9]{1,5}$'
+readonly COUNTRY_CODE_PATTERN='^[A-Z]{2}$'
+readonly REGIONAL_INDICATOR_A=0x1F1E6
+readonly ASCII_A=65
+
+readonly STATUS_YES="yes"
+readonly STATUS_NO="no"
+readonly STATUS_IPBLOCK="ipblock"
+readonly STATUS_NONE="none"
+readonly SYMBOL_YES="✓"
+readonly SYMBOL_NO="✗"
+readonly SYMBOL_IPBLOCK="⊘"
+readonly SYMBOL_UNKNOWN="?"
+readonly SYMBOL_NONE="-"
+
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  readonly C_VALUE=$'\033[1m'
+  readonly C_DIM=$'\033[0;90m'
+  readonly C_YES=$'\033[1;32m'
+  readonly C_NO=$'\033[1;31m'
+  readonly C_WARN=$'\033[1;33m'
+  readonly C_RESET=$'\033[0m'
+else
+  readonly C_VALUE=""
+  readonly C_DIM=""
+  readonly C_YES=""
+  readonly C_NO=""
+  readonly C_WARN=""
+  readonly C_RESET=""
+fi
 
 VERBOSE=false
 DEBUG=false
@@ -23,6 +53,7 @@ PROXY_ADDR=""
 INTERFACE_NAME=""
 SHOW_EMOJI=false
 GEOIP_BREAKDOWN=false
+VERDICT=""
 
 die() {
   local message="$1"
@@ -161,6 +192,82 @@ validate_args() {
   if [[ -n "$PROXY_ADDR" && ! "$PROXY_ADDR" =~ $PROXY_PATTERN ]]; then
     die "invalid proxy $PROXY_ADDR, expected HOST:PORT"
   fi
+}
+
+visible_length() {
+  local text="$1"
+  local plain="${text//$'\033'\[+([0-9;])m/}"
+
+  printf '%d' "${#plain}"
+}
+
+pad() {
+  local text="$1"
+  local width="$2"
+  local fill
+
+  fill=$((width - $(visible_length "$text")))
+  if ((fill < 0)); then
+    fill=0
+  fi
+
+  printf '%s%*s' "$text" "$fill" ''
+}
+
+paint() {
+  local color="$1"
+  local text="$2"
+
+  printf '%s%s%s' "$color" "$text" "$C_RESET"
+}
+
+format_flag() {
+  local country="$1"
+  local first=$((REGIONAL_INDICATOR_A + $(printf '%d' "'${country:0:1}") - ASCII_A))
+  local second=$((REGIONAL_INDICATOR_A + $(printf '%d' "'${country:1:1}") - ASCII_A))
+
+  printf '%b' "\\U$(printf '%08X' "$first")\\U$(printf '%08X' "$second")"
+}
+
+label_country() {
+  local country="$1"
+
+  if [[ "$SHOW_EMOJI" != true || ! "$country" =~ $COUNTRY_CODE_PATTERN ]]; then
+    printf '%s' "$country"
+    return
+  fi
+
+  printf '%s %s' "$(format_flag "$country")" "$country"
+}
+
+format_country() {
+  local country="$1"
+  local width="$2"
+
+  if [[ -z "$country" ]]; then
+    paint "$C_DIM" "$(pad "$SYMBOL_UNKNOWN" "$width")"
+    return
+  fi
+
+  if [[ "$country" == "$VERDICT" ]]; then
+    paint "$C_VALUE" "$(pad "$(label_country "$country")" "$width")"
+    return
+  fi
+
+  paint "$C_WARN" "$(pad "$(label_country "$country")" "$width")"
+}
+
+format_status() {
+  local status="$1"
+  local width="$2"
+
+  case "$status" in
+    "$STATUS_YES") paint "$C_YES" "$(pad "$SYMBOL_YES" "$width")" ;;
+    "$STATUS_NO") paint "$C_NO" "$(pad "$SYMBOL_NO" "$width")" ;;
+    "$STATUS_IPBLOCK") paint "$C_NO" "$(pad "$SYMBOL_IPBLOCK" "$width")" ;;
+    "$STATUS_NONE") paint "$C_DIM" "$(pad "$SYMBOL_NONE" "$width")" ;;
+    *) paint "$C_DIM" "$(pad "$SYMBOL_UNKNOWN" "$width")" ;;
+  esac
 }
 
 main() {
