@@ -85,6 +85,37 @@ readonly IPWHO_URL="https://ipwho.is"
 readonly IP_API_URL="https://demo.ip-api.com/json"
 readonly IP_API_ORIGIN="https://ip-api.com"
 
+readonly USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
+readonly GOOGLE_URL="https://accounts.google.com/v3/signin/identifier?flowName=GlifSetupAndroid"
+readonly GOOGLE_COUNTRY_PATTERN='name="region" value="([^"]*)"'
+readonly YOUTUBE_URL="https://www.youtube.com/sw.js_data"
+readonly YOUTUBE_JSON_PREFIX=")]}'"
+readonly TWITCH_URL="https://gql.twitch.tv/gql"
+readonly TWITCH_CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
+readonly TWITCH_QUERY='[{"operationName":"VerifyEmail_CurrentUser","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f9e7dcdf7e99c314c82d8f7f725fab5f99d1df3d7359b53c9ae122deec590198"}}}]'
+readonly CHATGPT_URL="https://ab.chatgpt.com/v1/initialize"
+readonly CHATGPT_STATSIG_API_KEY="client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG"
+readonly CHATGPT_COUNTRY_PATTERN='"derived_fields":\{[^}]*"country":"([^"]*)"'
+readonly NETFLIX_URL="https://api.fast.com/netflix/speedtest/v2?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=1"
+readonly SPOTIFY_URL="https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=142b583129b2df829de3656f9eb484e6"
+readonly SPOTIFY_CLIENT_ID="9a8d2f0ce77a4e248bb71fefcb557637"
+readonly REDDIT_URL="https://www.reddit.com/api/v1/geo"
+readonly REDDIT_COUNTRY_PATTERN='country code: ([A-Z]{2})'
+readonly DISNEY_PLUS_URL="https://disney.api.edge.bamgrid.com/graph/v1/device/graphql"
+readonly DISNEY_PLUS_API_KEY="ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
+# shellcheck disable=SC2016 # $registerDevice is a GraphQL variable, not a shell expansion
+readonly DISNEY_PLUS_QUERY='{"query":"mutation registerDevice($registerDevice: RegisterDeviceInput!) { registerDevice(registerDevice: $registerDevice) { __typename } }","variables":{"registerDevice":{"applicationRuntime":"android","attributes":{"operatingSystem":"Android","operatingSystemVersion":"13"},"deviceFamily":"android","deviceLanguage":"en","deviceProfile":"phone","devicePlatformId":"android"}},"operationName":"registerDevice"}'
+readonly TIKTOK_URL="https://www.tiktok.com/api/v1/web-cookie-privacy/config?appId=1988"
+readonly APPLE_URL="https://gspe1-ssl.ls.apple.com/pep/gcc"
+readonly STEAM_URL="https://store.steampowered.com"
+readonly STEAM_COUNTRY_PATTERN='steamCountry=([^%;]*)'
+readonly MICROSOFT_URL="https://login.live.com"
+readonly MICROSOFT_COUNTRY_PATTERN='"sRequestCountry":"([^"]*)"'
+readonly OOKLA_URL="https://www.speedtest.net/api/js/config-sdk"
+readonly JETBRAINS_URL="https://data.services.jetbrains.com/geo"
+readonly PLAYSTATION_URL="https://www.playstation.com"
+readonly PLAYSTATION_COUNTRY_PATTERN='[Cc]ookie: country=([^;]*)'
+
 readonly CURL_EXIT_OK=0
 readonly CURL_EXIT_DNS=6
 readonly CURL_EXIT_CONNECT=7
@@ -110,6 +141,26 @@ readonly REASON_SERVER_ERROR="server error"
 readonly REASON_UNEXPECTED_RESPONSE="unexpected response"
 readonly REASON_DAILY_LIMIT="daily limit used up"
 readonly REASON_NO_DEMO_TOKEN="no demo token"
+readonly REASON_NO_IPV6="no IPv6"
+
+readonly GROUP_PLATFORMS="platforms"
+readonly PLATFORMS_CHECKS=(
+  check_platforms_google
+  check_platforms_youtube
+  check_platforms_twitch
+  check_platforms_chatgpt
+  check_platforms_netflix
+  check_platforms_spotify
+  check_platforms_reddit
+  check_platforms_disney_plus
+  check_platforms_tiktok
+  check_platforms_apple
+  check_platforms_steam
+  check_platforms_microsoft
+  check_platforms_ookla
+  check_platforms_jetbrains
+  check_platforms_playstation
+)
 
 readonly GROUP_GEOIP="geoip"
 readonly GEOIP_CHECKS=(
@@ -472,6 +523,7 @@ http_request() {
   shift 2
   local entry
 
+  HTTP_IP_VERSION="$ip_version"
   entry=$(request_cache_entry "$ip_version" "$url" "$@")
   if mkdir -- "$entry.lock" 2>/dev/null; then
     fetch_to_cache "$entry" "$ip_version" "$url" "$@"
@@ -853,6 +905,14 @@ external_ip() {
   esac
 }
 
+is_service_without_ipv6() {
+  if [[ "$HTTP_IP_VERSION" != 6 || -n "$PROXY_ADDR" ]]; then
+    return 1
+  fi
+
+  [[ "$HTTP_CURL_EXIT" == "$CURL_EXIT_DNS" || "$HTTP_CURL_EXIT" == "$CURL_EXIT_CONNECT" ]]
+}
+
 print_failure() {
   local group="$1"
   local service="$2"
@@ -868,6 +928,11 @@ print_country() {
   local ip_version="$3"
   local country="$4"
   local reason
+
+  if is_service_without_ipv6; then
+    print_result "$group" "$service" "$ip_version" "" "$STATUS_NONE" "$REASON_NO_IPV6"
+    return
+  fi
 
   reason=$(http_failure_reason)
   if [[ -n "$reason" ]]; then
@@ -1016,6 +1081,130 @@ check_geoip_ip_api_com() {
     --header "Origin: $IP_API_ORIGIN"
 }
 
+check_platforms_json() {
+  local service="$1"
+  local ip_version="$2"
+  local url="$3"
+  local filter="$4"
+  shift 4
+
+  http_request "$ip_version" "$url" "$@"
+  print_country "$GROUP_PLATFORMS" "$service" "$ip_version" "$(json_value "$filter")"
+}
+
+check_platforms_pattern() {
+  local service="$1"
+  local ip_version="$2"
+  local url="$3"
+  local pattern="$4"
+  shift 4
+  local country=""
+
+  http_request "$ip_version" "$url" "$@"
+  if [[ "$HTTP_BODY" =~ $pattern ]]; then
+    country="${BASH_REMATCH[1]}"
+  fi
+
+  print_country "$GROUP_PLATFORMS" "$service" "$ip_version" "$country"
+}
+
+check_platforms_google() {
+  local ip_version="$1"
+
+  check_platforms_pattern Google "$ip_version" "$GOOGLE_URL" "$GOOGLE_COUNTRY_PATTERN" --user-agent "$USER_AGENT"
+}
+
+check_platforms_youtube() {
+  local ip_version="$1"
+  local country
+
+  http_request "$ip_version" "$YOUTUBE_URL"
+  country=$(jq -r '.[0][2][0][0][1] // empty' <<<"${HTTP_BODY#"$YOUTUBE_JSON_PREFIX"}" 2>/dev/null || true)
+  print_country "$GROUP_PLATFORMS" YouTube "$ip_version" "$country"
+}
+
+check_platforms_twitch() {
+  local ip_version="$1"
+
+  check_platforms_json Twitch "$ip_version" "$TWITCH_URL" '.[0].data.requestInfo.countryCode // empty' \
+    --header "Client-Id: $TWITCH_CLIENT_ID" --json "$TWITCH_QUERY"
+}
+
+check_platforms_chatgpt() {
+  local ip_version="$1"
+
+  check_platforms_pattern ChatGPT "$ip_version" "$CHATGPT_URL" "$CHATGPT_COUNTRY_PATTERN" \
+    --request POST --header "Statsig-Api-Key: $CHATGPT_STATSIG_API_KEY"
+}
+
+check_platforms_netflix() {
+  local ip_version="$1"
+
+  check_platforms_json Netflix "$ip_version" "$NETFLIX_URL" '.client.location.country // empty'
+}
+
+check_platforms_spotify() {
+  local ip_version="$1"
+
+  check_platforms_json Spotify "$ip_version" "$SPOTIFY_URL" '.country // empty' --header "X-Client-Id: $SPOTIFY_CLIENT_ID"
+}
+
+check_platforms_reddit() {
+  local ip_version="$1"
+
+  check_platforms_pattern Reddit "$ip_version" "$REDDIT_URL" "$REDDIT_COUNTRY_PATTERN" --user-agent "$USER_AGENT"
+}
+
+check_platforms_disney_plus() {
+  local ip_version="$1"
+
+  check_platforms_json Disney+ "$ip_version" "$DISNEY_PLUS_URL" '.extensions.sdk.session.location.countryCode // empty' \
+    --header "Authorization: Bearer $DISNEY_PLUS_API_KEY" --json "$DISNEY_PLUS_QUERY"
+}
+
+check_platforms_tiktok() {
+  local ip_version="$1"
+
+  check_platforms_json TikTok "$ip_version" "$TIKTOK_URL" '.body.appProps.region // empty'
+}
+
+check_platforms_apple() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$APPLE_URL"
+  print_country "$GROUP_PLATFORMS" Apple "$ip_version" "$HTTP_BODY"
+}
+
+check_platforms_steam() {
+  local ip_version="$1"
+
+  check_platforms_pattern Steam "$ip_version" "$STEAM_URL" "$STEAM_COUNTRY_PATTERN" --head
+}
+
+check_platforms_microsoft() {
+  local ip_version="$1"
+
+  check_platforms_pattern Microsoft "$ip_version" "$MICROSOFT_URL" "$MICROSOFT_COUNTRY_PATTERN"
+}
+
+check_platforms_ookla() {
+  local ip_version="$1"
+
+  check_platforms_json Ookla "$ip_version" "$OOKLA_URL" '.location.countryCode // empty'
+}
+
+check_platforms_jetbrains() {
+  local ip_version="$1"
+
+  check_platforms_json JetBrains "$ip_version" "$JETBRAINS_URL" '.code // empty'
+}
+
+check_platforms_playstation() {
+  local ip_version="$1"
+
+  check_platforms_pattern PlayStation "$ip_version" "$PLAYSTATION_URL" "$PLAYSTATION_COUNTRY_PATTERN" --head
+}
+
 start_checks() {
   local check
 
@@ -1051,6 +1240,7 @@ main() {
   create_job_slots
   discover_external_ips
   lookup_ip_registrations
+  start_checks "${PLATFORMS_CHECKS[@]}"
   start_checks "${GEOIP_CHECKS[@]}"
   wait_for_jobs
   collect_results

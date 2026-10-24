@@ -759,3 +759,86 @@ ROWS
   [[ "$output" == *"geojs.io 4   unexpected response"* ]]
   [[ "$output" == *"Cloudflare 4   unexpected response"* ]]
 }
+
+run_platforms_checks() {
+  create_job_slots
+  start_checks "${PLATFORMS_CHECKS[@]}"
+  wait_for_jobs
+  collect_results
+}
+
+@test "platforms checks give a country, no ipv6 or a reason per service and protocol" {
+  local expected
+
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+
+  run_platforms_checks
+
+  expected=$(
+    cat <<'ROWS'
+Google 4 SE yes 
+Google 6 SE yes 
+YouTube 4 SE yes 
+YouTube 6 SE yes 
+Twitch 4 SE yes 
+Twitch 6  none no IPv6
+ChatGPT 4 SE yes 
+ChatGPT 6 SE yes 
+Netflix 4 SE yes 
+Netflix 6 SE yes 
+Spotify 4 SE yes 
+Spotify 6 SE yes 
+Reddit 4 SE yes 
+Reddit 6  none no IPv6
+Disney+ 4 SE yes 
+Disney+ 6   unexpected response
+TikTok 4 SE yes 
+TikTok 6  none no IPv6
+Apple 4 SE yes 
+Apple 6 SE yes 
+Steam 4 SE yes 
+Steam 6  none no IPv6
+Microsoft 4 SE yes 
+Microsoft 6  none no IPv6
+Ookla 4 SE yes 
+Ookla 6  none no IPv6
+JetBrains 4 SI yes 
+JetBrains 6 SE yes 
+PlayStation 4 SE yes 
+PlayStation 6 SE yes 
+ROWS
+  )
+  run result_rows
+  [[ "$output" == "$expected" ]]
+  grep -q -- '--user-agent Mozilla/5.0 .* https://www.reddit.com/api/v1/geo$' "$FAKE_CURL_LOG"
+  grep -q -- '--head https://store.steampowered.com$' "$FAKE_CURL_LOG"
+}
+
+@test "ipv6 connection failure means the service has no ipv6" {
+  set_fixture_field 6 gql.twitch.tv_gql exit 7
+  EXTERNAL_IPV6=2001:db8:85a3::8a2e:370:7334
+
+  run_platforms_checks
+
+  [[ "$(jq -r '.[] | select(.service == "Twitch") | [.status, .reason] | join(" ")' <<<"$RESULTS")" == "none no IPv6" ]]
+}
+
+@test "ipv6 connection failure through a proxy is a reason, not no ipv6" {
+  set_fixture_field 6 gql.twitch.tv_gql exit 7
+  EXTERNAL_IPV6=2001:db8:85a3::8a2e:370:7334
+  PROXY_ADDR=127.0.0.1:1080
+
+  run_platforms_checks
+
+  [[ "$(jq -r '.[] | select(.service == "Twitch") | [.status, .reason] | join(" ")' <<<"$RESULTS")" == " connection failed" ]]
+}
+
+@test "ipv4 connection failure is a reason, not no ipv6" {
+  set_fixture_field 4 gql.twitch.tv_gql exit 7
+  EXTERNAL_IPV4=203.0.113.7
+
+  run_platforms_checks
+
+  [[ "$(jq -r '.[] | select(.service == "Twitch") | [.status, .reason] | join(" ")' <<<"$RESULTS")" == " connection failed" ]]
+}
