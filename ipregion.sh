@@ -53,6 +53,7 @@ IPV6_ONLY=false
 PROXY_ADDR=""
 INTERFACE_NAME=""
 DEBUG=false
+CACHE_POLL_INTERVAL=0.1
 
 RESULT_JSON=""
 ARR_PRIMARY=()
@@ -1095,7 +1096,42 @@ spinner_update() {
 
 spinner_cleanup() {
   spinner_stop
+  remove_request_cache
   exit 130
+}
+
+create_request_cache() {
+  REQUEST_CACHE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/ipregion_cache_XXXXXX")
+}
+
+remove_request_cache() {
+  if [[ -n "$REQUEST_CACHE_DIR" ]]; then
+    rm -rf "$REQUEST_CACHE_DIR"
+    REQUEST_CACHE_DIR=""
+  fi
+}
+
+cached_curl() {
+  local cache_key cache_file
+
+  if [[ -z "$REQUEST_CACHE_DIR" ]]; then
+    curl "$@"
+    return
+  fi
+
+  cache_key=$(cksum <<<"$*")
+  cache_file="$REQUEST_CACHE_DIR/${cache_key%% *}"
+
+  if mkdir "$cache_file.lock" 2>/dev/null; then
+    curl "$@" >"$cache_file.tmp"
+    mv "$cache_file.tmp" "$cache_file"
+  fi
+
+  while [[ ! -f "$cache_file" ]]; do
+    sleep "$CACHE_POLL_INTERVAL"
+  done
+
+  cat "$cache_file"
 }
 
 curl_wrapper() {
@@ -1195,7 +1231,7 @@ curl_wrapper() {
 
   curl_args+=("$url")
 
-  response_with_code=$(curl "${curl_args[@]}")
+  response_with_code=$(cached_curl "${curl_args[@]}")
   http_code=$(tail -n1 <<<"$response_with_code")
   response=$(head -n -1 <<<"$response_with_code")
 
@@ -2107,6 +2143,7 @@ main() {
 
   detect_distro
   install_dependencies
+  create_request_cache
 
   if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" ]]; then
     spinner_start
@@ -2149,6 +2186,7 @@ main() {
   print_results
 
   cleanup_debug
+  remove_request_cache
 
   trap - EXIT INT TERM
 }
