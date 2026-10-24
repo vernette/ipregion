@@ -63,6 +63,28 @@ readonly MAXMIND_CSRF_PATTERN='value="([0-9a-f]+)" name="csrf_token"'
 readonly RIPE_RDAP_IP_URL="https://rdap.db.ripe.net/ip"
 readonly RIPESTAT_PREFIX_OVERVIEW_URL="https://stat.ripe.net/data/prefix-overview/data.json"
 
+readonly IPV4_TRANSPORT=4
+readonly IPINFO_IPV4_URL="https://ipinfo.io/widget/demo"
+readonly IPINFO_IPV6_URL="https://v6.ipinfo.io/widget/demo"
+readonly CLOUDFLARE_TRACE_URL="https://www.cloudflare.com/cdn-cgi/trace"
+readonly CLOUDFLARE_COUNTRY_PATTERN=$'(^|\n)loc=([A-Z]{2})(\n|$)'
+readonly IPREGISTRY_URL="https://api.ipregistry.co"
+readonly IPREGISTRY_KEY="sb69ksjcajfs4c"
+readonly IPREGISTRY_ORIGIN="https://ipregistry.co"
+readonly IPAPI_CO_URL="https://ipapi.co"
+readonly IPAPI_CO_REFERER="https://ipapi.co/"
+readonly IFCONFIG_CO_URL="https://ifconfig.co/country-iso"
+readonly IP2LOCATION_URL="https://api.ip2location.io/"
+readonly COUNTRY_IS_URL="https://api.country.is"
+readonly GEOAPIFY_URL="https://api.geoapify.com/v1/ipinfo"
+readonly GEOAPIFY_KEY="b8568cb9afc64fad861a69edbddb2658"
+readonly GEOJS_URL="https://get.geojs.io/v1/ip/country.json"
+readonly IPBASE_URL="https://api.ipbase.com/v2/info"
+readonly IPQUERY_URL="https://api.ipquery.io"
+readonly IPWHO_URL="https://ipwho.is"
+readonly IP_API_URL="https://demo.ip-api.com/json"
+readonly IP_API_ORIGIN="https://ip-api.com"
+
 readonly CURL_EXIT_OK=0
 readonly CURL_EXIT_DNS=6
 readonly CURL_EXIT_CONNECT=7
@@ -88,6 +110,25 @@ readonly REASON_SERVER_ERROR="server error"
 readonly REASON_UNEXPECTED_RESPONSE="unexpected response"
 readonly REASON_DAILY_LIMIT="daily limit used up"
 readonly REASON_NO_DEMO_TOKEN="no demo token"
+
+readonly GROUP_GEOIP="geoip"
+readonly GEOIP_CHECKS=(
+  check_geoip_maxmind
+  check_geoip_ripe
+  check_geoip_ipinfo_io
+  check_geoip_cloudflare
+  check_geoip_ipregistry_co
+  check_geoip_ipapi_co
+  check_geoip_ifconfig_co
+  check_geoip_ip2location_io
+  check_geoip_country_is
+  check_geoip_geoapify_com
+  check_geoip_geojs_io
+  check_geoip_ipbase_com
+  check_geoip_ipquery_io
+  check_geoip_ipwho_is
+  check_geoip_ip_api_com
+)
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
   readonly C_VALUE=$'\033[1m'
@@ -783,6 +824,206 @@ start_job() {
   run_job "$result_file" "$@" &
 }
 
+start_check() {
+  local check="$1"
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    start_job "$check" 4
+  fi
+
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    start_job "$check" 6
+  fi
+}
+
+is_check_selected() {
+  local check="$1"
+  local group="${check#check_}"
+
+  group="${group%%_*}"
+  [[ "$SELECTED_GROUP" == "$ALL_GROUPS" || "$SELECTED_GROUP" == "$group" ]]
+}
+
+external_ip() {
+  local ip_version="$1"
+
+  case "$ip_version" in
+    4) printf '%s' "$EXTERNAL_IPV4" ;;
+    6) printf '%s' "$EXTERNAL_IPV6" ;;
+  esac
+}
+
+print_geoip_failure() {
+  local service="$1"
+  local ip_version="$2"
+  local reason="$3"
+
+  print_result "$GROUP_GEOIP" "$service" "$ip_version" "" "" "$reason"
+}
+
+print_geoip_country() {
+  local service="$1"
+  local ip_version="$2"
+  local country="$3"
+  local reason
+
+  reason=$(http_failure_reason)
+  if [[ -n "$reason" ]]; then
+    print_geoip_failure "$service" "$ip_version" "$reason"
+    return
+  fi
+
+  if [[ ! "$country" =~ $COUNTRY_CODE_PATTERN ]]; then
+    print_geoip_failure "$service" "$ip_version" "$REASON_UNEXPECTED_RESPONSE"
+    return
+  fi
+
+  print_result "$GROUP_GEOIP" "$service" "$ip_version" "$country" "$STATUS_YES" ""
+}
+
+check_geoip_json() {
+  local service="$1"
+  local ip_version="$2"
+  local transport="$3"
+  local url="$4"
+  local filter="$5"
+  shift 5
+
+  http_request "$transport" "$url" "$@"
+  print_geoip_country "$service" "$ip_version" "$(json_value "$filter")"
+}
+
+check_geoip_maxmind() {
+  local ip_version="$1"
+  local failure
+
+  if [[ -z "$MAXMIND_TOKEN" ]]; then
+    print_geoip_failure MaxMind "$ip_version" "$REASON_NO_DEMO_TOKEN"
+    return
+  fi
+
+  fetch_maxmind_city "$ip_version" "$(external_ip "$ip_version")"
+  failure=$(maxmind_failure_reason)
+  if [[ -n "$failure" ]]; then
+    print_geoip_failure MaxMind "$ip_version" "$failure"
+    return
+  fi
+
+  print_geoip_country MaxMind "$ip_version" "$(json_value '.country.iso_code // empty')"
+}
+
+check_geoip_ripe() {
+  local ip_version="$1"
+
+  check_geoip_json RIPE "$ip_version" "$ip_version" "$RIPE_RDAP_IP_URL/$(external_ip "$ip_version")" '.country // empty' --location
+}
+
+check_geoip_ipinfo_io() {
+  local ip_version="$1"
+  local url
+
+  case "$ip_version" in
+    4) url="$IPINFO_IPV4_URL" ;;
+    6) url="$IPINFO_IPV6_URL" ;;
+  esac
+
+  check_geoip_json ipinfo.io "$ip_version" "$ip_version" "$url/$(external_ip "$ip_version")" '.data.country // empty'
+}
+
+check_geoip_cloudflare() {
+  local ip_version="$1"
+  local country=""
+
+  http_request "$ip_version" "$CLOUDFLARE_TRACE_URL"
+  if [[ "$HTTP_BODY" =~ $CLOUDFLARE_COUNTRY_PATTERN ]]; then
+    country="${BASH_REMATCH[2]}"
+  fi
+
+  print_geoip_country Cloudflare "$ip_version" "$country"
+}
+
+check_geoip_ipregistry_co() {
+  local ip_version="$1"
+
+  check_geoip_json ipregistry.co "$ip_version" "$ip_version" \
+    "$IPREGISTRY_URL/$(external_ip "$ip_version")?hostname=true&key=$IPREGISTRY_KEY" '.location.country.code // empty' \
+    --header "Origin: $IPREGISTRY_ORIGIN"
+}
+
+check_geoip_ipapi_co() {
+  local ip_version="$1"
+
+  check_geoip_json ipapi.co "$ip_version" "$ip_version" "$IPAPI_CO_URL/$(external_ip "$ip_version")/json" '.country // empty' \
+    --header "Referer: $IPAPI_CO_REFERER"
+}
+
+check_geoip_ifconfig_co() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$IFCONFIG_CO_URL?ip=$(external_ip "$ip_version")"
+  print_geoip_country ifconfig.co "$ip_version" "$HTTP_BODY"
+}
+
+check_geoip_ip2location_io() {
+  local ip_version="$1"
+
+  check_geoip_json ip2location.io "$ip_version" "$ip_version" "$IP2LOCATION_URL?ip=$(external_ip "$ip_version")" '.country_code // empty'
+}
+
+check_geoip_country_is() {
+  local ip_version="$1"
+
+  check_geoip_json country.is "$ip_version" "$ip_version" "$COUNTRY_IS_URL/$(external_ip "$ip_version")" '.country // empty'
+}
+
+check_geoip_geoapify_com() {
+  local ip_version="$1"
+
+  check_geoip_json geoapify.com "$ip_version" "$ip_version" \
+    "$GEOAPIFY_URL?ip=$(external_ip "$ip_version")&apiKey=$GEOAPIFY_KEY" '.country.iso_code // empty'
+}
+
+check_geoip_geojs_io() {
+  local ip_version="$1"
+
+  check_geoip_json geojs.io "$ip_version" "$ip_version" "$GEOJS_URL?ip=$(external_ip "$ip_version")" '.[0].country // empty'
+}
+
+check_geoip_ipbase_com() {
+  local ip_version="$1"
+
+  check_geoip_json ipbase.com "$ip_version" "$ip_version" "$IPBASE_URL?ip=$(external_ip "$ip_version")" '.data.location.country.alpha2 // empty'
+}
+
+check_geoip_ipquery_io() {
+  local ip_version="$1"
+
+  check_geoip_json ipquery.io "$ip_version" "$ip_version" "$IPQUERY_URL/$(external_ip "$ip_version")" '.location.country_code // empty'
+}
+
+check_geoip_ipwho_is() {
+  local ip_version="$1"
+
+  check_geoip_json ipwho.is "$ip_version" "$ip_version" "$IPWHO_URL/$(external_ip "$ip_version")" '.country_code // empty'
+}
+
+check_geoip_ip_api_com() {
+  local ip_version="$1"
+
+  check_geoip_json ip-api.com "$ip_version" "$IPV4_TRANSPORT" "$IP_API_URL/$(external_ip "$ip_version")?fields=countryCode" '.countryCode // empty' \
+    --header "Origin: $IP_API_ORIGIN"
+}
+
+start_checks() {
+  local check
+
+  for check in "$@"; do
+    if is_check_selected "$check"; then
+      start_check "$check"
+    fi
+  done
+}
+
 wait_for_jobs() {
   while (($(count_running_jobs) > 0)); do
     draw_progress
@@ -808,6 +1049,9 @@ main() {
   create_job_slots
   discover_external_ips
   lookup_ip_registrations
+  start_checks "${GEOIP_CHECKS[@]}"
+  wait_for_jobs
+  collect_results
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then

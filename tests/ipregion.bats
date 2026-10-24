@@ -639,3 +639,123 @@ print_active_job_count() {
   run kill -0 "$job_pid"
   [[ "$status" -ne 0 ]]
 }
+
+run_geoip_checks() {
+  create_job_slots
+  start_checks "${GEOIP_CHECKS[@]}"
+  wait_for_jobs
+  collect_results
+}
+
+geoip_rows() {
+  jq -r '.[] | [.service, .ip_version, .country, .status, .reason] | join(" ")' <<<"$RESULTS"
+}
+
+@test "geoip checks give a country or a reason per service and protocol" {
+  local expected
+
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+  lookup_ip_registrations
+
+  run_geoip_checks
+
+  expected=$(
+    cat <<'ROWS'
+MaxMind 4 SE yes 
+MaxMind 6 SE yes 
+RIPE 4 SE yes 
+RIPE 6 SE yes 
+ipinfo.io 4 SE yes 
+ipinfo.io 6 SE yes 
+Cloudflare 4 SE yes 
+Cloudflare 6 SE yes 
+ipregistry.co 4 SE yes 
+ipregistry.co 6 SE yes 
+ipapi.co 4 SE yes 
+ipapi.co 6 SE yes 
+ifconfig.co 4 RU yes 
+ifconfig.co 6 DE yes 
+ip2location.io 4 SE yes 
+ip2location.io 6 SE yes 
+country.is 4 SE yes 
+country.is 6 SE yes 
+geoapify.com 4 SE yes 
+geoapify.com 6 SE yes 
+geojs.io 4 SE yes 
+geojs.io 6 SE yes 
+ipbase.com 4 SE yes 
+ipbase.com 6 SE yes 
+ipquery.io 4 RU yes 
+ipquery.io 6 DE yes 
+ipwho.is 4 SE yes 
+ipwho.is 6 SE yes 
+ip-api.com 4 SE yes 
+ip-api.com 6 SE yes 
+ROWS
+  )
+  run geoip_rows
+  [[ "$output" == "$expected" ]]
+  grep -q -- '--header Referer: https://ipapi.co/ https://ipapi.co/203.0.113.7/json$' "$FAKE_CURL_LOG"
+}
+
+@test "geoip looks up the ipv6 address over ipv6 unless the service has no ipv6" {
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+  lookup_ip_registrations
+
+  run_geoip_checks
+
+  grep -q -- '-4 .*demo.ip-api.com/json/2001:db8:85a3::8a2e:370:7334' "$FAKE_CURL_LOG"
+  grep -q -- '-6 .*api.country.is/2001:db8:85a3::8a2e:370:7334$' "$FAKE_CURL_LOG"
+  grep -q -- '-6 .*https://v6.ipinfo.io/widget/demo/2001:db8:85a3::8a2e:370:7334$' "$FAKE_CURL_LOG"
+}
+
+@test "geoip maxmind reuses the header lookup" {
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+  lookup_ip_registrations
+  : >"$FAKE_CURL_LOG"
+
+  run_geoip_checks
+
+  run grep -c geoip.maxmind.com "$FAKE_CURL_LOG"
+  [[ "$output" -eq 0 ]]
+}
+
+@test "geoip runs only for the protocols that were detected" {
+  use_host_fixtures dual-stack
+  EXTERNAL_IPV4=203.0.113.7
+  lookup_ip_registrations
+
+  run_geoip_checks
+
+  [[ "$(jq 'length' <<<"$RESULTS")" -eq 15 ]]
+  [[ "$(jq '[.[].ip_version] | unique' -c <<<"$RESULTS")" == "[4]" ]]
+}
+
+@test "geoip is skipped when another group is selected" {
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+  SELECTED_GROUP=platforms
+
+  run_geoip_checks
+
+  [[ "$RESULTS" == "[]" ]]
+}
+
+@test "geoip failures carry a reason and no country" {
+  use_host_fixtures dual-stack
+  EXTERNAL_IPV4=203.0.113.7
+  set_fixture_field 4 api.country.is_203.0.113.7 exit 28
+  add_fixture 4 get.geojs.io_v1_ip_country.json_ip_203.0.113.7 '<html>busy</html>'
+  add_fixture 4 www.cloudflare.com_cdn-cgi_trace $'ip=203.0.113.7\nloc=T1'
+
+  run_geoip_checks
+
+  run geoip_rows
+  [[ "$output" == *"MaxMind 4   no demo token"* ]]
+  [[ "$output" == *"country.is 4   timeout"* ]]
+  [[ "$output" == *"geojs.io 4   unexpected response"* ]]
+  [[ "$output" == *"Cloudflare 4   unexpected response"* ]]
+}
