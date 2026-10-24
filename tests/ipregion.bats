@@ -34,6 +34,11 @@ set_fixture_field() {
   printf '%s' "$value" >"$FAKE_CURL_FIXTURES/ipv$ip_version/$name.$field"
 }
 
+add_identity_fixtures() {
+  add_fixture 4 ipv4.icanhazip.com 203.0.113.7
+  add_fixture 6 ipv6.icanhazip.com 2001:db8:85a3::8a2e:370:7334
+}
+
 curl_calls() {
   wc -l <"$FAKE_CURL_LOG"
 }
@@ -98,6 +103,7 @@ curl_calls() {
 }
 
 @test "every group name is accepted" {
+  add_identity_fixtures
   local group
 
   for group in platforms cdn availability ai geoip all; do
@@ -158,6 +164,7 @@ curl_calls() {
 }
 
 @test "proxy accepts hostname, ipv4 and ipv6" {
+  add_identity_fixtures
   local proxy
 
   for proxy in localhost:1080 10.0.0.1:9050 '[2001:db8::1]:1080'; do
@@ -278,6 +285,7 @@ print_yes_color() {
 
   run cat "$FAKE_CURL_LOG"
   [[ "$output" == *"--proxy socks5h://127.0.0.1:1080"* ]]
+  [[ "$output" != *" -4 "* ]]
   [[ "$output" == *"--interface wg0"* ]]
   [[ "$output" == *"--max-time 7"* ]]
   [[ "$output" == *"--header X-Test: 1 https://example.com" ]]
@@ -351,4 +359,103 @@ print_yes_color() {
 
   [[ "$status" -eq 0 ]]
   [[ -n "$output" && ! -e "$output" ]]
+}
+
+@test "external ips are detected over both protocols" {
+  add_fixture 4 ipv4.icanhazip.com $'203.0.113.7\n'
+  add_fixture 6 ipv6.icanhazip.com 2001:db8::1
+
+  discover_external_ips
+
+  [[ "$EXTERNAL_IPV4" == 203.0.113.7 ]]
+  [[ "$EXTERNAL_IPV6" == 2001:db8::1 ]]
+}
+
+@test "next identity service is tried when one fails or answers garbage" {
+  set_fixture_field 4 ipv4.icanhazip.com exit 7
+  add_fixture 4 api.ipify.org "<html>captive portal</html>"
+  add_fixture 4 ipv4.seeip.org 203.0.113.7
+  IPV4_ONLY=true
+
+  discover_external_ips
+
+  [[ "$EXTERNAL_IPV4" == 203.0.113.7 ]]
+  [[ -z "$EXTERNAL_IPV6" ]]
+}
+
+@test "timeout of one identity service falls back to the next" {
+  add_fixture 4 ipv4.icanhazip.com 203.0.113.7
+  set_fixture_field 6 ipv6.icanhazip.com exit 28
+  add_fixture 6 api6.ipify.org 2001:db8::1
+
+  discover_external_ips
+
+  [[ "$EXTERNAL_IPV6" == 2001:db8::1 ]]
+}
+
+@test "first identity service to answer wins" {
+  add_fixture 4 ipv4.icanhazip.com 203.0.113.1
+  set_fixture_field 4 ipv4.icanhazip.com delay 3
+  add_fixture 4 api.ipify.org 203.0.113.2
+  IPV4_ONLY=true
+
+  SECONDS=0
+  discover_external_ips
+
+  [[ "$EXTERNAL_IPV4" == 203.0.113.2 ]]
+  ((SECONDS < 2))
+}
+
+@test "proxy picks the protocol by identity host, not by curl flags" {
+  add_identity_fixtures
+  PROXY_ADDR=127.0.0.1:1080
+
+  discover_external_ips
+
+  [[ "$EXTERNAL_IPV4" == 203.0.113.7 ]]
+  [[ "$EXTERNAL_IPV6" == 2001:db8:85a3::8a2e:370:7334 ]]
+  run grep -cE -- ' -[46] ' "$FAKE_CURL_LOG"
+  [[ "$output" -eq 0 ]]
+}
+
+@test "only ipv4 or only ipv6 skips the other protocol" {
+  add_identity_fixtures
+
+  IPV4_ONLY=true
+  discover_external_ips
+  [[ -n "$EXTERNAL_IPV4" && -z "$EXTERNAL_IPV6" ]]
+  run grep -c -- ' -6 ' "$FAKE_CURL_LOG"
+  [[ "$output" -eq 0 ]]
+
+  rm -- "$FAKE_CURL_LOG"
+  IPV4_ONLY=false
+  IPV6_ONLY=true
+  discover_external_ips
+  [[ -z "$EXTERNAL_IPV4" && -n "$EXTERNAL_IPV6" ]]
+  run grep -c -- ' -4 ' "$FAKE_CURL_LOG"
+  [[ "$output" -eq 0 ]]
+}
+
+@test "host without ipv6 keeps ipv4 only" {
+  add_fixture 4 ipv4.icanhazip.com 203.0.113.7
+
+  discover_external_ips
+
+  [[ "$EXTERNAL_IPV4" == 203.0.113.7 ]]
+  [[ -z "$EXTERNAL_IPV6" ]]
+}
+
+@test "no external ip fails" {
+  run bash "$SCRIPT"
+
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"Error: failed to detect an external IP address"* ]]
+}
+
+@test "ip addresses are masked" {
+  [[ "$(mask_ipv4 203.0.113.7)" == "203.0.*.*" ]]
+  [[ "$(mask_ipv6 2001:db8:85a3:1:2:3:4:5)" == "2001:db8:85a3::" ]]
+  [[ "$(mask_ipv6 2001:db8::1)" == "2001:db8:0::" ]]
+  [[ "$(mask_ipv6 2001::1:2:3:4:5:6)" == "2001:0:1::" ]]
+  [[ "$(mask_ipv6 ::1)" == "0:0:0::" ]]
 }

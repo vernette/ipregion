@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # Stands in for curl in tests (setup links it as curl into PATH): serves saved responses from $FAKE_CURL_FIXTURES/ipv4|ipv6/<url without scheme, unsafe chars as _>
-# with optional <name>.code, <name>.redirect and <name>.exit next to the body.
+# with optional <name>.code, <name>.redirect, <name>.exit and <name>.delay next to the body.
+# Without -4 / -6 (requests through a proxy) ipv6 fixtures win, like a dual-stack proxy that prefers IPv6.
 
 set -euo pipefail
 
@@ -40,13 +41,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-sleep "${FAKE_CURL_DELAY:-0}"
-
 name="${url#*://}"
-fixture="$FAKE_CURL_FIXTURES/ipv$ip_version/${name//[^A-Za-z0-9._-]/_}"
+name="${name//[^A-Za-z0-9._-]/_}"
+
+if [[ -z "$ip_version" ]]; then
+  ip_version=4
+  if [[ -e "$FAKE_CURL_FIXTURES/ipv6/$name" || -e "$FAKE_CURL_FIXTURES/ipv6/$name.exit" ]]; then
+    ip_version=6
+  fi
+fi
+
+fixture="$FAKE_CURL_FIXTURES/ipv$ip_version/$name"
+delay="${FAKE_CURL_DELAY:-0}"
 code="$DEFAULT_CODE"
 redirect=""
 exit_code=0
+
+if [[ -f "$fixture.delay" ]]; then
+  delay=$(<"$fixture.delay")
+fi
+
+sleep "$delay"
 
 if [[ -f "$fixture.code" ]]; then
   code=$(<"$fixture.code")

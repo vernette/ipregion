@@ -30,6 +30,22 @@ readonly CURL_BASE_ARGS=(--disable --silent --compressed)
 readonly CURL_WRITE_OUT='%{http_code}\n%{redirect_url}\n'
 readonly CACHE_POLL_INTERVAL=0.1
 
+readonly IPV4_IDENTITY_URLS=(
+  https://ipv4.icanhazip.com
+  https://api.ipify.org
+  https://ipv4.seeip.org
+  https://ipv4.wtfismyip.com/text
+)
+readonly IPV6_IDENTITY_URLS=(
+  https://ipv6.icanhazip.com
+  https://api6.ipify.org
+  https://ipv6.seeip.org
+  https://ipv6.wtfismyip.com/text
+)
+readonly IPV4_PATTERN='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+readonly IPV6_PATTERN='^[0-9A-Fa-f]{0,4}(:[0-9A-Fa-f]{0,4}){2,7}$'
+readonly IPV6_GROUP_COUNT=8
+
 readonly CURL_EXIT_OK=0
 readonly CURL_EXIT_DNS=6
 readonly CURL_EXIT_CONNECT=7
@@ -79,6 +95,9 @@ SHOW_EMOJI=false
 GEOIP_BREAKDOWN=false
 VERDICT=""
 WORK_DIR=""
+EXTERNAL_IPV4=""
+EXTERNAL_IPV6=""
+CURL_ARGS=()
 
 die() {
   local message="$1"
@@ -315,29 +334,31 @@ request_cache_entry() {
   printf '%s/http-%s' "$WORK_DIR" "${key// /-}"
 }
 
+build_curl_args() {
+  local ip_version="$1"
+
+  CURL_ARGS=("${CURL_BASE_ARGS[@]}" --max-time "$CURL_TIMEOUT")
+
+  if [[ -n "$PROXY_ADDR" ]]; then
+    CURL_ARGS+=(--proxy "socks5h://$PROXY_ADDR")
+  else
+    CURL_ARGS+=("-$ip_version")
+  fi
+
+  if [[ -n "$INTERFACE_NAME" ]]; then
+    CURL_ARGS+=(--interface "$INTERFACE_NAME")
+  fi
+}
+
 fetch_to_cache() {
   local entry="$1"
   local ip_version="$2"
   local url="$3"
   shift 3
   local curl_exit=0
-  local curl_args=(
-    "${CURL_BASE_ARGS[@]}"
-    "-$ip_version"
-    --max-time "$CURL_TIMEOUT"
-    --output "$entry.body"
-    --write-out "$CURL_WRITE_OUT"
-  )
 
-  if [[ -n "$PROXY_ADDR" ]]; then
-    curl_args+=(--proxy "socks5h://$PROXY_ADDR")
-  fi
-
-  if [[ -n "$INTERFACE_NAME" ]]; then
-    curl_args+=(--interface "$INTERFACE_NAME")
-  fi
-
-  curl "${curl_args[@]}" "$@" "$url" >"$entry.meta" || curl_exit=$?
+  build_curl_args "$ip_version"
+  curl "${CURL_ARGS[@]}" --output "$entry.body" --write-out "$CURL_WRITE_OUT" "$@" "$url" >"$entry.meta" || curl_exit=$?
   printf '%s\n' "$curl_exit" >>"$entry.meta"
   touch -- "$entry.body"
   : >"$entry.done"
@@ -401,10 +422,127 @@ http_failure_reason() {
   esac
 }
 
+is_ip_address() {
+  local ip_version="$1"
+  local ip="$2"
+
+  case "$ip_version" in
+    4) [[ "$ip" =~ $IPV4_PATTERN ]] ;;
+    6) [[ "$ip" =~ $IPV6_PATTERN ]] ;;
+  esac
+}
+
+print_identity_answer() {
+  local ip_version="$1"
+  local answers_dir="$2"
+  local answer_file
+  local answer
+
+  for answer_file in "$answers_dir"/*; do
+    if [[ ! -f "$answer_file" ]]; then
+      continue
+    fi
+
+    answer=$(<"$answer_file")
+    if is_ip_address "$ip_version" "$answer"; then
+      printf '%s' "$answer"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+fetch_external_ip() {
+  local ip_version="$1"
+  local answers_dir="$WORK_DIR/identity-ipv$ip_version"
+  local -a urls
+  local -a pids=()
+  local index
+
+  case "$ip_version" in
+    4) urls=("${IPV4_IDENTITY_URLS[@]}") ;;
+    6) urls=("${IPV6_IDENTITY_URLS[@]}") ;;
+  esac
+
+  mkdir -p -- "$answers_dir"
+  build_curl_args "$ip_version"
+  for index in "${!urls[@]}"; do
+    # curl runs directly, not via http_request: killing a wrapper subshell would leave its curl running until the timeout
+    curl "${CURL_ARGS[@]}" --output "$answers_dir/$index" "${urls[$index]}" &
+    pids+=("$!")
+  done
+
+  for index in "${!urls[@]}"; do
+    wait -n || true
+    if print_identity_answer "$ip_version" "$answers_dir"; then
+      break
+    fi
+  done
+
+  kill "${pids[@]}" 2>/dev/null || true
+  wait
+}
+
+discover_external_ips() {
+  local ipv4_file="$WORK_DIR/external-ipv4"
+  local ipv6_file="$WORK_DIR/external-ipv6"
+
+  : >"$ipv4_file"
+  : >"$ipv6_file"
+
+  if [[ "$IPV6_ONLY" != true ]]; then
+    fetch_external_ip 4 >"$ipv4_file" &
+  fi
+
+  if [[ "$IPV4_ONLY" != true ]]; then
+    fetch_external_ip 6 >"$ipv6_file" &
+  fi
+
+  wait
+  EXTERNAL_IPV4=$(<"$ipv4_file")
+  EXTERNAL_IPV6=$(<"$ipv6_file")
+
+  if [[ -z "$EXTERNAL_IPV4" && -z "$EXTERNAL_IPV6" ]]; then
+    printf 'Error: failed to detect an external IP address, check the network connection\n' >&2
+    exit 1
+  fi
+}
+
+mask_ipv4() {
+  local ip="$1"
+
+  printf '%s.*.*' "${ip%.*.*}"
+}
+
+mask_ipv6() {
+  local ip="$1"
+  local head="${ip%%::*}"
+  local tail=""
+  local -a left right groups
+  local missing
+
+  if [[ "$ip" == *::* ]]; then
+    tail="${ip#*::}"
+  fi
+
+  IFS=: read -ra left <<<"$head"
+  IFS=: read -ra right <<<"$tail"
+  missing=$((IPV6_GROUP_COUNT - ${#left[@]} - ${#right[@]}))
+  groups=("${left[@]}")
+  while ((missing-- > 0)); do
+    groups+=(0)
+  done
+  groups+=("${right[@]}")
+
+  printf '%s:%s:%s::' "${groups[@]:0:3}"
+}
+
 main() {
   parse_args "$@"
   validate_args
   create_work_dir
+  discover_external_ips
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
