@@ -1039,7 +1039,7 @@ get_iata_location() {
     --data "$payload" \
     --ip-version "$ip_version")
 
-  process_json "$response" ".airport.country.iso"
+  process_json "$response" ".airport.country.iso // empty"
 }
 
 is_ipv6_over_ipv4_service() {
@@ -2268,13 +2268,23 @@ lookup_cloudflare_cdn() {
   echo "$location ($iata)"
 }
 
+parse_youtube_cdn_iata() {
+  local node="$1"
+  local google_node_regex='^([a-z]{3})[0-9]'
+  local isp_iata_regex='^[a-z]+-([a-z]{3})[0-9]'
+  local ggc_node_regex='^[a-z]{2}([a-z]{3})[a-z]-[a-z0-9]+$'
+
+  if [[ "$node" =~ $google_node_regex || "$node" =~ $isp_iata_regex || "$node" =~ $ggc_node_regex ]]; then
+    echo "${BASH_REMATCH[1]^^}"
+  fi
+}
+
 lookup_youtube_cdn() {
   local ip_version="$1"
   local response iata location
 
   response=$(curl_wrapper GET "https://redirector.googlevideo.com/report_mapping?di=no" --ip-version "$ip_version")
-  iata=$(echo "$response" | awk '{print $3}' | cut -f2 -d'-' | cut -c1-3)
-  iata=${iata^^}
+  iata=$(parse_youtube_cdn_iata "$(awk '{print $3}' <<<"$response")")
 
   if [[ -z "$iata" ]]; then
     echo ""
