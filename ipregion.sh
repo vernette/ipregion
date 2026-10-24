@@ -1107,9 +1107,32 @@ spinner_update() {
   fi
 }
 
+kill_process_group_stragglers() {
+  local stat fields own_pgid proc pid
+
+  read -r stat <"/proc/$$/stat"
+  read -ra fields <<<"${stat##*) }"
+  own_pgid="${fields[2]}"
+
+  for proc in /proc/[0-9]*; do
+    pid="${proc#/proc/}"
+
+    if ((pid == $$)) || ! read -r stat 2>/dev/null <"$proc/stat"; then
+      continue
+    fi
+
+    read -ra fields <<<"${stat##*) }"
+
+    if [[ "${fields[2]}" == "$own_pgid" ]]; then
+      kill -KILL "$pid" 2>/dev/null
+    fi
+  done
+}
+
 spinner_cleanup() {
   trap '' TERM
   kill -TERM 0 2>/dev/null
+  kill_process_group_stragglers
   spinner_stop
   remove_request_cache
   exit 130
