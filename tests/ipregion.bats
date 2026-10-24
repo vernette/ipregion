@@ -632,9 +632,10 @@ print_active_job_count() {
   [[ ! -e "$work_dir" ]]
   for ((attempt = 0; attempt < 10; attempt++)); do
     if ! kill -0 "$job_pid" 2>/dev/null; then
-      return 0
+      break
     fi
     sleep 0.1
   done
-  return 1
+  run kill -0 "$job_pid"
+  [[ "$status" -ne 0 ]]
 }
