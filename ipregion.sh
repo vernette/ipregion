@@ -1581,9 +1581,12 @@ run_service() {
 }
 
 format_pending_labels() {
-  local summary=""
+  local -n summary=$1
   local hidden=0
   local label
+
+  shift
+  summary=""
 
   for label in "$@"; do
     if [[ -z "$summary" ]]; then
@@ -1598,8 +1601,6 @@ format_pending_labels() {
   if ((hidden > 0)); then
     summary+=" +$hidden"
   fi
-
-  printf "%s" "$summary"
 }
 
 wait_with_progress() {
@@ -1607,6 +1608,7 @@ wait_with_progress() {
   local -n job_labels=$2
   local start=$SECONDS
   local pending=()
+  local pending_summary
   local i
 
   while true; do
@@ -1622,7 +1624,8 @@ wait_with_progress() {
       break
     fi
 
-    spinner_update "[$((${#job_pids[@]} - ${#pending[@]}))/${#job_pids[@]}] $(format_pending_labels "${pending[@]}") ($((SECONDS - start))s)"
+    format_pending_labels pending_summary "${pending[@]}"
+    spinner_update "[$((${#job_pids[@]} - ${#pending[@]}))/${#job_pids[@]}] $pending_summary ($((SECONDS - start))s)"
     pause "$PROGRESS_POLL_INTERVAL"
   done
 
