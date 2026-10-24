@@ -1726,13 +1726,24 @@ lookup_ifconfig_co() {
 }
 
 lookup_iplocation_com() {
-  local ip_version="$1"
-  local response ip
+  local transport="$1"
+  local ip_version="$2"
+  local ip="$EXTERNAL_IPV4"
+  local ipv6_not_supported="IPV6_NOT_SUPPORTED"
+  local response country_code
 
-  ip="$(preferred_ip)"
+  if [[ "$ip_version" == "6" ]]; then
+    ip="$EXTERNAL_IPV6"
+  fi
 
-  response=$(curl_wrapper POST "https://iplocation.com" --ip-version "$ip_version" --user-agent "$USER_AGENT" --data "ip=$ip")
-  process_json "$response" ".country_code"
+  response=$(curl_wrapper POST "https://iplocation.com" --ip-version "$transport" --user-agent "$USER_AGENT" --data "ip=$ip")
+  country_code=$(process_json "$response" ".country_code")
+
+  if [[ "$country_code" == "$ipv6_not_supported" ]]; then
+    country_code="$STATUS_NA"
+  fi
+
+  echo "$country_code"
 }
 
 lookup_google() {
