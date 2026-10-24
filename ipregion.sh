@@ -3,7 +3,6 @@
 SCRIPT_NAME="ipregion.sh"
 SCRIPT_URL="https://github.com/vernette/ipregion"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
-SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
 exec {SLEEP_FD}<> <(:)
 
@@ -1062,6 +1061,7 @@ spinner_start() {
   done
 
   label=$(color HEADER "Checking:")
+  SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
   spinner_running=true
 
   (

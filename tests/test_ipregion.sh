@@ -4,7 +4,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=../ipregion.sh
 source "$SCRIPT_DIR/../ipregion.sh"
-rm -f "$SPINNER_SERVICE_FILE"
 
 FAILURES=0
 
