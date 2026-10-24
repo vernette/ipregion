@@ -3,7 +3,10 @@ name: Test
 on:
   push:
     paths:
+      - "ipregion.sh"
       - "tests/**"
+      - ".github/workflows/test.yml"
+  pull_request:
   workflow_call:
   workflow_dispatch:
 
@@ -15,5 +18,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run tests
-        run: bash tests/test_ipregion.sh
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y shfmt bats
+
+      - name: shellcheck
+        run: shellcheck ipregion.sh tests/*.bats
+
+      - name: shfmt
+        run: shfmt --diff ipregion.sh tests/
+
+      - name: bats
+        run: bats tests/
