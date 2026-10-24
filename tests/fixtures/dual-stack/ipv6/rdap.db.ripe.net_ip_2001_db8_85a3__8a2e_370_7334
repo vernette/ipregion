@@ -1,0 +1,315 @@
+{
+  "handle": "2001:db8::/32",
+  "startAddress": "2001:db8::",
+  "endAddress": "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
+  "ipVersion": "v6",
+  "name": "Example-SE",
+  "type": "ALLOCATED-BY-LIR",
+  "country": "SE",
+  "parentHandle": "2001:db8::/29",
+  "cidr0_cidrs": [
+    {
+      "v6prefix": "2001:db8::",
+      "length": 32
+    }
+  ],
+  "status": [
+    "active"
+  ],
+  "entities": [
+    {
+      "handle": "EXAMPLE-MNT",
+      "vcardArray": [
+        "vcard",
+        [
+          [
+            "version",
+            {},
+            "text",
+            "4.0"
+          ],
+          [
+            "fn",
+            {},
+            "text",
+            "EXAMPLE-MNT"
+          ],
+          [
+            "kind",
+            {},
+            "text",
+            "individual"
+          ]
+        ]
+      ],
+      "roles": [
+        "registrant"
+      ],
+      "links": [
+        {
+          "value": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+          "rel": "self",
+          "href": "https://rdap.db.ripe.net/entity/EXAMPLE-MNT"
+        },
+        {
+          "value": "http://www.ripe.net/data-tools/support/documentation/terms",
+          "rel": "copyright",
+          "href": "http://www.ripe.net/data-tools/support/documentation/terms"
+        }
+      ],
+      "objectClassName": "entity"
+    },
+    {
+      "handle": "EX2-RIPE",
+      "vcardArray": [
+        "vcard",
+        [
+          [
+            "version",
+            {},
+            "text",
+            "4.0"
+          ],
+          [
+            "fn",
+            {},
+            "text",
+            "Example Hosting - Contact Role"
+          ],
+          [
+            "kind",
+            {},
+            "text",
+            "group"
+          ]
+        ]
+      ],
+      "roles": [
+        "administrative",
+        "technical"
+      ],
+      "links": [
+        {
+          "value": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+          "rel": "self",
+          "href": "https://rdap.db.ripe.net/entity/EX2-RIPE"
+        },
+        {
+          "value": "http://www.ripe.net/data-tools/support/documentation/terms",
+          "rel": "copyright",
+          "href": "http://www.ripe.net/data-tools/support/documentation/terms"
+        }
+      ],
+      "objectClassName": "entity"
+    },
+    {
+      "handle": "EX3-RIPE",
+      "vcardArray": [
+        "vcard",
+        [
+          [
+            "version",
+            {},
+            "text",
+            "4.0"
+          ],
+          [
+            "fn",
+            {},
+            "text",
+            "Abuse-C Role"
+          ],
+          [
+            "kind",
+            {},
+            "text",
+            "group"
+          ]
+        ]
+      ],
+      "roles": [
+        "abuse"
+      ],
+      "entities": [
+        {
+          "handle": "EXAMPLE-MNT",
+          "vcardArray": [
+            "vcard",
+            [
+              [
+                "version",
+                {},
+                "text",
+                "4.0"
+              ],
+              [
+                "fn",
+                {},
+                "text",
+                "EXAMPLE-MNT"
+              ],
+              [
+                "kind",
+                {},
+                "text",
+                "individual"
+              ]
+            ]
+          ],
+          "roles": [
+            "registrant"
+          ],
+          "links": [
+            {
+              "value": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+              "rel": "self",
+              "href": "https://rdap.db.ripe.net/entity/EXAMPLE-MNT"
+            },
+            {
+              "value": "http://www.ripe.net/data-tools/support/documentation/terms",
+              "rel": "copyright",
+              "href": "http://www.ripe.net/data-tools/support/documentation/terms"
+            }
+          ],
+          "objectClassName": "entity"
+        }
+      ],
+      "objectClassName": "entity"
+    }
+  ],
+  "links": [
+    {
+      "value": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+      "rel": "rdap-up",
+      "href": "https://rdap.db.ripe.net/ips/rirSearch1/rdap-up/2001:db8::/32",
+      "type": "application/rdap+json"
+    },
+    {
+      "value": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+      "rel": "rdap-up rdap-active",
+      "href": "https://rdap.db.ripe.net/ips/rirSearch1/rdap-up/2001:db8::/32?status=active",
+      "type": "application/rdap+json"
+    },
+    {
+      "value": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+      "rel": "rdap-down",
+      "href": "https://rdap.db.ripe.net/ips/rirSearch1/rdap-down/2001:db8::/32",
+      "type": "application/rdap+json"
+    },
+    {
+      "value": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+      "rel": "rdap-top",
+      "href": "https://rdap.db.ripe.net/ips/rirSearch1/rdap-top/2001:db8::/32",
+      "type": "application/rdap+json"
+    },
+    {
+      "value": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+      "rel": "rdap-top rdap-active",
+      "href": "https://rdap.db.ripe.net/ips/rirSearch1/rdap-top/2001:db8::/32?status=active",
+      "type": "application/rdap+json"
+    },
+    {
+      "value": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+      "rel": "rdap-bottom",
+      "href": "https://rdap.db.ripe.net/ips/rirSearch1/rdap-bottom/2001:db8::/32",
+      "type": "application/rdap+json"
+    },
+    {
+      "value": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+      "rel": "self",
+      "href": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+      "type": "application/rdap+json"
+    },
+    {
+      "value": "http://www.ripe.net/data-tools/support/documentation/terms",
+      "rel": "copyright",
+      "href": "http://www.ripe.net/data-tools/support/documentation/terms"
+    }
+  ],
+  "events": [
+    {
+      "eventAction": "registration",
+      "eventDate": "2020-01-01T00:00:00Z"
+    },
+    {
+      "eventAction": "last changed",
+      "eventDate": "2020-01-01T00:00:00Z"
+    }
+  ],
+  "rdapConformance": [
+    "geofeed1",
+    "rirSearch1",
+    "ips",
+    "cidr0",
+    "rdap_level_0",
+    "nro_rdap_profile_0",
+    "redacted"
+  ],
+  "notices": [
+    {
+      "title": "Filtered",
+      "description": [
+        "This output has been filtered."
+      ]
+    },
+    {
+      "title": "Whois Inaccuracy Reporting",
+      "description": [
+        "If you see inaccuracies in the results, please visit:"
+      ],
+      "links": [
+        {
+          "value": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+          "rel": "inaccuracy-report",
+          "href": "https://www.ripe.net/contact-form?topic=ripe_dbm&show_form=true",
+          "type": "text/html"
+        }
+      ]
+    },
+    {
+      "title": "Source",
+      "description": [
+        "Objects returned came from source",
+        "RIPE"
+      ]
+    },
+    {
+      "title": "Terms and Conditions",
+      "description": [
+        "This is the RIPE Database query service. The objects are in RDAP format."
+      ],
+      "links": [
+        {
+          "value": "https://rdap.db.ripe.net/ip/2001:db8:85a3::8a2e:370:7334",
+          "rel": "terms-of-service",
+          "href": "http://www.ripe.net/db/support/db-terms-conditions.pdf",
+          "type": "application/pdf"
+        }
+      ]
+    }
+  ],
+  "port43": "whois.ripe.net",
+  "objectClassName": "ip network",
+  "redacted": [
+    {
+      "name": {
+        "description": "Personal e-mail information"
+      },
+      "reason": {
+        "description": "Personal data"
+      },
+      "prePath": "$.entities[?(@.handle=='EX2-RIPE')].vcardArray[1][?(@[0]=='e-mail')]",
+      "method": "removal"
+    },
+    {
+      "name": {
+        "description": "Personal e-mail information"
+      },
+      "reason": {
+        "description": "Personal data"
+      },
+      "prePath": "$.entities[?(@.handle=='EX3-RIPE')].vcardArray[1][?(@[0]=='e-mail')]",
+      "method": "removal"
+    }
+  ]
+}

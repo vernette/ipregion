@@ -46,6 +46,13 @@ readonly IPV4_PATTERN='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
 readonly IPV6_PATTERN='^[0-9A-Fa-f]{0,4}(:[0-9A-Fa-f]{0,4}){2,7}$'
 readonly IPV6_GROUP_COUNT=8
 
+readonly MAXMIND_DEMO_PAGE_URL="https://www.maxmind.com/en/geoip-web-services-demo"
+readonly MAXMIND_TOKEN_URL="https://www.maxmind.com/en/geoip2/demo/token"
+readonly MAXMIND_CITY_URL="https://geoip.maxmind.com/geoip/v2.1/city"
+readonly MAXMIND_CSRF_PATTERN='value="([0-9a-f]+)" name="csrf_token"'
+readonly RIPE_RDAP_IP_URL="https://rdap.db.ripe.net/ip"
+readonly RIPESTAT_PREFIX_OVERVIEW_URL="https://stat.ripe.net/data/prefix-overview/data.json"
+
 readonly CURL_EXIT_OK=0
 readonly CURL_EXIT_DNS=6
 readonly CURL_EXIT_CONNECT=7
@@ -53,6 +60,9 @@ readonly CURL_EXIT_TIMEOUT=28
 readonly CURL_EXIT_TLS_HANDSHAKE=35
 readonly CURL_EXIT_TLS_CERTIFICATE=60
 readonly CURL_EXIT_PROXY=97
+readonly HTTP_OK=200
+readonly HTTP_CREATED=201
+readonly HTTP_PAYMENT_REQUIRED=402
 readonly HTTP_FORBIDDEN=403
 readonly HTTP_TOO_MANY_REQUESTS=429
 
@@ -65,6 +75,9 @@ readonly REASON_NETWORK="network error"
 readonly REASON_FORBIDDEN="access denied"
 readonly REASON_RATE_LIMITED="rate limited"
 readonly REASON_SERVER_ERROR="server error"
+readonly REASON_UNEXPECTED_RESPONSE="unexpected response"
+readonly REASON_DAILY_LIMIT="daily limit used up"
+readonly REASON_NO_DEMO_TOKEN="no demo token"
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
   readonly C_VALUE=$'\033[1m'
@@ -98,6 +111,11 @@ WORK_DIR=""
 EXTERNAL_IPV4=""
 EXTERNAL_IPV6=""
 CURL_ARGS=()
+MAXMIND_TOKEN=""
+declare -gA REGISTRATION_ASN=()
+declare -gA REGISTRATION_ORG=()
+declare -gA REGISTRATION_COUNTRY=()
+declare -gA REGISTRATION_MAXMIND_FAILURE=()
 
 die() {
   local message="$1"
@@ -538,11 +556,123 @@ mask_ipv6() {
   printf '%s:%s:%s::' "${groups[@]:0:3}"
 }
 
+json_value() {
+  local filter="$1"
+
+  jq -r "$filter" <<<"$HTTP_BODY" 2>/dev/null || true
+}
+
+request_maxmind_token() {
+  local ip_version="$1"
+  local cookie_jar="$WORK_DIR/maxmind-cookies"
+  local csrf_token
+
+  http_request "$ip_version" "$MAXMIND_DEMO_PAGE_URL" --cookie-jar "$cookie_jar"
+  if [[ ! "$HTTP_BODY" =~ $MAXMIND_CSRF_PATTERN ]]; then
+    return
+  fi
+  csrf_token="${BASH_REMATCH[1]}"
+
+  http_request "$ip_version" "$MAXMIND_TOKEN_URL" --request POST --cookie "$cookie_jar" --header "X-CSRF-Token: $csrf_token"
+  if [[ "$HTTP_CODE" != "$HTTP_CREATED" ]]; then
+    return
+  fi
+
+  MAXMIND_TOKEN=$(json_value '.token // empty')
+}
+
+fetch_maxmind_city() {
+  local ip_version="$1"
+  local ip="$2"
+
+  http_request "$ip_version" "$MAXMIND_CITY_URL/$ip?demo=1" --header "Authorization: Bearer $MAXMIND_TOKEN"
+}
+
+maxmind_failure_reason() {
+  local reason
+
+  reason=$(http_failure_reason)
+  if [[ -n "$reason" ]]; then
+    printf '%s' "$reason"
+    return
+  fi
+
+  case "$HTTP_CODE" in
+    "$HTTP_OK") ;;
+    "$HTTP_PAYMENT_REQUIRED") printf '%s' "$REASON_DAILY_LIMIT" ;;
+    *) printf '%s (%s)' "$REASON_UNEXPECTED_RESPONSE" "$HTTP_CODE" ;;
+  esac
+}
+
+lookup_maxmind_registration() {
+  local ip_version="$1"
+  local ip="$2"
+  local failure
+
+  if [[ -z "$MAXMIND_TOKEN" ]]; then
+    REGISTRATION_MAXMIND_FAILURE[$ip_version]="$REASON_NO_DEMO_TOKEN"
+    return 1
+  fi
+
+  fetch_maxmind_city "$ip_version" "$ip"
+  failure=$(maxmind_failure_reason)
+  if [[ -n "$failure" ]]; then
+    REGISTRATION_MAXMIND_FAILURE[$ip_version]="$failure"
+    return 1
+  fi
+
+  REGISTRATION_ASN[$ip_version]=$(json_value '.traits.autonomous_system_number // empty')
+  REGISTRATION_ORG[$ip_version]=$(json_value '.traits.autonomous_system_organization // empty')
+  REGISTRATION_COUNTRY[$ip_version]=$(json_value '.registered_country.iso_code // empty')
+}
+
+lookup_ripe_registration() {
+  local ip_version="$1"
+  local ip="$2"
+
+  http_request "$ip_version" "$RIPE_RDAP_IP_URL/$ip" --location
+  REGISTRATION_COUNTRY[$ip_version]=$(json_value '.country // empty')
+
+  http_request "$ip_version" "$RIPESTAT_PREFIX_OVERVIEW_URL?resource=$ip"
+  REGISTRATION_ASN[$ip_version]=$(json_value '.data.asns[0].asn // empty')
+  REGISTRATION_ORG[$ip_version]=$(json_value '.data.asns[0].holder // empty | sub("^\\S+ (- )?"; "")')
+}
+
+lookup_ip_registration() {
+  local ip_version="$1"
+  local ip="$2"
+
+  if lookup_maxmind_registration "$ip_version" "$ip"; then
+    return
+  fi
+
+  lookup_ripe_registration "$ip_version" "$ip"
+}
+
+lookup_ip_registrations() {
+  local token_ip_version=4
+
+  if [[ -z "$EXTERNAL_IPV4" ]]; then
+    token_ip_version=6
+  fi
+
+  request_maxmind_token "$token_ip_version"
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    lookup_ip_registration 4 "$EXTERNAL_IPV4"
+  fi
+
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    lookup_ip_registration 6 "$EXTERNAL_IPV6"
+  fi
+}
+
 main() {
   parse_args "$@"
   validate_args
   create_work_dir
   discover_external_ips
+  lookup_ip_registrations
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then

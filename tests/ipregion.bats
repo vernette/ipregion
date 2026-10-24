@@ -459,3 +459,84 @@ print_yes_color() {
   [[ "$(mask_ipv6 2001::1:2:3:4:5:6)" == "2001:0:1::" ]]
   [[ "$(mask_ipv6 ::1)" == "0:0:0::" ]]
 }
+
+use_host_fixtures() {
+  local host="$1"
+
+  mkdir -p "$FAKE_CURL_FIXTURES"
+  cp -r "$BATS_TEST_DIRNAME/fixtures/$host/." "$FAKE_CURL_FIXTURES"
+}
+
+set_dual_stack_ips() {
+  EXTERNAL_IPV4=203.0.113.7
+  EXTERNAL_IPV6=2001:db8:85a3::8a2e:370:7334
+}
+
+@test "registration comes from maxmind for each protocol" {
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+
+  lookup_ip_registrations
+
+  [[ "${REGISTRATION_ASN[4]}" == 64496 && "${REGISTRATION_ASN[6]}" == 64496 ]]
+  [[ "${REGISTRATION_ORG[4]}" == "Example Hosting" ]]
+  [[ "${REGISTRATION_COUNTRY[4]}" == NL && "${REGISTRATION_COUNTRY[6]}" == DE ]]
+  [[ -z "${REGISTRATION_MAXMIND_FAILURE[4]:-}${REGISTRATION_MAXMIND_FAILURE[6]:-}" ]]
+  grep -q -- '--header X-CSRF-Token: [0-9a-f]* ' "$FAKE_CURL_LOG"
+  grep -q -- '-6 .*Authorization: Bearer v2.local.masked-demo-token .*city/2001:db8:85a3::8a2e:370:7334?demo=1' "$FAKE_CURL_LOG"
+  run grep -c -e rdap.db.ripe.net -e stat.ripe.net "$FAKE_CURL_LOG"
+  [[ "$output" -eq 0 ]]
+}
+
+@test "used up maxmind limit falls back to ripe" {
+  use_host_fixtures dual-stack
+  add_fixture 4 geoip.maxmind.com_geoip_v2.1_city_203.0.113.7_demo_1 \
+    '{"code":"INSUFFICIENT_FUNDS","error":"You have used all 25 of your demo queries for the day."}'
+  set_fixture_field 4 geoip.maxmind.com_geoip_v2.1_city_203.0.113.7_demo_1 code 402
+  set_dual_stack_ips
+
+  lookup_ip_registrations
+
+  [[ "${REGISTRATION_MAXMIND_FAILURE[4]}" == "$REASON_DAILY_LIMIT" ]]
+  [[ "${REGISTRATION_COUNTRY[4]}" == SE ]]
+  [[ "${REGISTRATION_ASN[4]}" == 64496 && "${REGISTRATION_ORG[4]}" == "Example Hosting" ]]
+  [[ "${REGISTRATION_COUNTRY[6]}" == DE ]]
+}
+
+@test "demo page without csrf token skips maxmind lookups" {
+  use_host_fixtures dual-stack
+  add_fixture 4 www.maxmind.com_en_geoip-web-services-demo '<html>maintenance</html>'
+  set_dual_stack_ips
+
+  lookup_ip_registrations
+
+  [[ "${REGISTRATION_MAXMIND_FAILURE[4]}" == "$REASON_NO_DEMO_TOKEN" ]]
+  [[ "${REGISTRATION_MAXMIND_FAILURE[6]}" == "$REASON_NO_DEMO_TOKEN" ]]
+  [[ "${REGISTRATION_COUNTRY[4]}" == SE && "${REGISTRATION_COUNTRY[6]}" == SE ]]
+  run grep -c -e geoip.maxmind.com -e demo/token "$FAKE_CURL_LOG"
+  [[ "$output" -eq 0 ]]
+}
+
+@test "ripe holder loses its as-name prefix" {
+  add_fixture 4 rdap.db.ripe.net_ip_203.0.113.7 '{"country":null}'
+  add_fixture 4 stat.ripe.net_data_prefix-overview_data.json_resource_203.0.113.7 \
+    '{"data":{"asns":[{"asn":15169,"holder":"GOOGLE - Google LLC"}]}}'
+
+  lookup_ripe_registration 4 203.0.113.7
+
+  [[ "${REGISTRATION_ORG[4]}" == "Google LLC" ]]
+  [[ -z "${REGISTRATION_COUNTRY[4]}" ]]
+}
+
+@test "ipv6 only host requests the maxmind token over ipv6" {
+  use_host_fixtures dual-stack
+  mv "$FAKE_CURL_FIXTURES"/ipv4/www.maxmind.com_* "$FAKE_CURL_FIXTURES/ipv6/"
+  EXTERNAL_IPV6=2001:db8:85a3::8a2e:370:7334
+
+  lookup_ip_registrations
+
+  [[ "${REGISTRATION_COUNTRY[6]}" == DE ]]
+  grep -q -- '-6 .*demo/token' "$FAKE_CURL_LOG"
+  run grep -c -- ' -4 ' "$FAKE_CURL_LOG"
+  [[ "$output" -eq 0 ]]
+}
