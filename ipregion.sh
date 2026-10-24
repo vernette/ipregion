@@ -1127,7 +1127,7 @@ remove_request_cache() {
 }
 
 cached_curl() {
-  local cache_key cache_file response
+  local cache_key cache_file response owner_pid
 
   if [[ -z "$REQUEST_CACHE_DIR" ]]; then
     curl "$@"
@@ -1138,13 +1138,20 @@ cached_curl() {
   cache_file="$REQUEST_CACHE_DIR/${cache_key%% *}"
 
   set -C
-  if { : >"$cache_file.lock"; } 2>/dev/null; then
+  if { printf "%s" "$BASHPID" >"$cache_file.lock"; } 2>/dev/null; then
     curl "$@" >"$cache_file"
     : >"$cache_file.done"
   fi
   set +C
 
   while [[ ! -f "$cache_file.done" ]]; do
+    owner_pid=""
+    read -r owner_pid <"$cache_file.lock"
+
+    if [[ -n "$owner_pid" ]] && ! kill -0 "$owner_pid" 2>/dev/null && [[ ! -f "$cache_file.done" ]]; then
+      return 1
+    fi
+
     pause "$CACHE_POLL_INTERVAL"
   done
 
