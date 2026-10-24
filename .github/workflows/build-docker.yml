@@ -2,6 +2,8 @@ name: Build and Push Docker Image
 
 on:
   push:
+    branches:
+      - master
     paths:
       - "ipregion.sh"
   workflow_dispatch:
