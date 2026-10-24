@@ -647,7 +647,7 @@ run_geoip_checks() {
   collect_results
 }
 
-geoip_rows() {
+result_rows() {
   jq -r '.[] | [.service, .ip_version, .country, .status, .reason] | join(" ")' <<<"$RESULTS"
 }
 
@@ -694,7 +694,7 @@ ip-api.com 4 SE yes
 ip-api.com 6 SE yes 
 ROWS
   )
-  run geoip_rows
+  run result_rows
   [[ "$output" == "$expected" ]]
   grep -q -- '--header Referer: https://ipapi.co/ https://ipapi.co/203.0.113.7/json$' "$FAKE_CURL_LOG"
 }
@@ -753,7 +753,7 @@ ROWS
 
   run_geoip_checks
 
-  run geoip_rows
+  run result_rows
   [[ "$output" == *"MaxMind 4   no demo token"* ]]
   [[ "$output" == *"country.is 4   timeout"* ]]
   [[ "$output" == *"geojs.io 4   unexpected response"* ]]

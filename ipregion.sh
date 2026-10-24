@@ -853,32 +853,34 @@ external_ip() {
   esac
 }
 
-print_geoip_failure() {
-  local service="$1"
-  local ip_version="$2"
-  local reason="$3"
+print_failure() {
+  local group="$1"
+  local service="$2"
+  local ip_version="$3"
+  local reason="$4"
 
-  print_result "$GROUP_GEOIP" "$service" "$ip_version" "" "" "$reason"
+  print_result "$group" "$service" "$ip_version" "" "" "$reason"
 }
 
-print_geoip_country() {
-  local service="$1"
-  local ip_version="$2"
-  local country="$3"
+print_country() {
+  local group="$1"
+  local service="$2"
+  local ip_version="$3"
+  local country="$4"
   local reason
 
   reason=$(http_failure_reason)
   if [[ -n "$reason" ]]; then
-    print_geoip_failure "$service" "$ip_version" "$reason"
+    print_failure "$group" "$service" "$ip_version" "$reason"
     return
   fi
 
   if [[ ! "$country" =~ $COUNTRY_CODE_PATTERN ]]; then
-    print_geoip_failure "$service" "$ip_version" "$REASON_UNEXPECTED_RESPONSE"
+    print_failure "$group" "$service" "$ip_version" "$REASON_UNEXPECTED_RESPONSE"
     return
   fi
 
-  print_result "$GROUP_GEOIP" "$service" "$ip_version" "$country" "$STATUS_YES" ""
+  print_result "$group" "$service" "$ip_version" "$country" "$STATUS_YES" ""
 }
 
 check_geoip_json() {
@@ -890,7 +892,7 @@ check_geoip_json() {
   shift 5
 
   http_request "$transport" "$url" "$@"
-  print_geoip_country "$service" "$ip_version" "$(json_value "$filter")"
+  print_country "$GROUP_GEOIP" "$service" "$ip_version" "$(json_value "$filter")"
 }
 
 check_geoip_maxmind() {
@@ -898,18 +900,18 @@ check_geoip_maxmind() {
   local failure
 
   if [[ -z "$MAXMIND_TOKEN" ]]; then
-    print_geoip_failure MaxMind "$ip_version" "$REASON_NO_DEMO_TOKEN"
+    print_failure "$GROUP_GEOIP" MaxMind "$ip_version" "$REASON_NO_DEMO_TOKEN"
     return
   fi
 
   fetch_maxmind_city "$ip_version" "$(external_ip "$ip_version")"
   failure=$(maxmind_failure_reason)
   if [[ -n "$failure" ]]; then
-    print_geoip_failure MaxMind "$ip_version" "$failure"
+    print_failure "$GROUP_GEOIP" MaxMind "$ip_version" "$failure"
     return
   fi
 
-  print_geoip_country MaxMind "$ip_version" "$(json_value '.country.iso_code // empty')"
+  print_country "$GROUP_GEOIP" MaxMind "$ip_version" "$(json_value '.country.iso_code // empty')"
 }
 
 check_geoip_ripe() {
@@ -939,7 +941,7 @@ check_geoip_cloudflare() {
     country="${BASH_REMATCH[2]}"
   fi
 
-  print_geoip_country Cloudflare "$ip_version" "$country"
+  print_country "$GROUP_GEOIP" Cloudflare "$ip_version" "$country"
 }
 
 check_geoip_ipregistry_co() {
@@ -961,7 +963,7 @@ check_geoip_ifconfig_co() {
   local ip_version="$1"
 
   http_request "$ip_version" "$IFCONFIG_CO_URL?ip=$(external_ip "$ip_version")"
-  print_geoip_country ifconfig.co "$ip_version" "$HTTP_BODY"
+  print_country "$GROUP_GEOIP" ifconfig.co "$ip_version" "$HTTP_BODY"
 }
 
 check_geoip_ip2location_io() {
