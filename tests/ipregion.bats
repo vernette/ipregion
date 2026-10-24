@@ -540,3 +540,101 @@ set_dual_stack_ips() {
   run grep -c -- ' -4 ' "$FAKE_CURL_LOG"
   [[ "$output" -eq 0 ]]
 }
+
+print_delayed_number() {
+  local delay="$1"
+  local number="$2"
+
+  sleep "$delay"
+  printf '{"number":%d}\n' "$number"
+}
+
+print_active_job_count() {
+  local active_dir="$1"
+  local -a active
+
+  touch "$active_dir/$BASHPID"
+  active=("$active_dir"/*)
+  sleep 0.2
+  rm "$active_dir/$BASHPID"
+  printf '%d\n' "${#active[@]}"
+}
+
+@test "result is one json object with every field" {
+  run print_result geoip ipinfo 6 SE yes ""
+
+  [[ "$output" == '{"group":"geoip","service":"ipinfo","ip_version":6,"country":"SE","status":"yes","reason":""}' ]]
+}
+
+@test "results come in start order, not finish order" {
+  create_job_slots
+  start_job print_delayed_number 0.3 1
+  start_job print_delayed_number 0 2
+  start_job print_delayed_number 0.1 3
+  wait_for_jobs
+  collect_results
+
+  [[ "$(jq -c 'map(.number)' <<<"$RESULTS")" == "[1,2,3]" ]]
+}
+
+@test "no jobs give an empty result list" {
+  collect_results
+
+  [[ "$RESULTS" == "[]" ]]
+}
+
+@test "parallel jobs stay under the limit" {
+  local active_dir="$BATS_TEST_TMPDIR/active"
+  local index
+
+  mkdir "$active_dir"
+  create_job_slots
+  for ((index = 0; index <= MAX_PARALLEL_JOBS; index++)); do
+    start_job print_active_job_count "$active_dir"
+  done
+  wait_for_jobs
+  collect_results
+
+  [[ "$(jq 'length' <<<"$RESULTS")" -eq $((MAX_PARALLEL_JOBS + 1)) ]]
+  [[ "$(jq 'max' <<<"$RESULTS")" -le "$MAX_PARALLEL_JOBS" ]]
+}
+
+@test "failed job gives its slot back" {
+  local index
+
+  create_job_slots
+  for ((index = 0; index <= MAX_PARALLEL_JOBS; index++)); do
+    start_job false
+  done
+  start_job print_delayed_number 0 1
+  wait_for_jobs
+  collect_results
+
+  [[ "$RESULTS" == '[{"number":1}]' ]]
+}
+
+@test "terminated run removes the work dir and stops jobs" {
+  local state="$BATS_TEST_TMPDIR/state"
+  local runner work_dir job_pid attempt
+  local runner_status=0
+
+  bash -c 'source "$1"; create_work_dir; create_job_slots; start_job sleep 30; printf "%s %s\n" "$WORK_DIR" "$!" >"$2"; wait_for_jobs' _ "$SCRIPT" "$state" 3>&- &
+  runner=$!
+  until [[ -s "$state" ]]; do
+    sleep 0.1
+  done
+  read -r work_dir job_pid <"$state"
+
+  kill -TERM "$runner"
+  wait "$runner" || runner_status=$?
+
+  [[ "$runner_status" -eq 143 ]]
+  [[ ! -e "$work_dir" ]]
+  for ((attempt = 0; attempt < 10; attempt++)); do
+    if ! kill -0 "$job_pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}

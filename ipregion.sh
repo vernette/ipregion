@@ -30,6 +30,16 @@ readonly CURL_BASE_ARGS=(--disable --silent --compressed)
 readonly CURL_WRITE_OUT='%{http_code}\n%{redirect_url}\n'
 readonly CACHE_POLL_INTERVAL=0.1
 
+readonly MAX_PARALLEL_JOBS=16
+readonly JOB_POLL_INTERVAL=0.1
+readonly RESULT_FILE_PREFIX="result-"
+readonly CLEAR_LINE=$'\r\033[K'
+readonly PROGRESS_LABEL="Checking services"
+readonly PROGRESS_SPINNER_FRAMES=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+readonly PROGRESS_BAR_WIDTH=24
+readonly PROGRESS_BAR_DONE="━"
+readonly PROGRESS_BAR_LEFT="─"
+
 readonly IPV4_IDENTITY_URLS=(
   https://ipv4.icanhazip.com
   https://api.ipify.org
@@ -112,6 +122,10 @@ EXTERNAL_IPV4=""
 EXTERNAL_IPV6=""
 CURL_ARGS=()
 MAXMIND_TOKEN=""
+JOB_COUNT=0
+JOB_SLOTS_FD=""
+PROGRESS_FRAME=0
+RESULTS=""
 declare -gA REGISTRATION_ASN=()
 declare -gA REGISTRATION_ORG=()
 declare -gA REGISTRATION_COUNTRY=()
@@ -332,7 +346,17 @@ format_status() {
   esac
 }
 
+stop_jobs() {
+  local pid
+
+  for pid in $(jobs -pr); do
+    kill "$pid" 2>/dev/null || true
+  done
+}
+
 cleanup() {
+  stop_jobs
+
   if [[ -n "$WORK_DIR" ]]; then
     rm -rf -- "$WORK_DIR"
   fi
@@ -667,10 +691,121 @@ lookup_ip_registrations() {
   fi
 }
 
+print_result() {
+  local group="$1"
+  local service="$2"
+  local ip_version="$3"
+  local country="$4"
+  local status="$5"
+  local reason="$6"
+
+  jq -cn \
+    --arg group "$group" \
+    --arg service "$service" \
+    --argjson ip_version "$ip_version" \
+    --arg country "$country" \
+    --arg status "$status" \
+    --arg reason "$reason" \
+    '$ARGS.named'
+}
+
+count_running_jobs() {
+  jobs -pr | wc -l
+}
+
+print_progress_bar() {
+  local finished="$1"
+  local done_width=$((PROGRESS_BAR_WIDTH * finished / JOB_COUNT))
+  local done_part left_part
+
+  printf -v done_part '%*s' "$done_width" ''
+  printf -v left_part '%*s' "$((PROGRESS_BAR_WIDTH - done_width))" ''
+  printf '%s%s%s%s' "${done_part// /$PROGRESS_BAR_DONE}" "$C_DIM" "${left_part// /$PROGRESS_BAR_LEFT}" "$C_RESET"
+}
+
+draw_progress() {
+  local finished
+  local spinner
+
+  if [[ ! -t 2 ]]; then
+    return
+  fi
+
+  finished=$((JOB_COUNT - $(count_running_jobs)))
+  spinner="${PROGRESS_SPINNER_FRAMES[PROGRESS_FRAME % ${#PROGRESS_SPINNER_FRAMES[@]}]}"
+  PROGRESS_FRAME=$((PROGRESS_FRAME + 1))
+  printf '%s%s %s  %s  %s%d/%d%s' "$CLEAR_LINE" "$spinner" "$PROGRESS_LABEL" "$(print_progress_bar "$finished")" \
+    "$C_DIM" "$finished" "$JOB_COUNT" "$C_RESET" >&2
+}
+
+clear_progress() {
+  if [[ ! -t 2 ]]; then
+    return
+  fi
+
+  printf '%s' "$CLEAR_LINE" >&2
+}
+
+create_job_slots() {
+  local slots_fifo="$WORK_DIR/job-slots"
+  local slots
+
+  mkfifo -- "$slots_fifo"
+  exec {JOB_SLOTS_FD}<>"$slots_fifo"
+  printf -v slots '%*s' "$MAX_PARALLEL_JOBS" ''
+  printf '%s' "$slots" >&"$JOB_SLOTS_FD"
+}
+
+take_job_slot() {
+  local slot
+
+  read -r -N 1 -u "$JOB_SLOTS_FD" slot
+}
+
+return_job_slot() {
+  printf ' ' >&"$JOB_SLOTS_FD"
+}
+
+run_job() {
+  local result_file="$1"
+  shift
+
+  take_job_slot
+  trap return_job_slot EXIT
+  "$@" >"$result_file"
+}
+
+start_job() {
+  local result_file
+
+  JOB_COUNT=$((JOB_COUNT + 1))
+  printf -v result_file '%s/%s%04d' "$WORK_DIR" "$RESULT_FILE_PREFIX" "$JOB_COUNT"
+  run_job "$result_file" "$@" &
+}
+
+wait_for_jobs() {
+  while (($(count_running_jobs) > 0)); do
+    draw_progress
+    sleep "$JOB_POLL_INTERVAL"
+  done
+
+  clear_progress
+}
+
+collect_results() {
+  if ((JOB_COUNT == 0)); then
+    RESULTS="[]"
+    return
+  fi
+
+  RESULTS=$(jq -cs . "$WORK_DIR/$RESULT_FILE_PREFIX"*)
+}
+
 main() {
   parse_args "$@"
   validate_args
   create_work_dir
+  create_job_slots
   discover_external_ips
   lookup_ip_registrations
 }
