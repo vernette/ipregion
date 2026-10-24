@@ -5,6 +5,7 @@ SCRIPT_URL="https://github.com/vernette/ipregion"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
 DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
+exec {SLEEP_FD}<> <(:)
 
 SPOTIFY_API_KEY="142b583129b2df829de3656f9eb484e6"
 SPOTIFY_CLIENT_ID="9a8d2f0ce77a4e248bb71fefcb557637"
@@ -298,6 +299,11 @@ bold() {
 get_timestamp() {
   local format="$1"
   date +"$format"
+}
+
+pause() {
+  local seconds="$1"
+  read -r -t "$seconds" -u "$SLEEP_FD" || true
 }
 
 log() {
@@ -1069,7 +1075,7 @@ spinner_start() {
 
         printf "\r\033[K%s %s \033[%sm%s\033[0m" "$frame" "$label" "$COLOR_SERVICE" "$current_service"
 
-        sleep $delay
+        pause "$delay"
       done
     done
   ) &
@@ -1121,7 +1127,7 @@ remove_request_cache() {
 }
 
 cached_curl() {
-  local cache_key cache_file
+  local cache_key cache_file response
 
   if [[ -z "$REQUEST_CACHE_DIR" ]]; then
     curl "$@"
@@ -1131,16 +1137,19 @@ cached_curl() {
   cache_key=$(cksum <<<"$*")
   cache_file="$REQUEST_CACHE_DIR/${cache_key%% *}"
 
-  if mkdir "$cache_file.lock" 2>/dev/null; then
-    curl "$@" >"$cache_file.tmp"
-    mv "$cache_file.tmp" "$cache_file"
+  set -C
+  if { : >"$cache_file.lock"; } 2>/dev/null; then
+    curl "$@" >"$cache_file"
+    : >"$cache_file.done"
   fi
+  set +C
 
-  while [[ ! -f "$cache_file" ]]; do
-    sleep "$CACHE_POLL_INTERVAL"
+  while [[ ! -f "$cache_file.done" ]]; do
+    pause "$CACHE_POLL_INTERVAL"
   done
 
-  cat "$cache_file"
+  IFS= read -r -d '' response <"$cache_file"
+  printf "%s" "$response"
 }
 
 run_async() {
@@ -1607,7 +1616,7 @@ wait_with_progress() {
     fi
 
     spinner_update "[$((${#job_pids[@]} - ${#pending[@]}))/${#job_pids[@]}] $(format_pending_labels "${pending[@]}") ($((SECONDS - start))s)"
-    sleep "$PROGRESS_POLL_INTERVAL"
+    pause "$PROGRESS_POLL_INTERVAL"
   done
 
   if ((${#job_pids[@]} > 0)); then
