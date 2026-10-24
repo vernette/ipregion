@@ -22,7 +22,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shfmt bats
 
       - name: shellcheck
-        run: shellcheck ipregion.sh tests/*.bats
+        run: shellcheck ipregion.sh tests/*.bats tests/fake-curl.sh
 
       - name: shfmt
         run: shfmt --diff ipregion.sh tests/
