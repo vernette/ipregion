@@ -54,6 +54,8 @@ PROXY_ADDR=""
 INTERFACE_NAME=""
 DEBUG=false
 CACHE_POLL_INTERVAL=0.1
+PROGRESS_POLL_INTERVAL=0.2
+PROGRESS_LABELS_WIDTH=50
 
 RESULT_JSON=""
 ARR_PRIMARY=()
@@ -973,13 +975,18 @@ fetch_external_ip() {
 }
 
 discover_external_ips() {
+  local ipv4_fd ipv6_fd
+
   if ipv4_enabled; then
-    EXTERNAL_IPV4=$(fetch_external_ip 4)
+    run_async ipv4_fd fetch_external_ip 4
   fi
 
   if ipv6_enabled; then
-    EXTERNAL_IPV6=$(fetch_external_ip 6)
+    run_async ipv6_fd fetch_external_ip 6
   fi
+
+  read_async EXTERNAL_IPV4 "$ipv4_fd"
+  read_async EXTERNAL_IPV6 "$ipv6_fd"
 
   if [[ -z "$EXTERNAL_IPV4" ]] && [[ -z "$EXTERNAL_IPV6" ]]; then
     error_exit "Failed to obtain external IPv4 and IPv6 address"
@@ -1077,7 +1084,7 @@ spinner_stop() {
     kill "$spinner_pid" 2>/dev/null
     wait "$spinner_pid" 2>/dev/null
     spinner_pid=""
-    printf "\\r%*s\\r" 40 " "
+    printf "\r\033[K"
   fi
 
   if [[ -f "$SPINNER_SERVICE_FILE" ]]; then
@@ -1095,6 +1102,8 @@ spinner_update() {
 }
 
 spinner_cleanup() {
+  trap '' TERM
+  kill -TERM 0 2>/dev/null
   spinner_stop
   remove_request_cache
   exit 130
@@ -1132,6 +1141,25 @@ cached_curl() {
   done
 
   cat "$cache_file"
+}
+
+run_async() {
+  local -n async_fd=$1
+  shift
+
+  exec {async_fd}< <("$@")
+}
+
+read_async() {
+  local -n async_result=$1
+  local fd="$2"
+
+  if [[ -z "$fd" ]]; then
+    return
+  fi
+
+  async_result=$(cat <&"$fd")
+  exec {fd}<&-
 }
 
 curl_wrapper() {
@@ -1381,10 +1409,11 @@ process_with_custom_handler() {
   local handler_func="${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}"
   local ipv4_result=""
   local ipv6_result=""
+  local ipv4_fd ipv6_fd
 
   if can_use_ipv4; then
     log "$LOG_INFO" "Checking $display_name via IPv4 (custom handler)"
-    ipv4_result=$("$handler_func" 4 4)
+    run_async ipv4_fd "$handler_func" 4 4
   fi
 
   if can_use_ipv6; then
@@ -1397,10 +1426,12 @@ process_with_custom_handler() {
     fi
 
     log "$LOG_INFO" "$log_msg"
-    ipv6_result=$("$handler_func" "$transport" 6)
+    run_async ipv6_fd "$handler_func" "$transport" 6
   fi
 
-  add_result "primary" "$display_name" "$ipv4_result" "$ipv6_result"
+  read_async ipv4_result "$ipv4_fd"
+  read_async ipv6_result "$ipv6_fd"
+  print_result_fields "primary" "$display_name" "$ipv4_result" "$ipv6_result"
 }
 
 process_with_probe() {
@@ -1408,10 +1439,11 @@ process_with_probe() {
   local display_name="$2"
   local ipv4_result=""
   local ipv6_result=""
+  local ipv4_fd ipv6_fd
 
   if can_use_ipv4; then
     log "$LOG_INFO" "Checking $display_name via IPv4"
-    ipv4_result=$(probe_service "$service" 4 "$EXTERNAL_IPV4")
+    run_async ipv4_fd probe_service "$service" 4 "$EXTERNAL_IPV4"
   fi
 
   if can_use_ipv6; then
@@ -1422,10 +1454,12 @@ process_with_probe() {
     fi
 
     log "$LOG_INFO" "$log_msg"
-    ipv6_result=$(probe_service "$service" 6 "$EXTERNAL_IPV6")
+    run_async ipv6_fd probe_service "$service" 6 "$EXTERNAL_IPV6"
   fi
 
-  add_result "primary" "$display_name" "$ipv4_result" "$ipv6_result"
+  read_async ipv4_result "$ipv4_fd"
+  read_async ipv6_result "$ipv6_fd"
+  print_result_fields "primary" "$display_name" "$ipv4_result" "$ipv6_result"
 }
 
 process_service() {
@@ -1436,8 +1470,6 @@ process_service() {
 
   IFS='|' read -r display_name domain url_template response_format <<<"$service_config"
   display_name="${display_name:-$service}"
-
-  spinner_update "$display_name"
 
   if [[ "$custom" == true ]]; then
     process_custom_service "$service"
@@ -1456,7 +1488,7 @@ process_custom_service() {
   local service="$1"
   local ipv4_result=""
   local ipv6_result=""
-  local display_name handler_func group
+  local display_name handler_func group ipv4_fd ipv6_fd
 
   if [[ -n "${CUSTOM_SERVICES[$service]}" ]]; then
     display_name="${CUSTOM_SERVICES[$service]}"
@@ -1472,8 +1504,6 @@ process_custom_service() {
     group="custom"
   fi
 
-  spinner_update "$display_name"
-
   if [[ -z "$handler_func" ]]; then
     log "$LOG_WARN" "Unknown service handler: $service"
     return
@@ -1481,51 +1511,145 @@ process_custom_service() {
 
   if can_use_ipv4; then
     log "$LOG_INFO" "Checking $display_name via IPv4"
-    ipv4_result=$("$handler_func" 4)
+    run_async ipv4_fd "$handler_func" 4
   fi
 
   if can_use_ipv6; then
     log "$LOG_INFO" "Checking $display_name via IPv6"
-    ipv6_result=$("$handler_func" 6)
+    run_async ipv6_fd "$handler_func" 6
   fi
 
-  add_result "$group" "$display_name" "$ipv4_result" "$ipv6_result"
+  read_async ipv4_result "$ipv4_fd"
+  read_async ipv6_result "$ipv6_fd"
+  print_result_fields "$group" "$display_name" "$ipv4_result" "$ipv6_result"
 }
 
-run_service_group() {
-  local group="$1"
-  local services_string="${SERVICE_GROUPS[$group]}"
-  local is_custom=false
-  local is_cdn=false
-  local services_array service_name handler_func display_name result
+print_result_fields() {
+  printf '%s\0' "$@"
+}
 
-  read -ra services_array <<<"$services_string"
+is_excluded_service() {
+  local service="$1"
+  local excluded
 
-  log "$LOG_INFO" "Running $group group services"
-
-  for service_name in "${services_array[@]}"; do
-    if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep_wrapper -Fxq "$service_name"; then
-      log "$LOG_INFO" "Skipping service: $service_name"
-      continue
-    fi
-
-    case "$group" in
-      custom)
-        is_custom=true
-        ;;
-      cdn)
-        is_cdn=true
-        ;;
-    esac
-
-    if [[ "$is_custom" == true ]]; then
-      process_service "$service_name" true
-    elif [[ "$is_cdn" == true ]]; then
-      process_custom_service "$service_name"
-    else
-      process_service "$service_name"
+  for excluded in "${EXCLUDED_SERVICES[@]}"; do
+    if [[ "$excluded" == "$service" ]]; then
+      return 0
     fi
   done
+
+  return 1
+}
+
+get_display_name() {
+  local service="$1"
+
+  if [[ -n "${PRIMARY_SERVICES[$service]}" ]]; then
+    echo "${PRIMARY_SERVICES[$service]%%|*}"
+    return
+  fi
+
+  echo "${CUSTOM_SERVICES[$service]:-${CDN_SERVICES[$service]:-$service}}"
+}
+
+run_service() {
+  local group="$1"
+  local service="$2"
+
+  if [[ "$group" == "primary" ]]; then
+    process_service "$service"
+    return
+  fi
+
+  process_custom_service "$service"
+}
+
+format_pending_labels() {
+  local summary=""
+  local hidden=0
+  local label
+
+  for label in "$@"; do
+    if [[ -z "$summary" ]]; then
+      summary="$label"
+    elif ((hidden == 0 && ${#summary} + ${#label} + 2 <= PROGRESS_LABELS_WIDTH)); then
+      summary+=", $label"
+    else
+      hidden=$((hidden + 1))
+    fi
+  done
+
+  if ((hidden > 0)); then
+    summary+=" +$hidden"
+  fi
+
+  printf "%s" "$summary"
+}
+
+wait_with_progress() {
+  local -n job_pids=$1
+  local -n job_labels=$2
+  local start=$SECONDS
+  local pending=()
+  local i
+
+  while true; do
+    pending=()
+
+    for i in "${!job_pids[@]}"; do
+      if kill -0 "${job_pids[$i]}" 2>/dev/null; then
+        pending+=("${job_labels[$i]}")
+      fi
+    done
+
+    if ((${#pending[@]} == 0)); then
+      break
+    fi
+
+    spinner_update "[$((${#job_pids[@]} - ${#pending[@]}))/${#job_pids[@]}] $(format_pending_labels "${pending[@]}") ($((SECONDS - start))s)"
+    sleep "$PROGRESS_POLL_INTERVAL"
+  done
+
+  if ((${#job_pids[@]} > 0)); then
+    wait "${job_pids[@]}"
+  fi
+}
+
+run_service_groups() {
+  local groups=("$@")
+  local pids=()
+  local labels=()
+  local job_dir group services_array service_name i fields
+
+  job_dir=$(mktemp -d "${REQUEST_CACHE_DIR:-${TMPDIR:-/tmp}}/ipregion_jobs_XXXXXX")
+
+  for group in "${groups[@]}"; do
+    log "$LOG_INFO" "Running $group group services"
+    read -ra services_array <<<"${SERVICE_GROUPS[$group]}"
+
+    for service_name in "${services_array[@]}"; do
+      if is_excluded_service "$service_name"; then
+        log "$LOG_INFO" "Skipping service: $service_name"
+        continue
+      fi
+
+      run_service "$group" "$service_name" >"$job_dir/${#pids[@]}" &
+      pids+=("$!")
+      labels+=("$(get_display_name "$service_name")")
+    done
+  done
+
+  wait_with_progress pids labels
+
+  for i in "${!pids[@]}"; do
+    mapfile -d '' -t fields <"$job_dir/$i"
+
+    if ((${#fields[@]} == 4)); then
+      add_result "${fields[@]}"
+    fi
+  done
+
+  rm -rf "$job_dir"
 }
 
 run_all_services() {
@@ -2164,19 +2288,11 @@ main() {
   get_asn
 
   case "$GROUPS_TO_SHOW" in
-    primary)
-      run_service_group "primary"
-      ;;
-    custom)
-      run_service_group "custom"
-      ;;
-    cdn)
-      run_service_group "cdn"
+    primary | custom | cdn)
+      run_service_groups "$GROUPS_TO_SHOW"
       ;;
     *)
-      run_service_group "primary"
-      run_service_group "custom"
-      run_service_group "cdn"
+      run_service_groups "primary" "custom" "cdn"
       ;;
   esac
 
