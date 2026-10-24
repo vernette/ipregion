@@ -94,6 +94,23 @@ test_finalize_json() {
   assert_eq "json empty cdn" "0" "$(jq -r '.results.cdn | length' <<<"$RESULT_JSON")"
 }
 
+test_lookup_chatgpt() {
+  local body
+
+  curl() { printf '%s\n%s' "$body" "${FAKE_HTTP_CODE:-200}"; }
+
+  body='{"dynamic_configs":{"x":{"value":{"country":"US"}}},"derived_fields":{"ip":"203.0.113.42","country":"SE"},"time":1}'
+  assert_eq "chatgpt country from derived_fields" "SE" "$(lookup_chatgpt 4)"
+
+  body='{"dynamic_configs":{}}'
+  assert_eq "chatgpt no derived_fields" "" "$(lookup_chatgpt 4)"
+
+  body='{"error":"forbidden"}'
+  assert_eq "chatgpt http 403" "$STATUS_DENIED" "$(FAKE_HTTP_CODE=403 lookup_chatgpt 4)"
+
+  unset -f curl
+}
+
 test_parse_arguments() {
   parse_arguments -j -4 -t 10 -g custom -p 127.0.0.1:1080
 
@@ -113,6 +130,7 @@ test_status_from_http_code
 test_process_response
 test_gemini_match
 test_finalize_json
+test_lookup_chatgpt
 test_parse_arguments
 
 if ((FAILURES > 0)); then

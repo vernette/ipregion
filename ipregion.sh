@@ -11,6 +11,8 @@ SPOTIFY_CLIENT_ID="9a8d2f0ce77a4e248bb71fefcb557637"
 NETFLIX_API_KEY="YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm"
 TWITCH_CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
 CHATGPT_STATSIG_API_KEY="client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG"
+CHATGPT_DERIVED_FIELDS_PREFIX='"derived_fields":'
+CHATGPT_DERIVED_FIELDS_PATTERN="$CHATGPT_DERIVED_FIELDS_PREFIX\\{[^}]*\\}"
 REDDIT_BASIC_ACCESS_TOKEN="b2hYcG9xclpZdWIxa2c6"
 YOUTUBE_SOCS_COOKIE="CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY"
 DISNEY_PLUS_API_KEY="ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
@@ -1153,20 +1155,34 @@ remove_request_cache() {
   fi
 }
 
-cached_curl() {
-  local cache_key cache_file response owner_pid
+fetch_url() {
+  local extract_pattern="$1"
+  shift
 
-  if [[ -z "$REQUEST_CACHE_DIR" ]]; then
+  if [[ -z "$extract_pattern" ]]; then
     curl "$@"
     return
   fi
 
-  cache_key=$(cksum <<<"$*")
+  curl "$@" | grep -oE "$extract_pattern|^[0-9]{3}$"
+}
+
+cached_curl() {
+  local extract_pattern="$1"
+  shift
+  local cache_key cache_file response owner_pid
+
+  if [[ -z "$REQUEST_CACHE_DIR" ]]; then
+    fetch_url "$extract_pattern" "$@"
+    return
+  fi
+
+  cache_key=$(cksum <<<"$extract_pattern $*")
   cache_file="$REQUEST_CACHE_DIR/${cache_key%% *}"
 
   set -C
   if { printf "%s" "$BASHPID" >"$cache_file.lock"; } 2>/dev/null; then
-    curl "$@" >"$cache_file"
+    fetch_url "$extract_pattern" "$@" >"$cache_file"
     : >"$cache_file.done"
   fi
   set +C
@@ -1209,7 +1225,7 @@ curl_wrapper() {
   local method="$1"
   local url="$2"
   shift 2
-  local ip_version user_agent json data file forms headers response_with_code response http_code
+  local ip_version user_agent json data file forms headers extract_pattern response_with_code response http_code
   local curl_args=(
     --silent
     --compressed
@@ -1260,6 +1276,10 @@ curl_wrapper() {
         forms+=("$2")
         shift 2
         ;;
+      --extract)
+        extract_pattern="$2"
+        shift 2
+        ;;
     esac
   done
 
@@ -1303,9 +1323,10 @@ curl_wrapper() {
 
   curl_args+=("$url")
 
-  response_with_code=$(cached_curl "${curl_args[@]}")
+  response_with_code=$(cached_curl "$extract_pattern" "${curl_args[@]}")
   http_code=${response_with_code##*$'\n'}
-  response=${response_with_code%$'\n'*}
+  response=${response_with_code%"$http_code"}
+  response=${response%$'\n'}
 
   if [[ "$http_code" == 4* || "$http_code" == 5* ]]; then
     status_from_http_code "$http_code"
@@ -2028,8 +2049,9 @@ lookup_chatgpt() {
   local response
 
   response=$(curl_wrapper POST "https://ab.chatgpt.com/v1/initialize" --ip-version "$ip_version" \
-    --header "Statsig-Api-Key: $CHATGPT_STATSIG_API_KEY")
-  process_json "$response" ".derived_fields.country"
+    --header "Statsig-Api-Key: $CHATGPT_STATSIG_API_KEY" \
+    --extract "$CHATGPT_DERIVED_FIELDS_PATTERN")
+  process_json "${response#"$CHATGPT_DERIVED_FIELDS_PREFIX"}" ".country"
 }
 
 lookup_netflix() {
