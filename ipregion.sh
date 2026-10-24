@@ -883,6 +883,7 @@ check_ip_support() {
   for check in "${checks[@]}"; do
     if ! "check_ip_${check}" "$version"; then
       failed+=("$check")
+      break
     fi
   done
 
