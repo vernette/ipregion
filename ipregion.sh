@@ -1757,16 +1757,16 @@ lookup_gemini_supported() {
     return
   fi
 
-  regions_md=$(curl_wrapper GET "$GEMINI_REGIONS_URL" --ip-version "$ip_version")
+  regions_md=$(curl_wrapper GET "$GEMINI_REGIONS_URL" --ip-version "$(preferred_ip_version)")
 
   if [[ -z "$regions_md" ]] || is_status_string "$regions_md"; then
     echo ""
     return
   fi
 
-  territories=$(curl_wrapper GET "$CLDR_TERRITORIES_URL" --ip-version "4")
+  territories=$(curl_wrapper GET "$CLDR_TERRITORIES_URL" --ip-version "$(preferred_ip_version)")
   api_name=$(curl_wrapper GET "https://countries.dev/alpha/${country_code}" \
-    --ip-version "4")
+    --ip-version "$(preferred_ip_version)")
   api_name=$(process_json "$api_name" ".name" 2>/dev/null)
 
   if jq -en \
