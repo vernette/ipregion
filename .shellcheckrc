@@ -1,0 +1,6 @@
+external-sources=true
+enable=avoid-nullary-conditions
+enable=check-unassigned-uppercase
+enable=deprecate-which
+enable=require-double-brackets
+source-path=SCRIPTDIR
