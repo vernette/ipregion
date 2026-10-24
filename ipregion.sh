@@ -620,11 +620,6 @@ install_dependencies() {
   install_packages "$pkg_manager" "${missing_dependencies[@]}"
 }
 
-is_valid_json() {
-  local json="$1"
-  jq -e . >/dev/null 2>&1 <<<"$json"
-}
-
 process_json() {
   local json="$1"
   local jq_filter="$2"
@@ -995,7 +990,7 @@ discover_external_ips() {
 
 get_asn() {
   local ip_version=4
-  local response traits
+  local response
 
   spinner_update "ASN info"
   log "$LOG_INFO" "Getting ASN info for IP $ip"
@@ -1003,9 +998,10 @@ get_asn() {
   response=$(curl_wrapper GET "https://geoip.maxmind.com/geoip/v2.1/city/me" \
     --header "Referer: https://www.maxmind.com" \
     --ip-version "$ip_version")
-  traits=$(process_json "$response" ".traits")
-  asn=$(process_json "$traits" ".autonomous_system_number")
-  asn_name=$(process_json "$traits" ".autonomous_system_organization")
+  {
+    read -r asn
+    read -r asn_name
+  } < <(process_json "$response" ".traits | .autonomous_system_number, .autonomous_system_organization")
 
   log "$LOG_INFO" "ASN info: AS$asn $asn_name"
 }
@@ -1052,22 +1048,26 @@ spinner_start() {
   # shellcheck disable=SC1003
   local spinstr='|/-\\'
   local current_service
+  local spin_frames=()
+  local label
 
+  for ((i = 0; i < ${#spinstr}; i++)); do
+    spin_frames+=("$(color HEADER "${spinstr:$i:1}")")
+  done
+
+  label=$(color HEADER "Checking:")
   spinner_running=true
 
   (
     while $spinner_running; do
-      for ((i = 0; i < ${#spinstr}; i++)); do
+      for frame in "${spin_frames[@]}"; do
         current_service=""
 
         if [[ -f "$SPINNER_SERVICE_FILE" ]]; then
-          current_service="$(cat "$SPINNER_SERVICE_FILE")"
+          read -r current_service <"$SPINNER_SERVICE_FILE"
         fi
 
-        printf "\r\033[K%s %s %s" \
-          "$(color HEADER "${spinstr:$i:1}")" \
-          "$(color HEADER "Checking:")" \
-          "$(color SERVICE "$current_service")"
+        printf "\r\033[K%s %s \033[%sm%s\033[0m" "$frame" "$label" "$COLOR_SERVICE" "$current_service"
 
         sleep $delay
       done
@@ -1261,8 +1261,8 @@ curl_wrapper() {
   curl_args+=("$url")
 
   response_with_code=$(cached_curl "${curl_args[@]}")
-  http_code=$(tail -n1 <<<"$response_with_code")
-  response=$(head -n -1 <<<"$response_with_code")
+  http_code=${response_with_code##*$'\n'}
+  response=${response_with_code%$'\n'*}
 
   if [[ "$http_code" == 4* || "$http_code" == 5* ]]; then
     status_from_http_code "$http_code"
@@ -1327,7 +1327,7 @@ process_response() {
   local response="$2"
   local display_name="$3"
   local response_format="${4:-json}"
-  local jq_filter
+  local jq_filter value
 
   if is_status_string "$response"; then
     echo "$response"
@@ -1342,11 +1342,6 @@ process_response() {
   if [[ "$response_format" == "plain" ]]; then
     echo "$response" | tr -d '\r\n '
     return
-  fi
-
-  if ! is_valid_json "$response"; then
-    log "$LOG_ERROR" "Invalid JSON response from $display_name: $response"
-    return 1
   fi
 
   case "$service" in
@@ -1400,7 +1395,12 @@ process_response() {
       ;;
   esac
 
-  process_json "$response" "$jq_filter"
+  if ! value=$(jq -r "$jq_filter" 2>/dev/null <<<"$response"); then
+    log "$LOG_ERROR" "Invalid JSON response from $display_name: $response"
+    return 1
+  fi
+
+  echo "$value"
 }
 
 process_with_custom_handler() {
@@ -1751,6 +1751,8 @@ print_table_group() {
   local show_ipv4=0
   local show_ipv6=0
   local separator=$'\t'
+  local -n group_rows="ARR_${group^^}"
+  local row s v4 v6
 
   if can_use_ipv4; then
     show_ipv4=1
@@ -1760,43 +1762,46 @@ print_table_group() {
     show_ipv6=1
   fi
 
-  printf "%s\n\n" "$(color HEADER "$group_title")"
+  color HEADER "$group_title"
+  printf "\n\n"
 
   {
-    printf "%s" "$(color TABLE_HEADER 'Service')"
+    color TABLE_HEADER 'Service'
 
     if [[ $show_ipv4 -eq 1 ]]; then
-      printf "%s%s" "$separator" "$(color TABLE_HEADER 'IPv4')"
+      printf "%s" "$separator"
+      color TABLE_HEADER 'IPv4'
     fi
 
     if [[ $show_ipv6 -eq 1 ]]; then
-      printf "%s%s" "$separator" "$(color TABLE_HEADER 'IPv6')"
+      printf "%s" "$separator"
+      color TABLE_HEADER 'IPv6'
     fi
 
     printf "\n"
 
-    jq -r --arg group "$group" '
-      (.results // {}) as $r
-      | ($r[$group] // [])
-      | .[]
-      | [ .service, (.ipv4 // "N/A"), (.ipv6 // "N/A") ]
-      | @tsv
-    ' <<<"$RESULT_JSON" | while IFS=$'\t' read -r s v4 v6; do
+    for row in "${group_rows[@]}"; do
+      s=${row%%|||*}
+      v6=${row##*|||}
+      v4=${row#*|||}
+      v4=${v4%|||*}
 
-      printf "%s" "$(color SERVICE "$s")"
+      color SERVICE "$s"
 
       if [[ $show_ipv4 -eq 1 ]]; then
         if [[ "$v4" == "null" || -z "$v4" ]]; then
           v4="$na"
         fi
-        printf "%s%s" "$separator" "$(format_value "$v4")"
+        printf "%s" "$separator"
+        format_value "$v4"
       fi
 
       if [[ $show_ipv6 -eq 1 ]]; then
         if [[ "$v6" == "null" || -z "$v6" ]]; then
           v6="$na"
         fi
-        printf "%s%s" "$separator" "$(format_value "$v6")"
+        printf "%s" "$separator"
+        format_value "$v6"
       fi
 
       printf "\n"
@@ -1805,29 +1810,23 @@ print_table_group() {
 }
 
 print_header() {
-  local ipv4 ipv6
-
-  ipv4=$(process_json "$RESULT_JSON" ".ipv4")
-  ipv6=$(process_json "$RESULT_JSON" ".ipv6")
-
   printf "%s\n%s\n\n" "$(color URL "Made with ")$(color HEART "<3")$(color URL " by vernette")" "$(color URL "$SCRIPT_URL")"
 
   # TODO: Get registered country while initializing
-  if [[ "$ipv4" != "null" ]]; then
-    printf "%s: %s, %s %s\n" "$(color HEADER 'IPv4')" "$(bold "$(mask_ipv4 "$ipv4")")" "registered in" "$(bold "$(get_registered_country 4)")"
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    printf "%s: %s, %s %s\n" "$(color HEADER 'IPv4')" "$(bold "$(mask_ipv4 "$EXTERNAL_IPV4")")" "registered in" "$(bold "$(get_registered_country 4)")"
   fi
 
-  if [[ "$ipv6" != "null" ]]; then
-    printf "%s: %s, %s %s\n" "$(color HEADER 'IPv6')" "$(bold "$(mask_ipv6 "$ipv6")")" "registered in" "$(bold "$(get_registered_country 6)")"
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    printf "%s: %s, %s %s\n" "$(color HEADER 'IPv6')" "$(bold "$(mask_ipv6 "$EXTERNAL_IPV6")")" "registered in" "$(bold "$(get_registered_country 6)")"
   fi
 
   printf "%s: %s\n\n" "$(color HEADER 'ASN')" "$(bold "AS$asn $asn_name")"
 }
 
 print_results() {
-  finalize_json
-
   if [[ "$JSON_OUTPUT" == true ]]; then
+    finalize_json
     echo "$RESULT_JSON" | jq
     return
   fi
@@ -1989,12 +1988,12 @@ lookup_chatgpt() {
 
 lookup_netflix() {
   local ip_version="$1"
-  local response
+  local response country
 
   response=$(curl_wrapper GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=$NETFLIX_API_KEY&urlCount=1" --ip-version "$ip_version")
 
-  if is_valid_json "$response"; then
-    process_json "$response" ".client.location.country"
+  if country=$(jq -r ".client.location.country" 2>/dev/null <<<"$response"); then
+    echo "$country"
     return
   fi
 
@@ -2126,8 +2125,10 @@ lookup_spotify_signup() {
     --header "X-Client-Id: $SPOTIFY_CLIENT_ID" \
     --ip-version "$ip_version")
 
-  status=$(process_json "$response" ".status")
-  is_country_launched=$(process_json "$response" ".is_country_launched")
+  {
+    read -r status
+    read -r is_country_launched
+  } < <(process_json "$response" ".status, .is_country_launched")
 
   if [[ "$status" == "120" || "$status" == "320" || "$is_country_launched" == "false" ]]; then
     available="No"
@@ -2149,8 +2150,10 @@ lookup_disney_plus_access() {
     --json "$DISNEY_PLUS_JSON_BODY" \
     --ip-version "$ip_version")
 
-  errors_count=$(process_json "$response" ".errors | length")
-  in_supported_location=$(process_json "$response" ".extensions.sdk.session.inSupportedLocation")
+  {
+    read -r errors_count
+    read -r in_supported_location
+  } < <(process_json "$response" "(.errors | length), .extensions.sdk.session.inSupportedLocation")
 
   if [[ "$errors_count" == "0" && "$in_supported_location" == "true" ]]; then
     is_available="Yes"
@@ -2220,11 +2223,7 @@ lookup_netflix_cdn() {
 
   response=$(curl_wrapper GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=$NETFLIX_API_KEY&urlCount=1" --ip-version "$ip_version")
 
-  if is_valid_json "$response"; then
-    process_json "$response" ".targets[0].location.country"
-  else
-    echo ""
-  fi
+  jq -r ".targets[0].location.country" 2>/dev/null <<<"$response" || true
 }
 
 lookup_ookla_speedtest() {
