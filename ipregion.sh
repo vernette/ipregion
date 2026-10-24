@@ -1146,6 +1146,7 @@ curl_wrapper() {
     --retry-connrefused
     --retry "$CURL_RETRIES"
     --max-time "$CURL_TIMEOUT"
+    --retry-max-time "$CURL_TIMEOUT"
     -w '\n%{http_code}'
   )
 
