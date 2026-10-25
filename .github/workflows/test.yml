@@ -5,6 +5,7 @@ on:
     paths:
       - "ipregion.sh"
       - "tests/**"
+      - "schema/**"
       - ".github/workflows/test.yml"
   pull_request:
   workflow_call:
@@ -19,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install tools
-        run: sudo apt-get update && sudo apt-get install -y shfmt bats
+        run: sudo apt-get update && sudo apt-get install -y shfmt bats && pipx install check-jsonschema
 
       - name: shellcheck
         run: shellcheck ipregion.sh tests/*.bats tests/fake-curl.sh
