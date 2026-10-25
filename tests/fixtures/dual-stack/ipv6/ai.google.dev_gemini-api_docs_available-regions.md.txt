@@ -1,0 +1,5 @@
+## Available regions
+
+- Åland Islands
+- Germany
+- Sweden

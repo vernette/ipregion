@@ -139,6 +139,33 @@ readonly GOOGLE_SEARCH_URL="https://www.google.com/search?q=cats"
 readonly GOOGLE_SEARCH_CAPTCHA_PATH="/sorry/"
 readonly GOOGLE_SEARCH_NO_JS_MARKER="enablejs"
 
+readonly GEMINI_WEB_REGIONS_URL="https://support.google.com/gemini/answer/13575153?hl=en"
+readonly GEMINI_WEB_REGIONS_FILTER='split("Supported countries &amp; territories")[1] // "" | [scan("<li>([^<]+)</li>")[0] | gsub("&[a-z]+;"; " ")]'
+readonly GEMINI_API_REGIONS_URL="https://ai.google.dev/gemini-api/docs/available-regions.md.txt"
+readonly GEMINI_API_REGIONS_FILTER='split("\n") | map(select(startswith("- ")) | .[2:])'
+readonly CLDR_TERRITORIES_URL="https://cdn.jsdelivr.net/npm/cldr-localenames-full/main/en/territories.json"
+# shellcheck disable=SC2016 # $code, $regions, $yes and $no are jq variables, not shell expansions
+readonly GEMINI_MATCH_FILTER='
+def stopwords: ["the", "of", "and", "republic", "island", "islands", "saint", "st"];
+def words: ascii_downcase | [splits("[^\\p{L}]+")] | map(select(. != "" and (IN(stopwords[]) | not))) | unique;
+def names_missing_in_cldr: {CD: ["Democratic Republic of the Congo"], MO: ["Macau"], UM: ["United States Minor Outlying Islands"]}[$code] // [];
+(.main.en.localeDisplayNames.territories | to_entries | map(select(.key | startswith($code)) | .value)) + names_missing_in_cldr
+| map(words)
+| if any(IN($regions[] | words)) then $yes else $no end'
+readonly OPENAI_API_URL="https://api.openai.com/v1/models"
+readonly OPENAI_API_REGION_BLOCKED_MARKER="unsupported_country_region_territory"
+readonly ANTHROPIC_API_URL="https://api.anthropic.com/v1/models"
+readonly ANTHROPIC_API_REGION_BLOCKED_MARKER="Request not allowed"
+readonly GROK_API_URL="https://api.x.ai/v1/models"
+readonly GROK_API_REGION_BLOCKED_MARKER="not available in your region"
+readonly QWEN_API_URL="https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models"
+readonly KIMI_API_URL="https://api.moonshot.ai/v1/models"
+readonly GLM_API_URL="https://api.z.ai/api/paas/v4/models"
+readonly MINIMAX_API_URL="https://api.minimax.io/v1/models"
+readonly DOUBAO_API_URL="https://ark.cn-beijing.volces.com/api/v3/models"
+readonly SILICONFLOW_API_URL="https://api.siliconflow.cn/v1/models"
+readonly DEEPSEEK_API_URL="https://api.deepseek.com/models"
+
 readonly CURL_EXIT_OK=0
 readonly CURL_EXIT_DNS=6
 readonly CURL_EXIT_CONNECT=7
@@ -148,6 +175,7 @@ readonly CURL_EXIT_TLS_CERTIFICATE=60
 readonly CURL_EXIT_PROXY=97
 readonly HTTP_OK=200
 readonly HTTP_CREATED=201
+readonly HTTP_UNAUTHORIZED=401
 readonly HTTP_PAYMENT_REQUIRED=402
 readonly HTTP_FORBIDDEN=403
 readonly HTTP_TOO_MANY_REQUESTS=429
@@ -199,6 +227,22 @@ readonly AVAILABILITY_CHECKS=(
   check_availability_disney_plus
   check_availability_reddit_guest
   check_availability_google_search
+)
+
+readonly GROUP_AI="ai"
+readonly AI_CHECKS=(
+  check_ai_gemini_web
+  check_ai_gemini_api
+  check_ai_openai_api
+  check_ai_anthropic_api
+  check_ai_grok_api
+  check_ai_qwen
+  check_ai_kimi
+  check_ai_glm
+  check_ai_minimax
+  check_ai_doubao
+  check_ai_siliconflow
+  check_ai_deepseek
 )
 
 readonly GROUP_GEOIP="geoip"
@@ -1429,6 +1473,160 @@ check_availability_google_search() {
   print_status "$GROUP_AVAILABILITY" "Google Search" "$ip_version" "$(google_search_status)"
 }
 
+gemini_status() {
+  local country="$1"
+  local regions="$2"
+
+  jq -r --arg code "$country" --argjson regions "$regions" --arg yes "$STATUS_YES" --arg no "$STATUS_NO" \
+    "$GEMINI_MATCH_FILTER" <<<"$HTTP_BODY" 2>/dev/null || true
+}
+
+check_ai_gemini() {
+  local service="$1"
+  local ip_version="$2"
+  local regions_url="$3"
+  local regions_filter="$4"
+  local regions
+  local country=""
+
+  http_request "$ip_version" "$regions_url"
+  regions=$(jq -Rsc "$regions_filter | select(length > 0)" <<<"$HTTP_BODY" 2>/dev/null || true)
+  if [[ -z "$regions" ]]; then
+    print_status "$GROUP_AI" "$service" "$ip_version" ""
+    return
+  fi
+
+  http_request "$ip_version" "$GOOGLE_URL" --user-agent "$USER_AGENT"
+  if [[ "$HTTP_BODY" =~ $GOOGLE_COUNTRY_PATTERN ]]; then
+    country="${BASH_REMATCH[1]}"
+  fi
+
+  if [[ ! "$country" =~ $COUNTRY_CODE_PATTERN ]]; then
+    print_status "$GROUP_AI" "$service" "$ip_version" ""
+    return
+  fi
+
+  http_request "$ip_version" "$CLDR_TERRITORIES_URL"
+  print_status "$GROUP_AI" "$service" "$ip_version" "$(gemini_status "$country" "$regions")"
+}
+
+check_ai_gemini_web() {
+  local ip_version="$1"
+
+  check_ai_gemini "Gemini Web" "$ip_version" "$GEMINI_WEB_REGIONS_URL" "$GEMINI_WEB_REGIONS_FILTER"
+}
+
+check_ai_gemini_api() {
+  local ip_version="$1"
+
+  check_ai_gemini "Gemini API" "$ip_version" "$GEMINI_API_REGIONS_URL" "$GEMINI_API_REGIONS_FILTER"
+}
+
+ai_api_status() {
+  local region_blocked_marker="$1"
+
+  if [[ "$HTTP_CODE" == "$HTTP_UNAUTHORIZED" ]]; then
+    printf '%s' "$STATUS_YES"
+    return
+  fi
+
+  if [[ "$HTTP_CODE" != "$HTTP_FORBIDDEN" ]]; then
+    return
+  fi
+
+  if [[ "$HTTP_BODY" == *"$region_blocked_marker"* ]]; then
+    printf '%s' "$STATUS_NO"
+    return
+  fi
+
+  printf '%s' "$STATUS_IPBLOCK"
+}
+
+check_ai_api() {
+  local service="$1"
+  local ip_version="$2"
+  local url="$3"
+  local region_blocked_marker="$4"
+
+  http_request "$ip_version" "$url"
+  print_status "$GROUP_AI" "$service" "$ip_version" "$(ai_api_status "$region_blocked_marker")"
+}
+
+check_ai_openai_api() {
+  local ip_version="$1"
+
+  check_ai_api "OpenAI API" "$ip_version" "$OPENAI_API_URL" "$OPENAI_API_REGION_BLOCKED_MARKER"
+}
+
+check_ai_anthropic_api() {
+  local ip_version="$1"
+
+  check_ai_api "Anthropic API" "$ip_version" "$ANTHROPIC_API_URL" "$ANTHROPIC_API_REGION_BLOCKED_MARKER"
+}
+
+check_ai_grok_api() {
+  local ip_version="$1"
+
+  check_ai_api "Grok API" "$ip_version" "$GROK_API_URL" "$GROK_API_REGION_BLOCKED_MARKER"
+}
+
+reachability_status() {
+  if [[ "$HTTP_CODE" == "$HTTP_UNAUTHORIZED" ]]; then
+    printf '%s' "$STATUS_YES"
+  fi
+}
+
+check_ai_reachability() {
+  local service="$1"
+  local ip_version="$2"
+  local url="$3"
+
+  http_request "$ip_version" "$url"
+  print_status "$GROUP_AI" "$service" "$ip_version" "$(reachability_status)"
+}
+
+check_ai_qwen() {
+  local ip_version="$1"
+
+  check_ai_reachability Qwen "$ip_version" "$QWEN_API_URL"
+}
+
+check_ai_kimi() {
+  local ip_version="$1"
+
+  check_ai_reachability Kimi "$ip_version" "$KIMI_API_URL"
+}
+
+check_ai_glm() {
+  local ip_version="$1"
+
+  check_ai_reachability GLM "$ip_version" "$GLM_API_URL"
+}
+
+check_ai_minimax() {
+  local ip_version="$1"
+
+  check_ai_reachability MiniMax "$ip_version" "$MINIMAX_API_URL"
+}
+
+check_ai_doubao() {
+  local ip_version="$1"
+
+  check_ai_reachability Doubao "$ip_version" "$DOUBAO_API_URL"
+}
+
+check_ai_siliconflow() {
+  local ip_version="$1"
+
+  check_ai_reachability SiliconFlow "$ip_version" "$SILICONFLOW_API_URL"
+}
+
+check_ai_deepseek() {
+  local ip_version="$1"
+
+  check_ai_reachability DeepSeek "$ip_version" "$DEEPSEEK_API_URL"
+}
+
 start_checks() {
   local check
 
@@ -1467,6 +1665,7 @@ main() {
   start_checks "${PLATFORMS_CHECKS[@]}"
   start_checks "${CDN_CHECKS[@]}"
   start_checks "${AVAILABILITY_CHECKS[@]}"
+  start_checks "${AI_CHECKS[@]}"
   start_checks "${GEOIP_CHECKS[@]}"
   wait_for_jobs
   collect_results

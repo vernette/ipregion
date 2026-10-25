@@ -990,3 +990,108 @@ ROWS
   [[ "$(availability_row "Google Search")" == " unexpected response" ]]
   [[ "$(availability_row "YouTube Premium")" == " timeout" ]]
 }
+
+run_ai_checks() {
+  create_job_slots
+  start_checks "${AI_CHECKS[@]}"
+  wait_for_jobs
+  collect_results
+}
+
+ai_row() {
+  local service="$1"
+
+  jq -r --arg service "$service" '.[] | select(.service == $service) | [.status, .reason] | join(" ")' <<<"$RESULTS"
+}
+
+@test "ai checks give a status, no ipv6 or a reason per service and protocol" {
+  local expected
+
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+
+  run_ai_checks
+
+  expected=$(
+    cat <<'ROWS'
+Gemini Web 4  yes 
+Gemini Web 6  yes 
+Gemini API 4  yes 
+Gemini API 6  yes 
+OpenAI API 4  yes 
+OpenAI API 6  yes 
+Anthropic API 4  yes 
+Anthropic API 6  yes 
+Grok API 4  yes 
+Grok API 6  yes 
+Qwen 4  yes 
+Qwen 6  none no IPv6
+Kimi 4  yes 
+Kimi 6  yes 
+GLM 4  yes 
+GLM 6  yes 
+MiniMax 4  yes 
+MiniMax 6  yes 
+Doubao 4  yes 
+Doubao 6  yes 
+SiliconFlow 4  yes 
+SiliconFlow 6  yes 
+DeepSeek 4  yes 
+DeepSeek 6  none no IPv6
+ROWS
+  )
+  run result_rows
+  [[ "$output" == "$expected" ]]
+}
+
+@test "gemini matches the google country against the web and api region lists" {
+  use_host_fixtures dual-stack
+  add_fixture 4 accounts.google.com_v3_signin_identifier_flowName_GlifSetupAndroid '<input type="hidden" name="region" value="HK">'
+  add_fixture 6 accounts.google.com_v3_signin_identifier_flowName_GlifSetupAndroid '<input type="hidden" name="region" value="ID">'
+  set_dual_stack_ips
+
+  run_ai_checks
+
+  [[ "$(jq -r '.[] | select(.service | startswith("Gemini")) | .status' <<<"$RESULTS")" == $'yes\nyes\nno\nno' ]]
+}
+
+@test "gemini without a region list or a google country is a failure reason" {
+  use_host_fixtures dual-stack
+  set_fixture_field 4 support.google.com_gemini_answer_13575153_hl_en exit 28
+  add_fixture 4 accounts.google.com_v3_signin_identifier_flowName_GlifSetupAndroid '<html></html>'
+  EXTERNAL_IPV4=203.0.113.7
+
+  run_ai_checks
+
+  [[ "$(ai_row "Gemini Web")" == " timeout" ]]
+  [[ "$(ai_row "Gemini API")" == " unexpected response" ]]
+}
+
+@test "ai api 403 with the region marker is no, without it an ip block" {
+  use_host_fixtures dual-stack
+  add_fixture 4 api.openai.com_v1_models '{"error":{"code":"unsupported_country_region_territory","message":"Country, region, or territory not supported","param":null,"type":"request_forbidden"}}'
+  add_fixture 4 api.anthropic.com_v1_models '{"error":{"type":"forbidden","message":"Request not allowed"}}'
+  add_fixture 4 api.x.ai_v1_models '<!doctype html><html><body><p>Access denied</p></body></html>'
+  for name in api.openai.com_v1_models api.anthropic.com_v1_models api.x.ai_v1_models; do
+    set_fixture_field 4 "$name" code 403
+  done
+  EXTERNAL_IPV4=203.0.113.7
+
+  run_ai_checks
+
+  [[ "$(ai_row "OpenAI API")" == "no access denied (403)" ]]
+  [[ "$(ai_row "Anthropic API")" == "no access denied (403)" ]]
+  [[ "$(ai_row "Grok API")" == "ipblock access denied (403)" ]]
+}
+
+@test "ai reachability without the provider auth error is a failure reason" {
+  use_host_fixtures dual-stack
+  set_fixture_field 4 api.z.ai_api_paas_v4_models exit 28
+  set_fixture_field 4 api.moonshot.ai_v1_models code 200
+  EXTERNAL_IPV4=203.0.113.7
+
+  run_ai_checks
+
+  [[ "$(ai_row GLM)" == " timeout" ]]
+  [[ "$(ai_row Kimi)" == " unexpected response" ]]
+}
