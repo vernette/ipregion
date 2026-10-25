@@ -842,3 +842,60 @@ ROWS
 
   [[ "$(jq -r '.[] | select(.service == "Twitch") | [.status, .reason] | join(" ")' <<<"$RESULTS")" == " connection failed" ]]
 }
+
+run_cdn_checks() {
+  create_job_slots
+  start_checks "${CDN_CHECKS[@]}"
+  wait_for_jobs
+  collect_results
+}
+
+cdn_rows() {
+  jq -r '.[] | [.service, .ip_version, .country, .iata, .node, .reason] | join(" ")' <<<"$RESULTS"
+}
+
+@test "cdn checks give the edge country, iata and node per protocol" {
+  local expected
+
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+
+  run_cdn_checks
+
+  expected=$(
+    cat <<'ROWS'
+Cloudflare 4 SE ARN  
+Cloudflare 6 SE ARN  
+YouTube 4 DE MUC muc11s18 
+YouTube 6 DE FRA tzfraa-cd 
+Netflix 4 DE FRA c002-fra001-ix 
+Netflix 6 DE FRA c002-fra001-ix 
+ROWS
+  )
+  run cdn_rows
+  [[ "$output" == "$expected" ]]
+  grep -q -- '-4 .*--data iata=FRA https://www.air-port-codes.com/api/v1/single$' "$FAKE_CURL_LOG"
+}
+
+@test "youtube node without an iata code keeps the node and has no country" {
+  use_host_fixtures dual-stack
+  add_fixture 4 redirector.googlevideo.com_report_mapping_di_no '203.0.113.7 => unknownnode (203.0.113.0/24)'
+  EXTERNAL_IPV4=203.0.113.7
+
+  run_cdn_checks
+
+  [[ "$(jq -r '.[] | select(.service == "YouTube") | [.node, .iata, .reason] | join(" ")' <<<"$RESULTS")" == "unknownnode  unexpected response" ]]
+  run grep -c air-port-codes "$FAKE_CURL_LOG"
+  [[ "$output" -eq 0 ]]
+}
+
+@test "blocked netflix cdn is a failure reason" {
+  use_host_fixtures dual-stack
+  add_fixture 4 api.fast.com_netflix_speedtest_v2_https_true_token_YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm_urlCount_1 'Not Available'
+  set_fixture_field 4 api.fast.com_netflix_speedtest_v2_https_true_token_YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm_urlCount_1 code 403
+  EXTERNAL_IPV4=203.0.113.7
+
+  run_cdn_checks
+
+  [[ "$(jq -r '.[] | select(.service == "Netflix") | .reason' <<<"$RESULTS")" == "access denied (403)" ]]
+}

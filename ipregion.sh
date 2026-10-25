@@ -116,6 +116,18 @@ readonly JETBRAINS_URL="https://data.services.jetbrains.com/geo"
 readonly PLAYSTATION_URL="https://www.playstation.com"
 readonly PLAYSTATION_COUNTRY_PATTERN='[Cc]ookie: country=([^;]*)'
 
+readonly CLOUDFLARE_SPEED_META_URL="https://speed.cloudflare.com/meta"
+readonly CLOUDFLARE_SPEED_REFERER="https://speed.cloudflare.com"
+readonly YOUTUBE_CDN_MAPPING_URL="https://redirector.googlevideo.com/report_mapping?di=no"
+readonly YOUTUBE_CDN_NODE_PATTERN='=> ([^ ]+)'
+readonly GOOGLE_NODE_PATTERN='^([a-z]{3})[0-9]'
+readonly ISP_NODE_PATTERN='^[a-z]+-([a-z]{3})[0-9]'
+readonly GGC_NODE_PATTERN='^[a-z]{2}([a-z]{3})[a-z]-[a-z0-9]+$'
+readonly NETFLIX_CDN_URL_PATTERN='^https://ipv[46]-([a-z0-9]+-([a-z]{3})[0-9]+[a-z0-9-]*)\.'
+readonly AIRPORT_CODES_URL="https://www.air-port-codes.com/api/v1/single"
+readonly AIRPORT_CODES_KEY="96dc04b3fb"
+readonly AIRPORT_CODES_REFERER="https://www.air-port-codes.com/"
+
 readonly CURL_EXIT_OK=0
 readonly CURL_EXIT_DNS=6
 readonly CURL_EXIT_CONNECT=7
@@ -160,6 +172,13 @@ readonly PLATFORMS_CHECKS=(
   check_platforms_ookla
   check_platforms_jetbrains
   check_platforms_playstation
+)
+
+readonly GROUP_CDN="cdn"
+readonly CDN_CHECKS=(
+  check_cdn_cloudflare
+  check_cdn_youtube
+  check_cdn_netflix
 )
 
 readonly GROUP_GEOIP="geoip"
@@ -1205,6 +1224,72 @@ check_platforms_playstation() {
   check_platforms_pattern PlayStation "$ip_version" "$PLAYSTATION_URL" "$PLAYSTATION_COUNTRY_PATTERN" --head
 }
 
+print_edge() {
+  local service="$1"
+  local ip_version="$2"
+  local country="$3"
+  local iata="$4"
+  local node="$5"
+
+  print_country "$GROUP_CDN" "$service" "$ip_version" "$country" |
+    jq -c --arg iata "$iata" --arg node "$node" '. + {iata: $iata, node: $node}'
+}
+
+iata_country() {
+  local iata="$1"
+
+  if [[ -z "$iata" ]]; then
+    return
+  fi
+
+  http_request "$IPV4_TRANSPORT" "$AIRPORT_CODES_URL" \
+    --header "APC-Auth: $AIRPORT_CODES_KEY" --header "Referer: $AIRPORT_CODES_REFERER" --data "iata=$iata"
+  json_value '.airport.country.iso // empty'
+}
+
+youtube_node_iata() {
+  local node="$1"
+
+  if [[ "$node" =~ $GOOGLE_NODE_PATTERN || "$node" =~ $ISP_NODE_PATTERN || "$node" =~ $GGC_NODE_PATTERN ]]; then
+    printf '%s' "${BASH_REMATCH[1]^^}"
+  fi
+}
+
+check_cdn_cloudflare() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$CLOUDFLARE_SPEED_META_URL" --header "Referer: $CLOUDFLARE_SPEED_REFERER"
+  print_edge Cloudflare "$ip_version" "$(json_value '.colo.cca2 // empty')" "$(json_value '.colo.iata // empty')" ""
+}
+
+check_cdn_youtube() {
+  local ip_version="$1"
+  local node=""
+  local iata
+
+  http_request "$ip_version" "$YOUTUBE_CDN_MAPPING_URL"
+  if [[ "$HTTP_BODY" =~ $YOUTUBE_CDN_NODE_PATTERN ]]; then
+    node="${BASH_REMATCH[1]}"
+  fi
+
+  iata=$(youtube_node_iata "$node")
+  print_edge YouTube "$ip_version" "$(iata_country "$iata")" "$iata" "$node"
+}
+
+check_cdn_netflix() {
+  local ip_version="$1"
+  local node=""
+  local iata=""
+
+  http_request "$ip_version" "$NETFLIX_URL"
+  if [[ "$(json_value '.targets[0].url // empty')" =~ $NETFLIX_CDN_URL_PATTERN ]]; then
+    node="${BASH_REMATCH[1]}"
+    iata="${BASH_REMATCH[2]^^}"
+  fi
+
+  print_edge Netflix "$ip_version" "$(json_value '.targets[0].location.country // empty')" "$iata" "$node"
+}
+
 start_checks() {
   local check
 
@@ -1241,6 +1326,7 @@ main() {
   discover_external_ips
   lookup_ip_registrations
   start_checks "${PLATFORMS_CHECKS[@]}"
+  start_checks "${CDN_CHECKS[@]}"
   start_checks "${GEOIP_CHECKS[@]}"
   wait_for_jobs
   collect_results
