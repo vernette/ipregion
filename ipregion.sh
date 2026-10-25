@@ -128,7 +128,7 @@ readonly AIRPORT_CODES_URL="https://www.air-port-codes.com/api/v1/single"
 readonly AIRPORT_CODES_KEY="96dc04b3fb"
 readonly AIRPORT_CODES_REFERER="https://www.air-port-codes.com/"
 
-readonly GOOGLE_SOCS_COOKIE="Cookie: SOCS=CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY"
+readonly GOOGLE_SOCS_COOKIE="Cookie: SOCS=CAI"
 readonly ACCEPT_LANGUAGE_ENGLISH="Accept-Language: en-US,en;q=0.9"
 readonly YOUTUBE_PREMIUM_URL="https://www.youtube.com/premium"
 readonly YOUTUBE_PREMIUM_BLOCKED_MARKER="YouTube Premium is not available in your country"
