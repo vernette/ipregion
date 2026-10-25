@@ -1,0 +1,23 @@
+
+ ┃ Made with <3 by vernette · github.com/vernette/ipregion
+ ┃
+ ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in SE
+ ┃
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  12/12 look normal
+
+ AI               IPv6
+ Gemini Web       ✓
+ Gemini API       ✓
+ OpenAI API       ✓
+ Anthropic API    ✓
+ Grok API         ✓
+ Qwen API         -
+ Kimi API         ✓
+ GLM API          ✓
+ MiniMax API      ✓
+ Doubao API       ✓
+ SiliconFlow API  ✓
+ DeepSeek API     -
+
+ ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - no IPv6
+

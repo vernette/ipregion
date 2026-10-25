@@ -1,0 +1,42 @@
+
+ ┃ Made with <3 by vernette · github.com/vernette/ipregion
+ ┃
+ ┃ IPv4  203.0.*.*  AS64496 Example Hosting  registered in NL
+ ┃
+ ┃  SE   Sweden   seen by most services
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  49/50 look normal
+
+ Attention
+   JetBrains  SI   different country
+
+ Platforms    IPv4     Availability     IPv4
+ Google       SE       YouTube Premium  ✓
+ YouTube      SE       Google Search    ✓
+ Twitch       SE       Spotify Signup   ✓
+ ChatGPT      SE       Disney+          ✓
+ Netflix      SE       Reddit Guest     ✓
+ Spotify      SE
+ Reddit       SE       AI               IPv4
+ Disney+      SE       Gemini Web       ✓
+ TikTok       SE       Gemini API       ✓
+ Apple        SE       OpenAI API       ✓
+ Steam        SE       Anthropic API    ✓
+ Microsoft    SE       Grok API         ✓
+ Ookla        SE       Qwen API         ✓
+ JetBrains    SI       Kimi API         ✓
+ PlayStation  SE       GLM API          ✓
+                       MiniMax API      ✓
+ GeoIP    SE 13/15     Doubao API       ✓
+ ━━━━━━━━━━━━━━━━━     SiliconFlow API  ✓
+ RU ifconfig.co,       DeepSeek API     ✓
+    ipquery.io
+
+ CDN         IPv4
+ Cloudflare  SE · ARN
+ YouTube     DE · MUC · muc11s18
+ Netflix     DE · FRA · c002-fra001-ix
+
+ ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown
+
+ Full GeoIP breakdown: ipregion --geoip-breakdown
+

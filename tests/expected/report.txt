@@ -1,0 +1,47 @@
+
+ ┃ Made with <3 by vernette · github.com/vernette/ipregion
+ ┃
+ ┃ IPv4  203.0.*.*        AS64496 Example Hosting  registered in NL
+ ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
+ ┃
+ ┃  SE   Sweden   seen by most services
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  48/50 look normal
+
+ Attention
+   JetBrains  IPv4   SI   different country
+   Disney+    IPv6   ✗    region blocked
+   Disney+    IPv6   ?    unexpected response
+
+ Platforms    IPv4  IPv6     Availability     IPv4 IPv6
+ Google       SE    SE       YouTube Premium  ✓    ✓
+ YouTube      SE    SE       Google Search    ✓    ✓
+ Twitch       SE    -        Spotify Signup   ✓    ✓
+ ChatGPT      SE    SE       Disney+          ✓    ✗
+ Netflix      SE    SE       Reddit Guest     ✓    -
+ Spotify      SE    SE
+ Reddit       SE    -        AI               IPv4 IPv6
+ Disney+      SE    ?        Gemini Web       ✓    ✓
+ TikTok       SE    -        Gemini API       ✓    ✓
+ Apple        SE    SE       OpenAI API       ✓    ✓
+ Steam        SE    -        Anthropic API    ✓    ✓
+ Microsoft    SE    -        Grok API         ✓    ✓
+ Ookla        SE    -        Qwen API         ✓    -
+ JetBrains    SI    SE       Kimi API         ✓    ✓
+ PlayStation  SE    SE       GLM API          ✓    ✓
+                             MiniMax API      ✓    ✓
+ GeoIP          SE 13/15     Doubao API       ✓    ✓
+ ━━━━━━━━━━━━━━━━━━━━━━━     SiliconFlow API  ✓    ✓
+ RU ifconfig.co v4,          DeepSeek API     ✓    -
+    ipquery.io v4
+ DE ifconfig.co v6,
+    ipquery.io v6
+
+ CDN         IPv4                        IPv6
+ Cloudflare  SE · ARN                    SE · ARN
+ YouTube     DE · MUC · muc11s18         DE · FRA · tzfraa-cd
+ Netflix     DE · FRA · c002-fra001-ix   DE · FRA · c002-fra001-ix
+
+ ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - no IPv6
+
+ Full GeoIP breakdown: ipregion --geoip-breakdown
+

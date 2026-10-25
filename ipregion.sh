@@ -15,6 +15,47 @@ readonly PROXY_PATTERN='^([^:/[:space:]]+|\[[0-9A-Fa-f:]+\]):[0-9]{1,5}$'
 readonly COUNTRY_CODE_PATTERN='^[A-Z]{2}$'
 readonly REGIONAL_INDICATOR_A=0x1F1E6
 readonly ASCII_A=65
+readonly UTF8_LOCALE="C.UTF-8"
+readonly WIDE_EMOJI_PATTERN='[🌀-🫿]'
+readonly FLAG_WIDTH=3
+readonly -A GROUP_EMOJI=(
+  ["Attention"]=🚨
+  ["Platforms"]=📱
+  ["GeoIP"]=🌍
+  ["Availability"]=🔓
+  ["AI"]=🤖
+  ["CDN"]=📡
+)
+
+readonly OUTPUT_WIDTH=72
+readonly NAME_GAP=2
+readonly EDGE_GAP=3
+readonly COUNTRY_CELL_WIDTH=6
+readonly STATUS_CELL_WIDTH=5
+readonly ATTENTION_CELL_WIDTH=3
+readonly SUMMARY_COUNTRY_WIDTH=2
+readonly SUMMARY_DEFAULT_WIDTH=25
+readonly COLUMN_GAP="     "
+readonly SCOPE_WIDTH=5
+readonly ATTENTION_NOTE_WIDTH=13
+readonly VERDICT_BAR_WIDTH=44
+readonly SUMMARY_BAR_CHAR="━"
+readonly ATTENTION_LIST_LINES=2
+readonly GROUP_ROW_FIELDS=3
+readonly CDN_ROW_FIELDS=9
+readonly ATTENTION_ENTRY_FIELDS=5
+readonly GEOIP_DIFFERENCE_FIELDS=2
+readonly HEADER_MARK="┃"
+readonly AUTHOR="vernette"
+readonly VERDICT_NOTE="seen by most services"
+readonly TIE_NOTE="services split evenly"
+readonly CHECKS_NORMAL_NOTE="look normal"
+readonly REGISTERED_NOTE="registered in"
+readonly MAXMIND_LIMIT_HEADER_NOTE="MaxMind daily limit used up · ASN and registration from RIPE"
+readonly MAXMIND_LIMIT_SUMMARY_NOTE="MaxMind limit used up"
+readonly MAXMIND_LIMIT_CELL="limit"
+readonly MAXMIND_LIMIT_CELLS="limit used"
+readonly GEOIP_BREAKDOWN_HINT="Full GeoIP breakdown: ipregion --geoip-breakdown"
 
 readonly STATUS_YES="yes"
 readonly STATUS_NO="no"
@@ -25,6 +66,7 @@ readonly SYMBOL_NO="✗"
 readonly SYMBOL_IPBLOCK="⊘"
 readonly SYMBOL_UNKNOWN="?"
 readonly SYMBOL_NONE="-"
+readonly STATUS_UNKNOWN="unknown"
 
 readonly CURL_BASE_ARGS=(--disable --silent --compressed)
 readonly CURL_WRITE_OUT='%{http_code}\n%{redirect_url}\n'
@@ -193,6 +235,7 @@ readonly REASON_UNEXPECTED_RESPONSE="unexpected response"
 readonly REASON_DAILY_LIMIT="daily limit used up"
 readonly REASON_NO_DEMO_TOKEN="no demo token"
 readonly REASON_NO_IPV6="no IPv6"
+readonly REASON_REGION_BLOCKED="region blocked"
 
 readonly GROUP_PLATFORMS="platforms"
 readonly PLATFORMS_CHECKS=(
@@ -223,10 +266,10 @@ readonly CDN_CHECKS=(
 readonly GROUP_AVAILABILITY="availability"
 readonly AVAILABILITY_CHECKS=(
   check_availability_youtube_premium
+  check_availability_google_search
   check_availability_spotify_signup
   check_availability_disney_plus
   check_availability_reddit_guest
-  check_availability_google_search
 )
 
 readonly GROUP_AI="ai"
@@ -236,13 +279,13 @@ readonly AI_CHECKS=(
   check_ai_openai_api
   check_ai_anthropic_api
   check_ai_grok_api
-  check_ai_qwen
-  check_ai_kimi
-  check_ai_glm
-  check_ai_minimax
-  check_ai_doubao
-  check_ai_siliconflow
-  check_ai_deepseek
+  check_ai_qwen_api
+  check_ai_kimi_api
+  check_ai_glm_api
+  check_ai_minimax_api
+  check_ai_doubao_api
+  check_ai_siliconflow_api
+  check_ai_deepseek_api
 )
 
 readonly GROUP_GEOIP="geoip"
@@ -279,6 +322,34 @@ map(select(.status == $yes and (.group == $platforms or .group == $geoip)))
 | (map(.weight) | max) as $top_weight
 | map(select(.weight == $top_weight) | .country)
 | .[]'
+# shellcheck disable=SC2016 # $daily_limit, $limit, $unknown and the other names are jq variables, not shell expansions
+readonly GROUP_ROWS_FILTER='
+def cell:
+  if .reason == $daily_limit then $limit
+  elif .status == $yes and .country != "" then .country
+  elif .status == "" then $unknown
+  else .status end;
+def result_of($ip_version): (map(select(.ip_version == $ip_version)) | first) // first;
+map(select(.group == $group)) as $rows
+| reduce ($rows[].service) as $service ([]; if any(.[]; . == $service) then . else . + [$service] end)
+| .[] as $service
+| ($rows | map(select(.service == $service))) as $results
+| $service, ($results | result_of(4) | cell), ($results | result_of(6) | cell)'
+# shellcheck disable=SC2016 # $cdn, $unknown and $service are jq variables, not shell expansions
+readonly CDN_ROWS_FILTER='
+def result_of($ip_version): (map(select(.ip_version == $ip_version)) | first) // first;
+def edge: (if .status == "" then $unknown else .status end), .country, .iata, .node;
+map(select(.group == $cdn)) as $rows
+| reduce ($rows[].service) as $service ([]; if any(.[]; . == $service) then . else . + [$service] end)
+| .[] as $service
+| ($rows | map(select(.service == $service))) as $results
+| $service, ($results | result_of(4) | edge), ($results | result_of(6) | edge)'
+# shellcheck disable=SC2016 # $geoip and $yes are jq variables, not shell expansions
+readonly GEOIP_MAJORITY_FILTER='
+map(select(.group == $geoip and .status == $yes and .country != ""))
+| group_by(.country)
+| max_by(length)
+| .[0].country // empty'
 # shellcheck disable=SC2016 # $verdict, $collapse_min and the other names are jq variables, not shell expansions
 readonly ATTENTION_FILTER='
 def needs_attention:
@@ -291,7 +362,7 @@ def severity:
   if .status == "" then 3 elif .country != "" then 0 elif .status == $no then 1 else 2 end;
 to_entries
 | map(.value + {order: .key} | select(needs_attention))
-| map(if .status == $yes then .reason = $different_country else . end)
+| map(if .status == $yes then .reason = $different_country elif .status == $no then .reason = $region_blocked else . end)
 | group_by([.group, .service, .country, .status, .reason])
 | map(.[0] + {ip_version: (if length == 2 then "both" else .[0].ip_version | tostring end)})
 | group_by([.country, .status, .reason, .ip_version])
@@ -301,6 +372,9 @@ to_entries
 | map({services, ip_version, country, status, reason})'
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  readonly C_TITLE=$'\033[1;36m'
+  readonly C_BADGE=$'\033[1;30;46m'
+  readonly C_BAR=$'\033[0;36m'
   readonly C_VALUE=$'\033[1m'
   readonly C_DIM=$'\033[0;90m'
   readonly C_YES=$'\033[1;32m'
@@ -308,6 +382,9 @@ if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
   readonly C_WARN=$'\033[1;33m'
   readonly C_RESET=$'\033[0m'
 else
+  readonly C_TITLE=""
+  readonly C_BADGE=""
+  readonly C_BAR=""
   readonly C_VALUE=""
   readonly C_DIM=""
   readonly C_YES=""
@@ -326,6 +403,7 @@ IPV6_ONLY=false
 PROXY_ADDR=""
 INTERFACE_NAME=""
 SHOW_EMOJI=false
+COUNTRY_EXTRA=0
 GEOIP_BREAKDOWN=false
 VERDICT=""
 VERDICT_TIED_COUNTRIES=()
@@ -343,6 +421,16 @@ declare -gA REGISTRATION_ASN=()
 declare -gA REGISTRATION_ORG=()
 declare -gA REGISTRATION_COUNTRY=()
 declare -gA REGISTRATION_MAXMIND_FAILURE=()
+
+use_utf8_locale() {
+  local probe="$SYMBOL_YES"
+
+  if ((${#probe} == 1)); then
+    return
+  fi
+
+  export LC_ALL="$UTF8_LOCALE" 2>/dev/null || true
+}
 
 die() {
   local message="$1"
@@ -370,7 +458,7 @@ Options:
   -6, --ipv6             Check IPv6 only
   -p, --proxy HOST:PORT  Send requests through a SOCKS5 proxy
   -i, --interface IFACE  Send requests through a network interface
-      --emoji            Show country flags next to country codes
+      --emoji            Show country flags and group icons
       --geoip-breakdown  Show every GeoIP service instead of the summary
 
 More: $SCRIPT_URL
@@ -435,6 +523,7 @@ parse_args() {
         ;;
       --emoji)
         SHOW_EMOJI=true
+        COUNTRY_EXTRA="$FLAG_WIDTH"
         shift
         ;;
       --geoip-breakdown)
@@ -448,21 +537,24 @@ parse_args() {
   done
 }
 
-is_known_group() {
-  local group="$1"
-  local known
+is_in_list() {
+  local needle="$1"
+  shift
+  local item
 
-  if [[ "$group" == "$ALL_GROUPS" ]]; then
-    return 0
-  fi
-
-  for known in "${SERVICE_GROUPS[@]}"; do
-    if [[ "$group" == "$known" ]]; then
+  for item in "$@"; do
+    if [[ "$item" == "$needle" ]]; then
       return 0
     fi
   done
 
   return 1
+}
+
+is_known_group() {
+  local group="$1"
+
+  [[ "$group" == "$ALL_GROUPS" ]] || is_in_list "$group" "${SERVICE_GROUPS[@]}"
 }
 
 validate_args() {
@@ -486,8 +578,9 @@ validate_args() {
 visible_length() {
   local text="$1"
   local plain="${text//$'\033'\[+([0-9;])m/}"
+  local narrow="${plain//$WIDE_EMOJI_PATTERN/}"
 
-  printf '%d' "${#plain}"
+  printf '%d' $((2 * ${#plain} - ${#narrow}))
 }
 
 pad() {
@@ -501,6 +594,20 @@ pad() {
   fi
 
   printf '%s%*s' "$text" "$fill" ''
+}
+
+max_length() {
+  local max=0
+  local text length
+
+  for text in "$@"; do
+    length=$(visible_length "$text")
+    if ((length > max)); then
+      max="$length"
+    fi
+  done
+
+  printf '%d' "$max"
 }
 
 paint() {
@@ -529,6 +636,23 @@ label_country() {
   printf '%s %s' "$(format_flag "$country")" "$country"
 }
 
+label_group() {
+  local title="$1"
+
+  if [[ "$SHOW_EMOJI" != true || -z "$title" ]]; then
+    printf '%s' "$title"
+    return
+  fi
+
+  printf '%s %s' "${GROUP_EMOJI[$title]}" "$title"
+}
+
+is_verdict_country() {
+  local country="$1"
+
+  [[ "$country" == "$VERDICT" ]] || is_in_list "$country" "${VERDICT_TIED_COUNTRIES[@]}"
+}
+
 format_country() {
   local country="$1"
   local width="$2"
@@ -538,7 +662,7 @@ format_country() {
     return
   fi
 
-  if [[ "$country" == "$VERDICT" ]]; then
+  if is_verdict_country "$country"; then
     paint "$C_VALUE" "$(pad "$(label_country "$country")" "$width")"
     return
   fi
@@ -555,8 +679,21 @@ format_status() {
     "$STATUS_NO") paint "$C_NO" "$(pad "$SYMBOL_NO" "$width")" ;;
     "$STATUS_IPBLOCK") paint "$C_NO" "$(pad "$SYMBOL_IPBLOCK" "$width")" ;;
     "$STATUS_NONE") paint "$C_DIM" "$(pad "$SYMBOL_NONE" "$width")" ;;
+    "$MAXMIND_LIMIT_CELL") paint "$C_DIM" "$(pad "$MAXMIND_LIMIT_CELL" "$width")" ;;
     *) paint "$C_DIM" "$(pad "$SYMBOL_UNKNOWN" "$width")" ;;
   esac
+}
+
+format_cell() {
+  local value="$1"
+  local width="$2"
+
+  if [[ "$value" =~ $COUNTRY_CODE_PATTERN ]]; then
+    format_country "$value" "$width"
+    return
+  fi
+
+  format_status "$value" "$width"
 }
 
 stop_jobs() {
@@ -1633,46 +1770,46 @@ check_ai_reachability() {
   print_status "$GROUP_AI" "$service" "$ip_version" "$(reachability_status)"
 }
 
-check_ai_qwen() {
+check_ai_qwen_api() {
   local ip_version="$1"
 
-  check_ai_reachability Qwen "$ip_version" "$QWEN_API_URL"
+  check_ai_reachability "Qwen API" "$ip_version" "$QWEN_API_URL"
 }
 
-check_ai_kimi() {
+check_ai_kimi_api() {
   local ip_version="$1"
 
-  check_ai_reachability Kimi "$ip_version" "$KIMI_API_URL"
+  check_ai_reachability "Kimi API" "$ip_version" "$KIMI_API_URL"
 }
 
-check_ai_glm() {
+check_ai_glm_api() {
   local ip_version="$1"
 
-  check_ai_reachability GLM "$ip_version" "$GLM_API_URL"
+  check_ai_reachability "GLM API" "$ip_version" "$GLM_API_URL"
 }
 
-check_ai_minimax() {
+check_ai_minimax_api() {
   local ip_version="$1"
 
-  check_ai_reachability MiniMax "$ip_version" "$MINIMAX_API_URL"
+  check_ai_reachability "MiniMax API" "$ip_version" "$MINIMAX_API_URL"
 }
 
-check_ai_doubao() {
+check_ai_doubao_api() {
   local ip_version="$1"
 
-  check_ai_reachability Doubao "$ip_version" "$DOUBAO_API_URL"
+  check_ai_reachability "Doubao API" "$ip_version" "$DOUBAO_API_URL"
 }
 
-check_ai_siliconflow() {
+check_ai_siliconflow_api() {
   local ip_version="$1"
 
-  check_ai_reachability SiliconFlow "$ip_version" "$SILICONFLOW_API_URL"
+  check_ai_reachability "SiliconFlow API" "$ip_version" "$SILICONFLOW_API_URL"
 }
 
-check_ai_deepseek() {
+check_ai_deepseek_api() {
   local ip_version="$1"
 
-  check_ai_reachability DeepSeek "$ip_version" "$DEEPSEEK_API_URL"
+  check_ai_reachability "DeepSeek API" "$ip_version" "$DEEPSEEK_API_URL"
 }
 
 start_checks() {
@@ -1734,13 +1871,716 @@ collect_attention() {
       --arg cdn "$GROUP_CDN" \
       --arg geoip "$GROUP_GEOIP" \
       --arg different_country "$REASON_DIFFERENT_COUNTRY" \
+      --arg region_blocked "$REASON_REGION_BLOCKED" \
       --arg daily_limit "$REASON_DAILY_LIMIT" \
       --argjson collapse_min "$ATTENTION_COLLAPSE_MIN" \
       "$ATTENTION_FILTER" <<<"$RESULTS"
   )
 }
 
+is_dual_stack() {
+  [[ -n "$EXTERNAL_IPV4" && -n "$EXTERNAL_IPV6" ]]
+}
+
+first_ip_version() {
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    printf '4'
+    return
+  fi
+
+  printf '6'
+}
+
+format_summary_bar() {
+  local done_count="$1"
+  local total="$2"
+  local width="$3"
+  local done_width=$((width * done_count / total))
+  local done_part left_part
+
+  printf -v done_part '%*s' "$done_width" ''
+  printf -v left_part '%*s' "$((width - done_width))" ''
+  printf '%s%s%s%s%s' "$C_BAR" "${done_part// /$SUMMARY_BAR_CHAR}" "$C_DIM" "${left_part// /$SUMMARY_BAR_CHAR}" "$C_RESET"
+}
+
+format_cells() {
+  local v4="$1"
+  local v6="$2"
+  local v4_width="$3"
+
+  if ! is_dual_stack; then
+    format_cell "$v4" 0
+    return
+  fi
+
+  if [[ "$v4" == "$MAXMIND_LIMIT_CELL" && "$v6" == "$MAXMIND_LIMIT_CELL" ]]; then
+    paint "$C_DIM" "$MAXMIND_LIMIT_CELLS"
+    return
+  fi
+
+  printf '%s%s' "$(format_cell "$v4" "$v4_width")" "$(format_cell "$v6" 0)"
+}
+
+format_protocol_labels() {
+  local v4_width="$1"
+
+  if ! is_dual_stack; then
+    printf 'IPv%s' "$(first_ip_version)"
+    return
+  fi
+
+  printf '%sIPv6' "$(pad IPv4 "$v4_width")"
+}
+
+format_group_header() {
+  local title="$1"
+  local name_width="$2"
+  local cell_width="$3"
+
+  printf '%s%s' "$(paint "$C_TITLE" "$(pad "$(label_group "$title")" "$name_width")")" \
+    "$(paint "$C_DIM" "$(format_protocol_labels "$cell_width")")"
+}
+
+format_badge() {
+  local country="$1"
+  local flag=""
+
+  if [[ "$SHOW_EMOJI" == true ]]; then
+    flag="$(format_flag "$country") "
+  fi
+
+  printf '%s%s' "$flag" "$(paint "$C_BADGE" " $country ")"
+}
+
+country_name() {
+  local country="$1"
+
+  http_request "$(first_ip_version)" "$CLDR_TERRITORIES_URL"
+  json_value ".main.en.localeDisplayNames.territories.$country // empty"
+}
+
+group_rows() {
+  local group="$1"
+
+  jq -r \
+    --arg group "$group" \
+    --arg yes "$STATUS_YES" \
+    --arg unknown "$STATUS_UNKNOWN" \
+    --arg daily_limit "$REASON_DAILY_LIMIT" \
+    --arg limit "$MAXMIND_LIMIT_CELL" \
+    "$GROUP_ROWS_FILTER" <<<"$RESULTS"
+}
+
+cdn_edge_rows() {
+  jq -r --arg cdn "$GROUP_CDN" --arg unknown "$STATUS_UNKNOWN" "$CDN_ROWS_FILTER" <<<"$RESULTS"
+}
+
+geoip_majority() {
+  jq -r --arg geoip "$GROUP_GEOIP" --arg yes "$STATUS_YES" "$GEOIP_MAJORITY_FILTER" <<<"$RESULTS"
+}
+
+print_header_line() {
+  local text="$1"
+
+  printf ' %s%s\n' "$(paint "$C_TITLE" "$HEADER_MARK")" "${text:+ $text}"
+}
+
+format_network() {
+  local ip_version="$1"
+  local asn="${REGISTRATION_ASN[$ip_version]:-}"
+  local organization="${REGISTRATION_ORG[$ip_version]:-}"
+
+  if [[ -z "$asn" ]]; then
+    printf '%s' "$organization"
+    return
+  fi
+
+  printf 'AS%s%s' "$asn" "${organization:+ $organization}"
+}
+
+print_ip_line() {
+  local ip_version="$1"
+  local masked_ip="$2"
+  local ip_width="$3"
+  local network_width="$4"
+  local country="${REGISTRATION_COUNTRY[$ip_version]:-$SYMBOL_UNKNOWN}"
+
+  print_header_line "$(paint "$C_TITLE" "IPv$ip_version")  $(paint "$C_VALUE" "$(pad "$masked_ip" "$ip_width")")$(pad "$(format_network "$ip_version")" "$network_width")$(paint "$C_DIM" "$REGISTERED_NOTE") $(paint "$C_VALUE" "$(label_country "$country")")"
+}
+
+is_maxmind_limit_used_up() {
+  local failure
+
+  for failure in "${REGISTRATION_MAXMIND_FAILURE[@]}"; do
+    if [[ "$failure" == "$REASON_DAILY_LIMIT" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+print_ip_lines() {
+  local -a ip_versions=() masked_ips=() networks=()
+  local ip_width network_width i
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    ip_versions+=(4)
+    masked_ips+=("$(mask_ipv4 "$EXTERNAL_IPV4")")
+    networks+=("$(format_network 4)")
+  fi
+
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    ip_versions+=(6)
+    masked_ips+=("$(mask_ipv6 "$EXTERNAL_IPV6")")
+    networks+=("$(format_network 6)")
+  fi
+
+  ip_width=$(($(max_length "${masked_ips[@]}") + NAME_GAP))
+  network_width=$(($(max_length "${networks[@]}") + NAME_GAP))
+  for i in "${!ip_versions[@]}"; do
+    print_ip_line "${ip_versions[i]}" "${masked_ips[i]}" "$ip_width" "$network_width"
+  done
+
+  if is_maxmind_limit_used_up; then
+    print_header_line "      $(paint "$C_DIM" "$MAXMIND_LIMIT_HEADER_NOTE")"
+  fi
+}
+
+print_verdict_line() {
+  local -a countries=("${VERDICT_TIED_COUNTRIES[@]}")
+  local note="$TIE_NOTE"
+  local badges=""
+  local names=""
+  local country name
+
+  if [[ -n "$VERDICT" ]]; then
+    countries=("$VERDICT")
+    note="$VERDICT_NOTE"
+  fi
+
+  if ((${#countries[@]} == 0)); then
+    return
+  fi
+
+  for country in "${countries[@]}"; do
+    name=$(country_name "$country")
+    badges+="${badges:+ }$(format_badge "$country")"
+    names+="${names:+ or }${name:-$country}"
+  done
+
+  print_header_line "$badges  $(paint "$C_VALUE" "$names")   $(paint "$C_DIM" "$note")"
+}
+
+print_checks_bar() {
+  local total attention normal
+
+  total=$(jq '[.[] | [.group, .service]] | unique | length' <<<"$RESULTS")
+  if ((total == 0)); then
+    return
+  fi
+
+  attention=$(jq '[.[].services[]] | unique | length' <<<"$ATTENTION")
+  normal=$((total - attention))
+  print_header_line "$(format_summary_bar "$normal" "$total" "$VERDICT_BAR_WIDTH")  $(paint "$C_DIM" "$normal/$total $CHECKS_NORMAL_NOTE")"
+}
+
+print_header() {
+  printf '\n'
+  print_header_line "$(paint "$C_DIM" "Made with $(paint "$C_NO" "<3")${C_DIM} by $AUTHOR ·") ${SCRIPT_URL#https://}"
+  print_header_line ""
+  print_ip_lines
+  print_header_line ""
+  print_verdict_line
+  print_checks_bar
+  printf '\n'
+}
+
+format_scope() {
+  local ip_version="$1"
+  local label="IPv$ip_version"
+
+  if ! is_dual_stack; then
+    return
+  fi
+
+  if [[ "$ip_version" == both ]]; then
+    label="$ip_version"
+  fi
+
+  printf '%s  ' "$(paint "$C_DIM" "$(pad "$label" "$SCOPE_WIDTH")")"
+}
+
+format_attention_value() {
+  local country="$1"
+  local status="$2"
+
+  if [[ -n "$country" ]]; then
+    format_country "$country" $((ATTENTION_CELL_WIDTH + COUNTRY_EXTRA))
+    return
+  fi
+
+  format_status "${status:-$STATUS_UNKNOWN}" $((ATTENTION_CELL_WIDTH + COUNTRY_EXTRA))
+}
+
+print_attention_row() {
+  local name_width="$1"
+  local service="$2"
+  local ip_version="$3"
+  local country="$4"
+  local status="$5"
+  local reason="$6"
+
+  printf '   %s%s%s  %s\n' "$(pad "$service" "$name_width")" "$(format_scope "$ip_version")" \
+    "$(format_attention_value "$country" "$status")" "$(paint "$C_DIM" "$reason")"
+}
+
+wrap_service_list() {
+  local -n wrapped_lines=$1
+  local indent="$2"
+  shift 2
+  local line=""
+  local shown=0
+  local service
+
+  wrapped_lines=()
+  for service in "$@"; do
+    if [[ -n "$line" ]] && ((indent + ${#line} + ${#service} + 2 > OUTPUT_WIDTH)); then
+      wrapped_lines+=("$line,")
+      line=""
+      if ((${#wrapped_lines[@]} == ATTENTION_LIST_LINES)); then
+        break
+      fi
+    fi
+    line+="${line:+, }$service"
+    shown=$((shown + 1))
+  done
+
+  if [[ -n "$line" ]] && ((${#wrapped_lines[@]} < ATTENTION_LIST_LINES)); then
+    wrapped_lines+=("$line")
+  fi
+
+  if ((shown < $#)); then
+    wrapped_lines[-1]="${wrapped_lines[-1]%,}, +$(($# - shown))"
+  fi
+}
+
+print_attention_group() {
+  local ip_version="$1"
+  local status="$2"
+  local reason="$3"
+  shift 3
+  local prefix indent line
+  local -a lines
+
+  prefix="   $(format_status "${status:-$STATUS_UNKNOWN}" 1) $(paint "$C_DIM" "$(pad "$reason" "$ATTENTION_NOTE_WIDTH")")  $(format_scope "$ip_version")"
+  indent=$(visible_length "$prefix")
+  wrap_service_list lines "$indent" "$@"
+
+  printf '%s%s\n' "$prefix" "${lines[0]}"
+  for line in "${lines[@]:1}"; do
+    printf '%*s%s\n' "$indent" '' "$line"
+  done
+}
+
+print_attention() {
+  local -a fields services single_services=()
+  local i name_width
+  local count=0
+
+  mapfile -t fields < <(jq -r '.[] | .ip_version, .country, .status, .reason, (.services | length), .services[]' <<<"$ATTENTION")
+  if ((${#fields[@]} == 0)); then
+    return
+  fi
+
+  for ((i = 0; i < ${#fields[@]}; i += ATTENTION_ENTRY_FIELDS + count)); do
+    count="${fields[i + 4]}"
+    if ((count == 1)); then
+      single_services+=("${fields[i + ATTENTION_ENTRY_FIELDS]}")
+    fi
+  done
+  name_width=$(($(max_length "${single_services[@]}") + NAME_GAP))
+
+  printf ' %s\n' "$(paint "$C_WARN" "$(label_group Attention)")"
+  for ((i = 0; i < ${#fields[@]}; i += ATTENTION_ENTRY_FIELDS + count)); do
+    count="${fields[i + 4]}"
+    services=("${fields[@]:i+ATTENTION_ENTRY_FIELDS:count}")
+    if ((count == 1)); then
+      print_attention_row "$name_width" "${services[0]}" "${fields[i]}" "${fields[i + 1]}" "${fields[i + 2]}" "${fields[i + 3]}"
+      continue
+    fi
+    print_attention_group "${fields[i]}" "${fields[i + 2]}" "${fields[i + 3]}" "${services[@]}"
+  done
+  printf '\n'
+}
+
+table_name_width() {
+  local title="$1"
+  shift
+  local -a rows=("$@")
+  local -a names=("$(label_group "$title")")
+  local i
+
+  for ((i = 0; i < ${#rows[@]}; i += GROUP_ROW_FIELDS)); do
+    names+=("${rows[i]}")
+  done
+
+  printf '%d' $(($(max_length "${names[@]}") + NAME_GAP))
+}
+
+append_table_lines() {
+  local -n table_lines=$1
+  local title="$2"
+  local name_width="$3"
+  local cell_width="$4"
+  shift 4
+  local -a rows=("$@")
+  local i
+
+  table_lines+=("$(format_group_header "$title" "$name_width" "$cell_width")")
+  for ((i = 0; i < ${#rows[@]}; i += GROUP_ROW_FIELDS)); do
+    table_lines+=("$(pad "${rows[i]}" "$name_width")$(format_cells "${rows[i + 1]}" "${rows[i + 2]}" "$cell_width")")
+  done
+}
+
+append_group_lines() {
+  local lines_name="$1"
+  local group="$2"
+  local title="$3"
+  local cell_width="$4"
+  local -a fields
+
+  mapfile -t fields < <(group_rows "$group")
+  if ((${#fields[@]} == 0)); then
+    return
+  fi
+
+  append_table_lines "$lines_name" "$title" "$(table_name_width "$title" "${fields[@]}")" "$cell_width" "${fields[@]}"
+}
+
+append_status_group_lines() {
+  local -n status_lines=$1
+  local group="$2"
+  local title="$3"
+  local -a lines=()
+
+  append_group_lines lines "$group" "$title" $((STATUS_CELL_WIDTH + COUNTRY_EXTRA))
+  if ((${#lines[@]} == 0)); then
+    return
+  fi
+
+  if ((${#status_lines[@]} > 0)); then
+    status_lines+=("")
+  fi
+  status_lines+=("${lines[@]}")
+}
+
+country_of_cell() {
+  local value="$1"
+
+  if [[ "$value" =~ $COUNTRY_CODE_PATTERN ]]; then
+    printf '%s' "$value"
+  fi
+}
+
+print_geoip_differences() {
+  local reference="$1"
+  local service="$2"
+  local v4="$3"
+  local v6="$4"
+
+  if [[ "$v4" == "$v6" ]]; then
+    printf '%s\n%s\n' "$v4" "$service"
+    return
+  fi
+
+  if [[ -n "$v4" && "$v4" != "$reference" ]]; then
+    printf '%s\n%s v4\n' "$v4" "$service"
+  fi
+
+  if [[ -n "$v6" && "$v6" != "$reference" ]]; then
+    printf '%s\n%s v6\n' "$v6" "$service"
+  fi
+}
+
+append_geoip_country_lines() {
+  local -n country_lines=$1
+  local column_width="$2"
+  local country="$3"
+  shift 3
+  local prefix_width=$((SUMMARY_COUNTRY_WIDTH + 1 + COUNTRY_EXTRA))
+  local prefix line label
+
+  prefix="$(format_country "$country" $((SUMMARY_COUNTRY_WIDTH + COUNTRY_EXTRA))) "
+  line=""
+  for label in "$@"; do
+    if [[ -n "$line" ]] && ((prefix_width + ${#line} + ${#label} + 2 > column_width)); then
+      country_lines+=("$prefix$(paint "$C_DIM" "$line,")")
+      prefix=$(pad '' "$prefix_width")
+      line=""
+    fi
+    line+="${line:+, }$label"
+  done
+  country_lines+=("$prefix$(paint "$C_DIM" "$line")")
+}
+
+append_geoip_difference_lines() {
+  local lines_name="$1"
+  local column_width="$2"
+  shift 2
+  local -a differences=("$@")
+  local -a countries=() labels
+  local country i
+
+  for ((i = 0; i < ${#differences[@]}; i += GEOIP_DIFFERENCE_FIELDS)); do
+    if ! is_in_list "${differences[i]}" "${countries[@]}"; then
+      countries+=("${differences[i]}")
+    fi
+  done
+
+  for country in "${countries[@]}"; do
+    labels=()
+    for ((i = 0; i < ${#differences[@]}; i += GEOIP_DIFFERENCE_FIELDS)); do
+      if [[ "${differences[i]}" == "$country" ]]; then
+        labels+=("${differences[i + 1]}")
+      fi
+    done
+    append_geoip_country_lines "$lines_name" "$column_width" "$country" "${labels[@]}"
+  done
+}
+
+append_geoip_summary() {
+  local -n summary_lines=$1
+  local reference="${VERDICT:-$(geoip_majority)}"
+  local agree=0
+  local total=0
+  local maxmind_skipped=false
+  local column_width="$SUMMARY_DEFAULT_WIDTH"
+  local -a fields
+  local -a differences=()
+  local i service v4 v6 counts
+
+  if ((${#summary_lines[@]} > 0)); then
+    column_width=$(max_length "${summary_lines[@]}")
+  fi
+
+  mapfile -t fields < <(group_rows "$GROUP_GEOIP")
+  if ((${#fields[@]} == 0)); then
+    return
+  fi
+
+  for ((i = 0; i < ${#fields[@]}; i += GROUP_ROW_FIELDS)); do
+    service="${fields[i]}"
+    if [[ "${fields[i + 1]}" == "$MAXMIND_LIMIT_CELL" && "${fields[i + 2]}" == "$MAXMIND_LIMIT_CELL" ]]; then
+      maxmind_skipped=true
+      continue
+    fi
+    total=$((total + 1))
+    v4=$(country_of_cell "${fields[i + 1]}")
+    v6=$(country_of_cell "${fields[i + 2]}")
+    if [[ -z "$v4$v6" ]]; then
+      continue
+    fi
+    if [[ "${v4:-$reference}" == "$reference" && "${v6:-$reference}" == "$reference" ]]; then
+      agree=$((agree + 1))
+      continue
+    fi
+    mapfile -t -O "${#differences[@]}" differences < <(print_geoip_differences "$reference" "$service" "$v4" "$v6")
+  done
+
+  counts="$(format_country "$reference" $((SUMMARY_COUNTRY_WIDTH + COUNTRY_EXTRA))) $(paint "$C_DIM" "$agree/$total")"
+  summary_lines+=(
+    ""
+    "$(paint "$C_TITLE" "$(pad "$(label_group GeoIP)" $((column_width - $(visible_length "$counts"))))")$counts"
+    "$(format_summary_bar "$agree" "$total" "$column_width")"
+  )
+  append_geoip_difference_lines summary_lines "$column_width" "${differences[@]}"
+
+  if [[ "$maxmind_skipped" == true ]]; then
+    summary_lines+=("$(paint "$C_DIM" "$MAXMIND_LIMIT_SUMMARY_NOTE")")
+  fi
+}
+
+is_geoip_summary_shown() {
+  [[ "$SELECTED_GROUP" == "$ALL_GROUPS" && "$GEOIP_BREAKDOWN" != true ]]
+}
+
+print_lines() {
+  local line
+
+  for line in "$@"; do
+    printf ' %s\n' "$line"
+  done
+  printf '\n'
+}
+
+print_two_columns() {
+  local -n left_lines=$1
+  local -n right_lines=$2
+  local count=${#left_lines[@]}
+  local left_width i
+
+  if ((${#right_lines[@]} > count)); then
+    count=${#right_lines[@]}
+  fi
+
+  left_width=$(max_length "${left_lines[@]}")
+  for ((i = 0; i < count; i++)); do
+    if [[ -z "${right_lines[i]:-}" ]]; then
+      printf ' %s\n' "${left_lines[i]:-}"
+      continue
+    fi
+    printf ' %s%s%s\n' "$(pad "${left_lines[i]:-}" "$left_width")" "$COLUMN_GAP" "${right_lines[i]}"
+  done
+  printf '\n'
+}
+
+print_service_tables() {
+  local -a left=() right=()
+
+  append_group_lines left "$GROUP_PLATFORMS" Platforms $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA))
+  if is_geoip_summary_shown; then
+    append_geoip_summary left
+  fi
+  append_status_group_lines right "$GROUP_AVAILABILITY" Availability
+  append_status_group_lines right "$GROUP_AI" AI
+
+  if ((${#left[@]} + ${#right[@]} == 0)); then
+    return
+  fi
+
+  if [[ "$SELECTED_GROUP" != "$ALL_GROUPS" ]]; then
+    print_lines "${left[@]}" "${right[@]}"
+    return
+  fi
+
+  print_two_columns left right
+}
+
+format_edge() {
+  local status="$1"
+  local country="$2"
+  local iata="$3"
+  local node="$4"
+  local edge
+
+  if [[ "$status" != "$STATUS_YES" ]]; then
+    format_status "$status" 1
+    return
+  fi
+
+  edge="$(paint "$C_VALUE" "$(label_country "$country")")"
+  if [[ -n "$iata" ]]; then
+    edge+=" $(paint "$C_DIM" "·") $(paint "$C_VALUE" "$iata")"
+  fi
+  if [[ -n "$node" ]]; then
+    edge+=" $(paint "$C_DIM" "· $node")"
+  fi
+
+  printf '%s' "$edge"
+}
+
+print_cdn_table() {
+  local -a fields names=("$(label_group CDN)") v4_edges=() v6_edges=()
+  local i name_width edge_width line
+
+  mapfile -t fields < <(cdn_edge_rows)
+  if ((${#fields[@]} == 0)); then
+    return
+  fi
+
+  for ((i = 0; i < ${#fields[@]}; i += CDN_ROW_FIELDS)); do
+    names+=("${fields[i]}")
+    v4_edges+=("$(format_edge "${fields[@]:i+1:4}")")
+    v6_edges+=("$(format_edge "${fields[@]:i+5:4}")")
+  done
+  name_width=$(($(max_length "${names[@]}") + NAME_GAP))
+  edge_width=$(($(max_length "${v4_edges[@]}" IPv4) + EDGE_GAP))
+
+  printf ' %s\n' "$(format_group_header CDN "$name_width" "$edge_width")"
+  for i in "${!v4_edges[@]}"; do
+    line="$(pad "${names[i + 1]}" "$name_width")${v4_edges[i]}"
+    if is_dual_stack; then
+      line="$(pad "${names[i + 1]}" "$name_width")$(pad "${v4_edges[i]}" "$edge_width")${v6_edges[i]}"
+    fi
+    printf ' %s\n' "$line"
+  done
+  printf '\n'
+}
+
+print_geoip_breakdown() {
+  local -a fields first second
+  local half
+
+  if is_geoip_summary_shown; then
+    return
+  fi
+
+  mapfile -t fields < <(group_rows "$GROUP_GEOIP")
+  if ((${#fields[@]} == 0)); then
+    return
+  fi
+
+  half=$((${#fields[@]} / GROUP_ROW_FIELDS))
+  half=$(((half + 1) / 2))
+  half=$((half * GROUP_ROW_FIELDS))
+  append_table_lines first GeoIP "$(table_name_width GeoIP "${fields[@]:0:half}")" $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA)) "${fields[@]:0:half}"
+  append_table_lines second "" "$(table_name_width "" "${fields[@]:half}")" $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA)) "${fields[@]:half}"
+  print_two_columns first second
+}
+
+print_legend() {
+  local separator legend
+
+  if [[ "$SELECTED_GROUP" == "$GROUP_CDN" ]]; then
+    return
+  fi
+
+  separator=" $(paint "$C_DIM" "·") "
+  legend="$(paint "$C_YES" "$SYMBOL_YES") $(paint "$C_DIM" available)$separator"
+  legend+="$(paint "$C_NO" "$SYMBOL_NO") $(paint "$C_DIM" "region blocked")$separator"
+  legend+="$(paint "$C_NO" "$SYMBOL_IPBLOCK") $(paint "$C_DIM" "IP blocked")$separator"
+  legend+="$(paint "$C_DIM" "$SYMBOL_UNKNOWN unknown")"
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    legend+="$separator$(paint "$C_DIM" "$SYMBOL_NONE no IPv6")"
+  fi
+
+  printf ' %s\n\n' "$legend"
+}
+
+print_breakdown_hint() {
+  if ! is_geoip_summary_shown; then
+    return
+  fi
+
+  printf ' %s\n\n' "$(paint "$C_DIM" "$GEOIP_BREAKDOWN_HINT")"
+}
+
+print_report() {
+  print_header
+  print_attention
+  print_service_tables
+  print_cdn_table
+  print_geoip_breakdown
+  print_legend
+  print_breakdown_hint
+}
+
+print_json() {
+  jq . <<<"$RESULTS"
+}
+
+print_output() {
+  if [[ "$JSON_OUTPUT" == true ]]; then
+    print_json
+    return
+  fi
+
+  print_report
+}
+
 main() {
+  use_utf8_locale
   parse_args "$@"
   validate_args
   create_work_dir
@@ -1756,6 +2596,7 @@ main() {
   collect_results
   compute_verdict
   collect_attention
+  print_output
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then

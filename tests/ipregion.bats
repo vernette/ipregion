@@ -198,6 +198,20 @@ print_yes_color() {
   [[ "$(visible_length $'\033[0;90mDE\033[0m \033[1mFRA')" -eq 6 ]]
 }
 
+@test "visible length counts group icons as two columns, flags as their width" {
+  [[ "$(visible_length "🤖 AI")" -eq 5 ]]
+  [[ "$(visible_length "🇩🇪 DE")" -eq 5 ]]
+}
+
+@test "group title gets an icon only with emoji" {
+  [[ "$(label_group AI)" == "AI" ]]
+
+  SHOW_EMOJI=true
+  [[ "$(label_group AI)" == "🤖 AI" ]]
+  [[ "$(label_group Availability)" == "🔓 Availability" ]]
+  [[ -z "$(label_group "")" ]]
+}
+
 @test "pad fills to width and never cuts text" {
   [[ "$(pad DE 6)" == "DE    " ]]
   [[ "$(pad $'\033[1mDE\033[0m' 4)" == $'\033[1mDE\033[0m  ' ]]
@@ -959,14 +973,14 @@ availability_row() {
     cat <<'ROWS'
 YouTube Premium 4  yes 
 YouTube Premium 6  yes 
+Google Search 4  yes 
+Google Search 6  yes 
 Spotify Signup 4  yes 
 Spotify Signup 6  yes 
 Disney+ 4  yes 
 Disney+ 6  no 
 Reddit Guest 4  yes 
 Reddit Guest 6  none no IPv6
-Google Search 4  yes 
-Google Search 6  yes 
 ROWS
   )
   run result_rows
@@ -1058,20 +1072,20 @@ Anthropic API 4  yes
 Anthropic API 6  yes 
 Grok API 4  yes 
 Grok API 6  yes 
-Qwen 4  yes 
-Qwen 6  none no IPv6
-Kimi 4  yes 
-Kimi 6  yes 
-GLM 4  yes 
-GLM 6  yes 
-MiniMax 4  yes 
-MiniMax 6  yes 
-Doubao 4  yes 
-Doubao 6  yes 
-SiliconFlow 4  yes 
-SiliconFlow 6  yes 
-DeepSeek 4  yes 
-DeepSeek 6  none no IPv6
+Qwen API 4  yes 
+Qwen API 6  none no IPv6
+Kimi API 4  yes 
+Kimi API 6  yes 
+GLM API 4  yes 
+GLM API 6  yes 
+MiniMax API 4  yes 
+MiniMax API 6  yes 
+Doubao API 4  yes 
+Doubao API 6  yes 
+SiliconFlow API 4  yes 
+SiliconFlow API 6  yes 
+DeepSeek API 4  yes 
+DeepSeek API 6  none no IPv6
 ROWS
   )
   run result_rows
@@ -1126,8 +1140,8 @@ ROWS
 
   run_ai_checks
 
-  [[ "$(ai_row GLM)" == " timeout" ]]
-  [[ "$(ai_row Kimi)" == " unexpected response" ]]
+  [[ "$(ai_row "GLM API")" == " timeout" ]]
+  [[ "$(ai_row "Kimi API")" == " unexpected response" ]]
 }
 
 results_of() {
@@ -1210,7 +1224,7 @@ attention_rows() {
   expected=$(
     cat <<'ROWS'
 ChatGPT 6 NL yes different country
-Gemini Web 4  no 
+Gemini Web 4  no region blocked
 Reddit Guest 6  ipblock access denied (403)
 Disney+ 6   timeout
 ipquery.io 6   timeout
@@ -1260,4 +1274,120 @@ ROWS
   )
   run attention_rows
   [[ "$output" == "$expected" ]]
+}
+
+run_report() {
+  use_host_fixtures dual-stack
+  NO_COLOR=1 bash "$SCRIPT" "$@" 2>/dev/null
+}
+
+@test "report matches the expected output" {
+  run_report >"$BATS_TEST_TMPDIR/report.txt"
+  diff -u "$BATS_TEST_DIRNAME/expected/report.txt" "$BATS_TEST_TMPDIR/report.txt"
+}
+
+@test "report with emoji and geoip breakdown matches the expected output" {
+  run_report --emoji --geoip-breakdown >"$BATS_TEST_TMPDIR/report.txt"
+  diff -u "$BATS_TEST_DIRNAME/expected/report-emoji-breakdown.txt" "$BATS_TEST_TMPDIR/report.txt"
+}
+
+@test "ipv4 only report has no ipv6 column" {
+  run_report -4 >"$BATS_TEST_TMPDIR/report.txt"
+  diff -u "$BATS_TEST_DIRNAME/expected/report-ipv4.txt" "$BATS_TEST_TMPDIR/report.txt"
+}
+
+@test "one group report shows only that group without a verdict" {
+  run_report -g ai -6 >"$BATS_TEST_TMPDIR/report.txt"
+  diff -u "$BATS_TEST_DIRNAME/expected/report-ai-ipv6.txt" "$BATS_TEST_TMPDIR/report.txt"
+}
+
+@test "report keeps its layout under the C locale" {
+  LC_ALL=C run_report >"$BATS_TEST_TMPDIR/report.txt"
+
+  diff -u "$BATS_TEST_DIRNAME/expected/report.txt" "$BATS_TEST_TMPDIR/report.txt"
+}
+
+@test "json output prints the results instead of the report" {
+  run run_report --json -g cdn
+
+  [[ "$(jq -r '.[0].service' <<<"$output")" == Cloudflare ]]
+}
+
+@test "tie names every tied country instead of a verdict" {
+  use_host_fixtures dual-stack
+  EXTERNAL_IPV4=203.0.113.7
+  VERDICT=""
+  VERDICT_TIED_COUNTRIES=(DE SE)
+
+  run print_verdict_line
+
+  [[ "$output" == " ┃  DE   SE   Germany or Sweden   services split evenly" ]]
+}
+
+@test "used up maxmind limit is noted once in the header and leaves the geoip summary" {
+  local -a summary=() table=()
+
+  set_dual_stack_ips
+  REGISTRATION_MAXMIND_FAILURE[4]="$REASON_DAILY_LIMIT"
+  REGISTRATION_MAXMIND_FAILURE[6]="$REASON_DAILY_LIMIT"
+  RESULTS=$(results_of "$(
+    print_result geoip MaxMind 4 "" "" "$REASON_DAILY_LIMIT"
+    print_result geoip MaxMind 6 "" "" "$REASON_DAILY_LIMIT"
+    print_result geoip RIPE 4 SE yes ""
+    print_result geoip RIPE 6 SE yes ""
+  )")
+
+  run print_ip_lines
+  [[ "$(grep -c "MaxMind daily limit used up" <<<"$output")" -eq 1 ]]
+
+  append_geoip_summary summary
+  [[ "${summary[1]}" == "GeoIP              SE 1/1" ]]
+  [[ "${summary[-1]}" == "MaxMind limit used up" ]]
+
+  append_table_lines table GeoIP "$(table_name_width GeoIP MaxMind limit limit)" "$COUNTRY_CELL_WIDTH" MaxMind limit limit
+  [[ "${table[1]}" == "MaxMind  limit used" ]]
+}
+
+@test "geoip summary lists services that see another country per protocol" {
+  local -a summary=()
+
+  set_dual_stack_ips
+  VERDICT=SE
+  RESULTS=$(results_of "$(
+    print_result geoip RIPE 4 SE yes ""
+    print_result geoip RIPE 6 SE yes ""
+    print_result geoip ipinfo.io 4 NL yes ""
+    print_result geoip ipinfo.io 6 NL yes ""
+    print_result geoip ipwho.is 4 SE yes ""
+    print_result geoip ipwho.is 6 NL yes ""
+    print_result geoip ipquery.io 4 "" "" timeout
+    print_result geoip ipquery.io 6 "" "" timeout
+  )")
+
+  append_geoip_summary summary
+
+  [[ "${summary[1]}" == "GeoIP              SE 1/4" ]]
+  [[ "${summary[3]}" == "NL ipinfo.io, ipwho.is v6" ]]
+}
+
+@test "collapsed attention row wraps its services into two lines and counts the rest" {
+  local -a wrapped
+
+  wrap_service_list wrapped 27 Google YouTube Twitch Netflix Spotify Reddit TikTok Apple Steam Microsoft Ookla JetBrains PlayStation
+
+  [[ "${#wrapped[@]}" -eq 2 ]]
+  [[ "${wrapped[0]}" == "Google, YouTube, Twitch, Netflix, Spotify," ]]
+  [[ "${wrapped[1]}" == "Reddit, TikTok, Apple, Steam, Microsoft, +3" ]]
+}
+
+@test "table names get the same gap before the first cell" {
+  local -a table=()
+  local -a rows=("YouTube Premium" yes yes Disney+ yes no)
+
+  set_dual_stack_ips
+  append_table_lines table Availability "$(table_name_width Availability "${rows[@]}")" "$STATUS_CELL_WIDTH" "${rows[@]}"
+
+  [[ "${table[0]}" == "Availability     IPv4 IPv6" ]]
+  [[ "${table[1]}" == "YouTube Premium  ✓    ✓" ]]
+  [[ "${table[2]}" == "Disney+          ✓    ✗" ]]
 }
