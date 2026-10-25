@@ -396,7 +396,8 @@ fi
 VERBOSE=false
 DEBUG=false
 JSON_OUTPUT=false
-SELECTED_GROUP="$ALL_GROUPS"
+REQUESTED_GROUPS=()
+SELECTED_GROUPS=("${SERVICE_GROUPS[@]}")
 CURL_TIMEOUT="$DEFAULT_TIMEOUT"
 IPV4_ONLY=false
 IPV6_ONLY=false
@@ -452,7 +453,8 @@ Options:
   -v, --verbose          Log every step to stderr
   -d, --debug            Save a full trace to a file and upload it to 0x0.st
   -j, --json             Print results as JSON
-  -g, --group GROUP      Check one group: ${SERVICE_GROUPS[*]} (default: $ALL_GROUPS)
+  -g, --group GROUPS     Check only these groups, comma-separated or repeated:
+                         ${SERVICE_GROUPS[*]} (default: $ALL_GROUPS)
   -t, --timeout SEC      Request timeout in seconds (default: $DEFAULT_TIMEOUT)
   -4, --ipv4             Check IPv4 only
   -6, --ipv6             Check IPv6 only
@@ -475,6 +477,8 @@ require_option_value() {
 }
 
 parse_args() {
+  local -a groups
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -h | --help)
@@ -495,7 +499,8 @@ parse_args() {
         ;;
       -g | --group)
         require_option_value "$1" "$#"
-        SELECTED_GROUP="$2"
+        IFS=, read -ra groups <<<"$2"
+        REQUESTED_GROUPS+=("${groups[@]}")
         shift 2
         ;;
       -t | --timeout)
@@ -551,6 +556,12 @@ is_in_list() {
   return 1
 }
 
+is_group_selected() {
+  local group="$1"
+
+  is_in_list "$group" "${SELECTED_GROUPS[@]}"
+}
+
 is_known_group() {
   local group="$1"
 
@@ -558,9 +569,13 @@ is_known_group() {
 }
 
 validate_args() {
-  if ! is_known_group "$SELECTED_GROUP"; then
-    die "unknown group $SELECTED_GROUP, expected one of: ${SERVICE_GROUPS[*]} $ALL_GROUPS"
-  fi
+  local group
+
+  for group in "${REQUESTED_GROUPS[@]}"; do
+    if ! is_known_group "$group"; then
+      die "unknown group $group, expected one of: ${SERVICE_GROUPS[*]} $ALL_GROUPS"
+    fi
+  done
 
   if [[ ! "$CURL_TIMEOUT" =~ $TIMEOUT_PATTERN ]]; then
     die "invalid timeout $CURL_TIMEOUT, expected a positive integer"
@@ -573,6 +588,21 @@ validate_args() {
   if [[ -n "$PROXY_ADDR" && ! "$PROXY_ADDR" =~ $PROXY_PATTERN ]]; then
     die "invalid proxy $PROXY_ADDR, expected HOST:PORT"
   fi
+}
+
+resolve_selected_groups() {
+  local group
+
+  if ((${#REQUESTED_GROUPS[@]} == 0)) || is_in_list "$ALL_GROUPS" "${REQUESTED_GROUPS[@]}"; then
+    return
+  fi
+
+  SELECTED_GROUPS=()
+  for group in "${SERVICE_GROUPS[@]}"; do
+    if is_in_list "$group" "${REQUESTED_GROUPS[@]}"; then
+      SELECTED_GROUPS+=("$group")
+    fi
+  done
 }
 
 visible_length() {
@@ -1161,7 +1191,7 @@ is_check_selected() {
   local group="${check#check_}"
 
   group="${group%%_*}"
-  [[ "$SELECTED_GROUP" == "$ALL_GROUPS" || "$SELECTED_GROUP" == "$group" ]]
+  is_group_selected "$group"
 }
 
 external_ip() {
@@ -2358,10 +2388,12 @@ append_geoip_summary() {
   local column_width="$SUMMARY_DEFAULT_WIDTH"
   local -a fields
   local -a differences=()
+  local -a separator=()
   local i service v4 v6 counts
 
   if ((${#summary_lines[@]} > 0)); then
     column_width=$(max_length "${summary_lines[@]}")
+    separator=("")
   fi
 
   mapfile -t fields < <(group_rows "$GROUP_GEOIP")
@@ -2390,7 +2422,7 @@ append_geoip_summary() {
 
   counts="$(format_country "$reference" $((SUMMARY_COUNTRY_WIDTH + COUNTRY_EXTRA))) $(paint "$C_DIM" "$agree/$total")"
   summary_lines+=(
-    ""
+    "${separator[@]}"
     "$(paint "$C_TITLE" "$(pad "$(label_group GeoIP)" $((column_width - $(visible_length "$counts"))))")$counts"
     "$(format_summary_bar "$agree" "$total" "$column_width")"
   )
@@ -2402,13 +2434,17 @@ append_geoip_summary() {
 }
 
 is_geoip_summary_shown() {
-  [[ "$SELECTED_GROUP" == "$ALL_GROUPS" && "$GEOIP_BREAKDOWN" != true ]]
+  [[ "$GEOIP_BREAKDOWN" != true ]] && is_group_selected "$GROUP_GEOIP" && ((${#SELECTED_GROUPS[@]} > 1))
 }
 
 print_lines() {
   local line
 
   for line in "$@"; do
+    if [[ -z "$line" ]]; then
+      printf '\n'
+      continue
+    fi
     printf ' %s\n' "$line"
   done
   printf '\n'
@@ -2439,17 +2475,19 @@ print_service_tables() {
   local -a left=() right=()
 
   append_group_lines left "$GROUP_PLATFORMS" Platforms $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA))
-  if is_geoip_summary_shown; then
-    append_geoip_summary left
-  fi
   append_status_group_lines right "$GROUP_AVAILABILITY" Availability
   append_status_group_lines right "$GROUP_AI" AI
+  if is_geoip_summary_shown && ((${#left[@]} == 0)); then
+    append_geoip_summary right
+  elif is_geoip_summary_shown; then
+    append_geoip_summary left
+  fi
 
   if ((${#left[@]} + ${#right[@]} == 0)); then
     return
   fi
 
-  if [[ "$SELECTED_GROUP" != "$ALL_GROUPS" ]]; then
+  if ((${#left[@]} == 0 || ${#right[@]} == 0)); then
     print_lines "${left[@]}" "${right[@]}"
     return
   fi
@@ -2532,7 +2570,7 @@ print_geoip_breakdown() {
 print_legend() {
   local separator legend
 
-  if [[ "$SELECTED_GROUP" == "$GROUP_CDN" ]]; then
+  if [[ "${SELECTED_GROUPS[*]}" == "$GROUP_CDN" ]]; then
     return
   fi
 
@@ -2583,6 +2621,7 @@ main() {
   use_utf8_locale
   parse_args "$@"
   validate_args
+  resolve_selected_groups
   create_work_dir
   create_job_slots
   discover_external_ips

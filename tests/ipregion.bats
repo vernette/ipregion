@@ -62,8 +62,9 @@ curl_calls() {
 @test "no options keep defaults" {
   parse_args
   validate_args
+  resolve_selected_groups
 
-  [[ "$SELECTED_GROUP" == all ]]
+  [[ "${SELECTED_GROUPS[*]}" == "${SERVICE_GROUPS[*]}" ]]
   [[ "$CURL_TIMEOUT" == "$DEFAULT_TIMEOUT" ]]
   [[ "$IPV4_ONLY" == false ]]
   [[ "$IPV6_ONLY" == false ]]
@@ -78,7 +79,8 @@ curl_calls() {
   [[ "$VERBOSE" == true ]]
   [[ "$DEBUG" == true ]]
   [[ "$JSON_OUTPUT" == true ]]
-  [[ "$SELECTED_GROUP" == geoip ]]
+  resolve_selected_groups
+  [[ "${SELECTED_GROUPS[*]}" == geoip ]]
   [[ "$CURL_TIMEOUT" == 10 ]]
   [[ "$IPV4_ONLY" == true ]]
   [[ "$PROXY_ADDR" == 127.0.0.1:1080 ]]
@@ -93,7 +95,8 @@ curl_calls() {
   [[ "$VERBOSE" == true ]]
   [[ "$DEBUG" == true ]]
   [[ "$JSON_OUTPUT" == true ]]
-  [[ "$SELECTED_GROUP" == ai ]]
+  resolve_selected_groups
+  [[ "${SELECTED_GROUPS[*]}" == ai ]]
   [[ "$CURL_TIMEOUT" == 3 ]]
   [[ "$IPV6_ONLY" == true ]]
   [[ "$PROXY_ADDR" == '[::1]:1080' ]]
@@ -110,6 +113,29 @@ curl_calls() {
     run bash "$SCRIPT" --group "$group"
     [[ "$status" -eq 0 ]]
   done
+}
+
+@test "groups combine from commas and repeats in script order" {
+  parse_args -g geoip,platforms -g ai -g geoip
+  validate_args
+  resolve_selected_groups
+
+  [[ "${SELECTED_GROUPS[*]}" == "platforms ai geoip" ]]
+}
+
+@test "all among other groups selects every group" {
+  parse_args -g ai,all
+  validate_args
+  resolve_selected_groups
+
+  [[ "${SELECTED_GROUPS[*]}" == "${SERVICE_GROUPS[*]}" ]]
+}
+
+@test "unknown group in a list fails with its name" {
+  run bash "$SCRIPT" -g geoip,nope
+
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"unknown group nope"* ]]
 }
 
 @test "unknown option fails with its name" {
@@ -785,7 +811,7 @@ ROWS
 @test "geoip is skipped when another group is selected" {
   use_host_fixtures dual-stack
   set_dual_stack_ips
-  SELECTED_GROUP=platforms
+  SELECTED_GROUPS=(platforms)
 
   run_geoip_checks
 
@@ -1301,6 +1327,16 @@ run_report() {
   diff -u "$BATS_TEST_DIRNAME/expected/report-ai-ipv6.txt" "$BATS_TEST_TMPDIR/report.txt"
 }
 
+@test "two group report shows the geoip summary in one column" {
+  run_report -g geoip,platforms >"$BATS_TEST_TMPDIR/report.txt"
+  diff -u "$BATS_TEST_DIRNAME/expected/report-geoip-platforms.txt" "$BATS_TEST_TMPDIR/report.txt"
+}
+
+@test "geoip summary goes under the tables when platforms are not selected" {
+  run_report -g geoip,availability >"$BATS_TEST_TMPDIR/report.txt"
+  diff -u "$BATS_TEST_DIRNAME/expected/report-geoip-availability.txt" "$BATS_TEST_TMPDIR/report.txt"
+}
+
 @test "report keeps its layout under the C locale" {
   LC_ALL=C run_report >"$BATS_TEST_TMPDIR/report.txt"
 
@@ -1341,7 +1377,7 @@ run_report() {
   [[ "$(grep -c "MaxMind daily limit used up" <<<"$output")" -eq 1 ]]
 
   append_geoip_summary summary
-  [[ "${summary[1]}" == "GeoIP              SE 1/1" ]]
+  [[ "${summary[0]}" == "GeoIP              SE 1/1" ]]
   [[ "${summary[-1]}" == "MaxMind limit used up" ]]
 
   append_table_lines table GeoIP "$(table_name_width GeoIP MaxMind limit limit)" "$COUNTRY_CELL_WIDTH" MaxMind limit limit
@@ -1366,8 +1402,8 @@ run_report() {
 
   append_geoip_summary summary
 
-  [[ "${summary[1]}" == "GeoIP              SE 1/4" ]]
-  [[ "${summary[3]}" == "NL ipinfo.io, ipwho.is v6" ]]
+  [[ "${summary[0]}" == "GeoIP              SE 1/4" ]]
+  [[ "${summary[2]}" == "NL ipinfo.io, ipwho.is v6" ]]
 }
 
 @test "collapsed attention row wraps its services into two lines and counts the rest" {

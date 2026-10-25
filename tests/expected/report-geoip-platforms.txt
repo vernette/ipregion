@@ -1,0 +1,41 @@
+
+ ┃ Made with <3 by vernette · github.com/vernette/ipregion
+ ┃
+ ┃ IPv4  203.0.*.*        AS64496 Example Hosting  registered in NL
+ ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
+ ┃
+ ┃  SE   Sweden   seen by most services
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  28/30 look normal
+
+ Attention
+   JetBrains  IPv4   SI   different country
+   Disney+    IPv6   ?    unexpected response
+
+ Platforms    IPv4  IPv6
+ Google       SE    SE
+ YouTube      SE    SE
+ Twitch       SE    -
+ ChatGPT      SE    SE
+ Netflix      SE    SE
+ Spotify      SE    SE
+ Reddit       SE    -
+ Disney+      SE    ?
+ TikTok       SE    -
+ Apple        SE    SE
+ Steam        SE    -
+ Microsoft    SE    -
+ Ookla        SE    -
+ JetBrains    SI    SE
+ PlayStation  SE    SE
+
+ GeoIP          SE 13/15
+ ━━━━━━━━━━━━━━━━━━━━━━━
+ RU ifconfig.co v4,
+    ipquery.io v4
+ DE ifconfig.co v6,
+    ipquery.io v6
+
+ ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - no IPv6
+
+ Full GeoIP breakdown: ipregion --geoip-breakdown
+

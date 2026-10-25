@@ -1,0 +1,30 @@
+
+ ┃ Made with <3 by vernette · github.com/vernette/ipregion
+ ┃
+ ┃ IPv4  203.0.*.*        AS64496 Example Hosting  registered in NL
+ ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
+ ┃
+ ┃  SE   Sweden   seen by most services
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  19/20 look normal
+
+ Attention
+   Disney+  IPv6   ✗    region blocked
+
+ Availability     IPv4 IPv6
+ YouTube Premium  ✓    ✓
+ Google Search    ✓    ✓
+ Spotify Signup   ✓    ✓
+ Disney+          ✓    ✗
+ Reddit Guest     ✓    -
+
+ GeoIP             SE 13/15
+ ━━━━━━━━━━━━━━━━━━━━━━━━━━
+ RU ifconfig.co v4,
+    ipquery.io v4
+ DE ifconfig.co v6,
+    ipquery.io v6
+
+ ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - no IPv6
+
+ Full GeoIP breakdown: ipregion --geoip-breakdown
+
