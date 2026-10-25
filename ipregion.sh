@@ -378,6 +378,53 @@ to_entries
 | add // []
 | sort_by([(.services | length) >= $collapse_min, severity, .order])
 | map({services, ip_version, country, status, reason})'
+readonly JSON_VERSION=2
+readonly JSON_SCHEMA_URL="https://raw.githubusercontent.com/vernette/ipregion/master/schema/ipregion-v2.schema.json"
+# shellcheck disable=SC2016 # $ip, $asn and the other names are jq variables, not shell expansions
+readonly JSON_ADDRESS_FILTER='
+def nullable: if . == "" then null else . end;
+{
+  ip: $ip,
+  asn: ($asn | if . == "" then null else tonumber end),
+  org: ($org | nullable),
+  registered: ($registered | nullable),
+  maxmind_failure: ($maxmind_failure | nullable)
+}'
+# shellcheck disable=SC2016 # $schema, $version, $availability and the other names are jq variables, not shell expansions
+readonly JSON_REPORT_FILTER='
+def nullable: if . == "" then null else . end;
+def access:
+  if (.group == $availability or .group == $ai) and .status != $none then .status | nullable else null end;
+def protocol_result:
+  {country: (.country | nullable), access: access, reason: (.reason | nullable)}
+  + if has("iata") then {iata: (.iata | nullable), node: (.node | nullable)} else {} end;
+def protocol_entry($rows; $ip_version):
+  first($rows[] | select(.ip_version == $ip_version) | protocol_result) // null;
+def service_entries($results; $group):
+  [$results[] | select(.group == $group)] as $rows
+  | reduce $rows[].id as $id ([]; if any(.[]; . == $id) then . else . + [$id] end)
+  | map(. as $id | [$rows[] | select(.id == $id)] as $service_rows | {
+      id: $id,
+      service: $service_rows[0].service,
+      ipv4: protocol_entry($service_rows; 4),
+      ipv6: protocol_entry($service_rows; 6)
+    });
+. as $results
+| {
+    "$schema": $schema,
+    version: $version,
+    ipv4: $ipv4,
+    ipv6: $ipv6,
+    verdict: {country: ($verdict | nullable), tied: $tied},
+    attention: ($attention | map({
+      services,
+      ip_version,
+      country: (.country | nullable),
+      access: (if .status == $yes or .status == $none then null else .status | nullable end),
+      reason: (.reason | nullable)
+    })),
+    results: (reduce $groups[] as $group ({}; .[$group] = service_entries($results; $group)))
+  }'
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
   readonly C_TITLE=$'\033[1;36m'
@@ -1282,6 +1329,13 @@ run_job() {
   "$@" >"$result_file"
 }
 
+run_check() {
+  local check="$1"
+  local ip_version="$2"
+
+  "$check" "$ip_version" | jq -c --arg id "$(check_id "$check")" '{id: $id} + .'
+}
+
 start_job() {
   local result_file
 
@@ -1294,11 +1348,11 @@ start_check() {
   local check="$1"
 
   if [[ -n "$EXTERNAL_IPV4" ]]; then
-    start_job "$check" 4
+    start_job run_check "$check" 4
   fi
 
   if [[ -n "$EXTERNAL_IPV6" ]]; then
-    start_job "$check" 6
+    start_job run_check "$check" 6
   fi
 }
 
@@ -2745,8 +2799,44 @@ print_service_report() {
   print_legend
 }
 
+print_json_array() {
+  jq -cn '$ARGS.positional' --args "$@"
+}
+
+print_address_json() {
+  local ip_version="$1"
+  local ip
+
+  ip=$(external_ip "$ip_version")
+  if [[ -z "$ip" ]]; then
+    printf 'null'
+    return
+  fi
+
+  jq -cn \
+    --arg ip "$ip" \
+    --arg asn "${REGISTRATION_ASN[$ip_version]:-}" \
+    --arg org "${REGISTRATION_ORG[$ip_version]:-}" \
+    --arg registered "${REGISTRATION_COUNTRY[$ip_version]:-}" \
+    --arg maxmind_failure "${REGISTRATION_MAXMIND_FAILURE[$ip_version]:-}" \
+    "$JSON_ADDRESS_FILTER"
+}
+
 print_json() {
-  jq . <<<"$RESULTS"
+  jq \
+    --arg schema "$JSON_SCHEMA_URL" \
+    --argjson version "$JSON_VERSION" \
+    --argjson ipv4 "$(print_address_json 4)" \
+    --argjson ipv6 "$(print_address_json 6)" \
+    --arg verdict "$VERDICT" \
+    --argjson tied "$(print_json_array "${VERDICT_TIED_COUNTRIES[@]}")" \
+    --argjson attention "$ATTENTION" \
+    --argjson groups "$(print_json_array "${SERVICE_GROUPS[@]}")" \
+    --arg availability "$GROUP_AVAILABILITY" \
+    --arg ai "$GROUP_AI" \
+    --arg yes "$STATUS_YES" \
+    --arg none "$STATUS_NONE" \
+    "$JSON_REPORT_FILTER" <<<"$RESULTS"
 }
 
 print_output() {

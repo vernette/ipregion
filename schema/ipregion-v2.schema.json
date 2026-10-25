@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/vernette/ipregion/master/schema/ipregion-v2.schema.json",
+  "title": "ipregion.sh --json output, version 2",
+  "type": "object",
+  "required": ["$schema", "version", "ipv4", "ipv6", "verdict", "attention", "results"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "const": "https://raw.githubusercontent.com/vernette/ipregion/master/schema/ipregion-v2.schema.json" },
+    "version": { "const": 2 },
+    "ipv4": { "$ref": "#/$defs/address" },
+    "ipv6": { "$ref": "#/$defs/address" },
+    "verdict": {
+      "type": "object",
+      "required": ["country", "tied"],
+      "additionalProperties": false,
+      "properties": {
+        "country": { "$ref": "#/$defs/country" },
+        "tied": { "type": "array", "items": { "$ref": "#/$defs/countryCode" } }
+      }
+    },
+    "attention": { "type": "array", "items": { "$ref": "#/$defs/attentionEntry" } },
+    "results": {
+      "type": "object",
+      "required": ["platforms", "cdn", "availability", "ai", "geoip"],
+      "additionalProperties": false,
+      "properties": {
+        "platforms": { "type": "array", "items": { "$ref": "#/$defs/countryService" } },
+        "cdn": { "type": "array", "items": { "$ref": "#/$defs/cdnService" } },
+        "availability": { "type": "array", "items": { "$ref": "#/$defs/service" } },
+        "ai": { "type": "array", "items": { "$ref": "#/$defs/service" } },
+        "geoip": { "type": "array", "items": { "$ref": "#/$defs/countryService" } }
+      }
+    }
+  },
+  "$defs": {
+    "countryCode": { "type": "string", "pattern": "^[A-Z]{2}$" },
+    "country": { "oneOf": [{ "$ref": "#/$defs/countryCode" }, { "type": "null" }] },
+    "nullableString": { "type": ["string", "null"] },
+    "access": { "enum": ["yes", "no", "ipblock", null] },
+    "address": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["ip", "asn", "org", "registered", "maxmind_failure"],
+          "additionalProperties": false,
+          "properties": {
+            "ip": { "type": "string" },
+            "asn": { "type": ["integer", "null"] },
+            "org": { "$ref": "#/$defs/nullableString" },
+            "registered": { "$ref": "#/$defs/country" },
+            "maxmind_failure": { "$ref": "#/$defs/nullableString" }
+          }
+        }
+      ]
+    },
+    "result": {
+      "type": "object",
+      "required": ["country", "access", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "country": { "$ref": "#/$defs/country" },
+        "access": { "$ref": "#/$defs/access" },
+        "reason": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "cdnResult": {
+      "type": "object",
+      "required": ["country", "access", "reason", "iata", "node"],
+      "additionalProperties": false,
+      "properties": {
+        "country": { "$ref": "#/$defs/country" },
+        "access": { "type": "null" },
+        "reason": { "$ref": "#/$defs/nullableString" },
+        "iata": { "$ref": "#/$defs/nullableString" },
+        "node": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "required": ["id", "service", "ipv4", "ipv6"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "service": { "type": "string" },
+        "ipv4": { "oneOf": [{ "$ref": "#/$defs/result" }, { "type": "null" }] },
+        "ipv6": { "oneOf": [{ "$ref": "#/$defs/result" }, { "type": "null" }] }
+      }
+    },
+    "countryService": {
+      "allOf": [
+        { "$ref": "#/$defs/service" },
+        {
+          "properties": {
+            "ipv4": { "properties": { "access": { "type": "null" } } },
+            "ipv6": { "properties": { "access": { "type": "null" } } }
+          }
+        }
+      ]
+    },
+    "cdnService": {
+      "type": "object",
+      "required": ["id", "service", "ipv4", "ipv6"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "service": { "type": "string" },
+        "ipv4": { "oneOf": [{ "$ref": "#/$defs/cdnResult" }, { "type": "null" }] },
+        "ipv6": { "oneOf": [{ "$ref": "#/$defs/cdnResult" }, { "type": "null" }] }
+      }
+    },
+    "attentionEntry": {
+      "type": "object",
+      "required": ["services", "ip_version", "country", "access", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "services": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "ip_version": { "enum": ["4", "6", "both"] },
+        "country": { "$ref": "#/$defs/country" },
+        "access": { "$ref": "#/$defs/access" },
+        "reason": { "$ref": "#/$defs/nullableString" }
+      }
+    }
+  }
+}

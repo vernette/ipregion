@@ -1404,7 +1404,29 @@ run_report() {
 @test "json output prints the results instead of the report" {
   run run_report --json -g cdn
 
-  [[ "$(jq -r '.[0].service' <<<"$output")" == Cloudflare ]]
+  [[ "$(jq -r '.results.cdn[0].service' <<<"$output")" == Cloudflare ]]
+}
+
+@test "json output matches the version 2 schema" {
+  if ! command -v check-jsonschema >/dev/null 2>&1; then
+    skip "check-jsonschema is not installed"
+  fi
+
+  run_report --json >"$BATS_TEST_TMPDIR/report.json"
+
+  check-jsonschema --schemafile "$BATS_TEST_DIRNAME/../schema/ipregion-v2.schema.json" "$BATS_TEST_TMPDIR/report.json"
+}
+
+@test "json output groups both protocols of a service under its id" {
+  run run_report --json
+
+  jq -e '
+    (keys_unsorted | first) == "$schema"
+    and .ipv4.ip == "203.0.113.7" and .ipv4.asn == 64496
+    and (.results | keys_unsorted) == ["platforms", "cdn", "availability", "ai", "geoip"]
+    and (.results.platforms[0] | .id == "google" and .ipv4.country == "SE" and .ipv4.access == null and .ipv6 != null)
+    and ([.results.availability[] | select(.id == "disney_plus") | .ipv6.access] == ["no"])
+  ' <<<"$output"
 }
 
 @test "tie names every tied country instead of a verdict" {
