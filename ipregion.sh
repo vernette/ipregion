@@ -822,8 +822,18 @@ request_maxmind_token() {
 fetch_maxmind_city() {
   local ip_version="$1"
   local ip="$2"
+  local other_ip_version=4
+
+  if [[ "$ip_version" == 4 ]]; then
+    other_ip_version=6
+  fi
 
   http_request "$ip_version" "$MAXMIND_CITY_URL/$ip?demo=1" --header "Authorization: Bearer $MAXMIND_TOKEN"
+  if [[ "$HTTP_CODE" != "$HTTP_PAYMENT_REQUIRED" || -n "$PROXY_ADDR" || -z "$(external_ip "$other_ip_version")" ]]; then
+    return
+  fi
+
+  http_request "$other_ip_version" "$MAXMIND_CITY_URL/$ip?demo=1" --header "Authorization: Bearer $MAXMIND_TOKEN"
 }
 
 maxmind_failure_reason() {

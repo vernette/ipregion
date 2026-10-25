@@ -486,19 +486,55 @@ set_dual_stack_ips() {
   [[ "$output" -eq 0 ]]
 }
 
-@test "used up maxmind limit falls back to ripe" {
+use_up_maxmind_limit() {
+  local ip_version="$1"
+  local name
+
+  for name in geoip.maxmind.com_geoip_v2.1_city_203.0.113.7_demo_1 geoip.maxmind.com_geoip_v2.1_city_2001_db8_85a3__8a2e_370_7334_demo_1; do
+    add_fixture "$ip_version" "$name" \
+      '{"code":"INSUFFICIENT_FUNDS","error":"You have used all 25 of your demo queries for the day."}'
+    set_fixture_field "$ip_version" "$name" code 402
+  done
+}
+
+@test "used up maxmind limit on both protocols falls back to ripe" {
   use_host_fixtures dual-stack
-  add_fixture 4 geoip.maxmind.com_geoip_v2.1_city_203.0.113.7_demo_1 \
-    '{"code":"INSUFFICIENT_FUNDS","error":"You have used all 25 of your demo queries for the day."}'
-  set_fixture_field 4 geoip.maxmind.com_geoip_v2.1_city_203.0.113.7_demo_1 code 402
+  use_up_maxmind_limit 4
+  use_up_maxmind_limit 6
   set_dual_stack_ips
 
   lookup_ip_registrations
 
   [[ "${REGISTRATION_MAXMIND_FAILURE[4]}" == "$REASON_DAILY_LIMIT" ]]
+  [[ "${REGISTRATION_MAXMIND_FAILURE[6]}" == "$REASON_DAILY_LIMIT" ]]
   [[ "${REGISTRATION_COUNTRY[4]}" == SE ]]
   [[ "${REGISTRATION_ASN[4]}" == 64496 && "${REGISTRATION_ORG[4]}" == "Example Hosting" ]]
-  [[ "${REGISTRATION_COUNTRY[6]}" == DE ]]
+}
+
+@test "used up maxmind limit on one protocol looks up over the other" {
+  use_host_fixtures dual-stack
+  cp "$FAKE_CURL_FIXTURES/ipv4/geoip.maxmind.com_geoip_v2.1_city_203.0.113.7_demo_1" "$FAKE_CURL_FIXTURES/ipv6/"
+  use_up_maxmind_limit 4
+  set_dual_stack_ips
+
+  lookup_ip_registrations
+
+  [[ -z "${REGISTRATION_MAXMIND_FAILURE[4]:-}${REGISTRATION_MAXMIND_FAILURE[6]:-}" ]]
+  [[ "${REGISTRATION_COUNTRY[4]}" == NL && "${REGISTRATION_COUNTRY[6]}" == DE ]]
+  grep -q -- '-6 .*city/203.0.113.7?demo=1' "$FAKE_CURL_LOG"
+}
+
+@test "used up maxmind limit through a proxy is not retried" {
+  use_host_fixtures dual-stack
+  use_up_maxmind_limit 4
+  set_dual_stack_ips
+  PROXY_ADDR=127.0.0.1:1080
+  MAXMIND_TOKEN=v2.local.masked-demo-token
+
+  fetch_maxmind_city 4 203.0.113.7
+
+  run grep -c geoip.maxmind.com "$FAKE_CURL_LOG"
+  [[ "$output" -eq 1 ]]
 }
 
 @test "demo page without csrf token skips maxmind lookups" {
