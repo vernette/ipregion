@@ -307,6 +307,14 @@ readonly GEOIP_CHECKS=(
   check_geoip_ip_api_com
 )
 
+readonly ALL_CHECKS=(
+  "${PLATFORMS_CHECKS[@]}"
+  "${CDN_CHECKS[@]}"
+  "${AVAILABILITY_CHECKS[@]}"
+  "${AI_CHECKS[@]}"
+  "${GEOIP_CHECKS[@]}"
+)
+
 readonly REASON_DIFFERENT_COUNTRY="different country"
 readonly ATTENTION_COLLAPSE_MIN=3
 # shellcheck disable=SC2016 # $yes, $platforms and $geoip are jq variables, not shell expansions
@@ -398,6 +406,8 @@ DEBUG=false
 JSON_OUTPUT=false
 REQUESTED_GROUPS=()
 SELECTED_GROUPS=("${SERVICE_GROUPS[@]}")
+REQUESTED_SERVICES=()
+SELECTED_CHECKS=()
 CURL_TIMEOUT="$DEFAULT_TIMEOUT"
 IPV4_ONLY=false
 IPV6_ONLY=false
@@ -455,6 +465,9 @@ Options:
   -j, --json             Print results as JSON
   -g, --group GROUPS     Check only these groups, comma-separated or repeated:
                          ${SERVICE_GROUPS[*]} (default: $ALL_GROUPS)
+  -s, --service NAMES    Check only these services, comma-separated or repeated:
+                         [GROUP/]SERVICE, names from --list-services
+      --list-services    List service names and exit
   -t, --timeout SEC      Request timeout in seconds (default: $DEFAULT_TIMEOUT)
   -4, --ipv4             Check IPv4 only
   -6, --ipv6             Check IPv6 only
@@ -476,8 +489,37 @@ require_option_value() {
   fi
 }
 
+check_group() {
+  local check="$1"
+  local group="${check#check_}"
+
+  printf '%s' "${group%%_*}"
+}
+
+check_id() {
+  local check="$1"
+  local group
+
+  group=$(check_group "$check")
+  printf '%s' "${check#check_"$group"_}"
+}
+
+service_name() {
+  local check="$1"
+
+  printf '%s/%s' "$(check_group "$check")" "$(check_id "$check")"
+}
+
+print_service_list() {
+  local check
+
+  for check in "${ALL_CHECKS[@]}"; do
+    printf '%s\n' "$(service_name "$check")"
+  done
+}
+
 parse_args() {
-  local -a groups
+  local -a groups services
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -502,6 +544,16 @@ parse_args() {
         IFS=, read -ra groups <<<"$2"
         REQUESTED_GROUPS+=("${groups[@]}")
         shift 2
+        ;;
+      -s | --service)
+        require_option_value "$1" "$#"
+        IFS=, read -ra services <<<"$2"
+        REQUESTED_SERVICES+=("${services[@]}")
+        shift 2
+        ;;
+      --list-services)
+        print_service_list
+        exit 0
         ;;
       -t | --timeout)
         require_option_value "$1" "$#"
@@ -593,7 +645,11 @@ validate_args() {
 resolve_selected_groups() {
   local group
 
-  if ((${#REQUESTED_GROUPS[@]} == 0)) || is_in_list "$ALL_GROUPS" "${REQUESTED_GROUPS[@]}"; then
+  if is_in_list "$ALL_GROUPS" "${REQUESTED_GROUPS[@]}"; then
+    return
+  fi
+
+  if ((${#REQUESTED_GROUPS[@]} + ${#REQUESTED_SERVICES[@]} == 0)); then
     return
   fi
 
@@ -602,6 +658,66 @@ resolve_selected_groups() {
     if is_in_list "$group" "${REQUESTED_GROUPS[@]}"; then
       SELECTED_GROUPS+=("$group")
     fi
+  done
+}
+
+normalize_service_name() {
+  local name="${1,,}"
+
+  name="${name//+/_plus}"
+  printf '%s' "${name//[. -]/_}"
+}
+
+matching_checks() {
+  local request="$1"
+  local group=""
+  local name="$request"
+  local -a exact=() shortened=()
+  local check id
+
+  if [[ "$request" == */* ]]; then
+    group="${request%%/*}"
+    group="${group,,}"
+    name="${request#*/}"
+  fi
+  name=$(normalize_service_name "$name")
+
+  for check in "${ALL_CHECKS[@]}"; do
+    if [[ -n "$group" && "$(check_group "$check")" != "$group" ]]; then
+      continue
+    fi
+    id=$(check_id "$check")
+    if [[ "$id" == "$name" ]]; then
+      exact+=("$check")
+    elif [[ "${id%_*}" == "$name" ]]; then
+      shortened+=("$check")
+    fi
+  done
+
+  if ((${#exact[@]} > 0)); then
+    printf '%s\n' "${exact[@]}"
+    return
+  fi
+  printf '%s\n' "${shortened[@]}"
+}
+
+resolve_selected_checks() {
+  local -a matches candidates
+  local request check
+
+  for request in "${REQUESTED_SERVICES[@]}"; do
+    mapfile -t matches < <(matching_checks "$request")
+    if [[ -z "${matches[0]:-}" ]]; then
+      die "unknown service $request, see --list-services"
+    fi
+    if ((${#matches[@]} > 1)); then
+      candidates=()
+      for check in "${matches[@]}"; do
+        candidates+=("$(service_name "$check")")
+      done
+      die "ambiguous service $request, expected one of: ${candidates[*]}"
+    fi
+    SELECTED_CHECKS+=("${matches[0]}")
   done
 }
 
@@ -1188,10 +1304,8 @@ start_check() {
 
 is_check_selected() {
   local check="$1"
-  local group="${check#check_}"
 
-  group="${group%%_*}"
-  is_group_selected "$group"
+  is_group_selected "$(check_group "$check")" || is_in_list "$check" "${SELECTED_CHECKS[@]}"
 }
 
 external_ip() {
@@ -2115,11 +2229,15 @@ print_checks_bar() {
   print_header_line "$(format_summary_bar "$normal" "$total" "$VERDICT_BAR_WIDTH")  $(paint "$C_DIM" "$normal/$total $CHECKS_NORMAL_NOTE")"
 }
 
-print_header() {
+print_host_header() {
   printf '\n'
   print_header_line "$(paint "$C_DIM" "Made with $(paint "$C_NO" "<3")${C_DIM} by $AUTHOR ·") ${SCRIPT_URL#https://}"
   print_header_line ""
   print_ip_lines
+}
+
+print_header() {
+  print_host_header
   print_header_line ""
   print_verdict_line
   print_checks_bar
@@ -2288,21 +2406,22 @@ append_group_lines() {
   append_table_lines "$lines_name" "$title" "$(table_name_width "$title" "${fields[@]}")" "$cell_width" "${fields[@]}"
 }
 
-append_status_group_lines() {
-  local -n status_lines=$1
+append_separated_group_lines() {
+  local -n separated_lines=$1
   local group="$2"
   local title="$3"
+  local cell_width="$4"
   local -a lines=()
 
-  append_group_lines lines "$group" "$title" $((STATUS_CELL_WIDTH + COUNTRY_EXTRA))
+  append_group_lines lines "$group" "$title" "$cell_width"
   if ((${#lines[@]} == 0)); then
     return
   fi
 
-  if ((${#status_lines[@]} > 0)); then
-    status_lines+=("")
+  if ((${#separated_lines[@]} > 0)); then
+    separated_lines+=("")
   fi
-  status_lines+=("${lines[@]}")
+  separated_lines+=("${lines[@]}")
 }
 
 country_of_cell() {
@@ -2475,8 +2594,8 @@ print_service_tables() {
   local -a left=() right=()
 
   append_group_lines left "$GROUP_PLATFORMS" Platforms $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA))
-  append_status_group_lines right "$GROUP_AVAILABILITY" Availability
-  append_status_group_lines right "$GROUP_AI" AI
+  append_separated_group_lines right "$GROUP_AVAILABILITY" Availability $((STATUS_CELL_WIDTH + COUNTRY_EXTRA))
+  append_separated_group_lines right "$GROUP_AI" AI $((STATUS_CELL_WIDTH + COUNTRY_EXTRA))
   if is_geoip_summary_shown && ((${#left[@]} == 0)); then
     append_geoip_summary right
   elif is_geoip_summary_shown; then
@@ -2547,7 +2666,7 @@ print_cdn_table() {
 }
 
 print_geoip_breakdown() {
-  local -a fields first second
+  local -a fields first=() second=()
   local half
 
   if is_geoip_summary_shown; then
@@ -2563,14 +2682,16 @@ print_geoip_breakdown() {
   half=$(((half + 1) / 2))
   half=$((half * GROUP_ROW_FIELDS))
   append_table_lines first GeoIP "$(table_name_width GeoIP "${fields[@]:0:half}")" $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA)) "${fields[@]:0:half}"
-  append_table_lines second "" "$(table_name_width "" "${fields[@]:half}")" $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA)) "${fields[@]:half}"
+  if ((${#fields[@]} > half)); then
+    append_table_lines second "" "$(table_name_width "" "${fields[@]:half}")" $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA)) "${fields[@]:half}"
+  fi
   print_two_columns first second
 }
 
 print_legend() {
   local separator legend
 
-  if [[ "${SELECTED_GROUPS[*]}" == "$GROUP_CDN" ]]; then
+  if jq -e --arg cdn "$GROUP_CDN" 'all(.group == $cdn)' <<<"$RESULTS" >/dev/null; then
     return
   fi
 
@@ -2604,6 +2725,26 @@ print_report() {
   print_breakdown_hint
 }
 
+is_service_report() {
+  ((${#SELECTED_GROUPS[@]} == 0))
+}
+
+print_service_report() {
+  local -a tables=()
+
+  print_host_header
+  printf '\n'
+  append_separated_group_lines tables "$GROUP_PLATFORMS" Platforms $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA))
+  append_separated_group_lines tables "$GROUP_GEOIP" GeoIP $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA))
+  append_separated_group_lines tables "$GROUP_AVAILABILITY" Availability $((STATUS_CELL_WIDTH + COUNTRY_EXTRA))
+  append_separated_group_lines tables "$GROUP_AI" AI $((STATUS_CELL_WIDTH + COUNTRY_EXTRA))
+  if ((${#tables[@]} > 0)); then
+    print_lines "${tables[@]}"
+  fi
+  print_cdn_table
+  print_legend
+}
+
 print_json() {
   jq . <<<"$RESULTS"
 }
@@ -2611,6 +2752,11 @@ print_json() {
 print_output() {
   if [[ "$JSON_OUTPUT" == true ]]; then
     print_json
+    return
+  fi
+
+  if is_service_report; then
+    print_service_report
     return
   fi
 
@@ -2622,6 +2768,7 @@ main() {
   parse_args "$@"
   validate_args
   resolve_selected_groups
+  resolve_selected_checks
   create_work_dir
   create_job_slots
   discover_external_ips

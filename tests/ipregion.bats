@@ -138,6 +138,59 @@ curl_calls() {
   [[ "$output" == *"unknown group nope"* ]]
 }
 
+@test "service names are normalized like check ids" {
+  [[ "$(normalize_service_name 'Disney+')" == disney_plus ]]
+  [[ "$(normalize_service_name ipinfo.io)" == ipinfo_io ]]
+  [[ "$(normalize_service_name 'YouTube Premium')" == youtube_premium ]]
+}
+
+@test "service resolves by exact id first, then without its last segment" {
+  parse_args -s spotify,ipinfo -s cdn/youtube -s AI/OpenAI
+  validate_args
+  resolve_selected_groups
+  resolve_selected_checks
+
+  [[ "${SELECTED_GROUPS[*]}" == "" ]]
+  [[ "${SELECTED_CHECKS[*]}" == "check_platforms_spotify check_geoip_ipinfo_io check_cdn_youtube check_ai_openai_api" ]]
+}
+
+@test "service matching several checks is ambiguous" {
+  run bash "$SCRIPT" -s youtube
+
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"ambiguous service youtube, expected one of: platforms/youtube cdn/youtube"* ]]
+}
+
+@test "unknown service points to the service list" {
+  run bash "$SCRIPT" -s nope
+
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"unknown service nope, see --list-services"* ]]
+}
+
+@test "services add to the selected groups" {
+  parse_args -g ai -s ipinfo
+  validate_args
+  resolve_selected_groups
+  resolve_selected_checks
+
+  is_check_selected check_ai_gemini_web
+  is_check_selected check_geoip_ipinfo_io
+  run is_check_selected check_geoip_ripe
+  [[ "$status" -eq 1 ]]
+  run is_check_selected check_platforms_google
+  [[ "$status" -eq 1 ]]
+}
+
+@test "service list names every check" {
+  run bash "$SCRIPT" --list-services
+
+  [[ "$status" -eq 0 ]]
+  [[ "${#lines[@]}" -eq "${#ALL_CHECKS[@]}" ]]
+  [[ "${lines[0]}" == platforms/google ]]
+  [[ "$output" == *$'\ngeoip/ipinfo_io\n'* ]]
+}
+
 @test "unknown option fails with its name" {
   run bash "$SCRIPT" --nope
 
@@ -1335,6 +1388,11 @@ run_report() {
 @test "geoip summary goes under the tables when platforms are not selected" {
   run_report -g geoip,availability >"$BATS_TEST_TMPDIR/report.txt"
   diff -u "$BATS_TEST_DIRNAME/expected/report-geoip-availability.txt" "$BATS_TEST_TMPDIR/report.txt"
+}
+
+@test "service report shows only the chosen services by group" {
+  run_report -s spotify,geoip/cloudflare,youtube_premium,openai,ipinfo -s cdn/cloudflare -s availability/disney+ >"$BATS_TEST_TMPDIR/report.txt"
+  diff -u "$BATS_TEST_DIRNAME/expected/report-services.txt" "$BATS_TEST_TMPDIR/report.txt"
 }
 
 @test "report keeps its layout under the C locale" {

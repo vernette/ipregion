@@ -1,0 +1,25 @@
+
+ ┃ Made with <3 by vernette · github.com/vernette/ipregion
+ ┃
+ ┃ IPv4  203.0.*.*        AS64496 Example Hosting  registered in NL
+ ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
+
+ Platforms  IPv4  IPv6
+ Spotify    SE    SE
+
+ GeoIP       IPv4  IPv6
+ ipinfo.io   SE    SE
+ Cloudflare  SE    SE
+
+ Availability     IPv4 IPv6
+ YouTube Premium  ✓    ✓
+ Disney+          ✓    ✗
+
+ AI          IPv4 IPv6
+ OpenAI API  ✓    ✓
+
+ CDN         IPv4       IPv6
+ Cloudflare  SE · ARN   SE · ARN
+
+ ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - no IPv6
+
