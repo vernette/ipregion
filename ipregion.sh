@@ -128,6 +128,17 @@ readonly AIRPORT_CODES_URL="https://www.air-port-codes.com/api/v1/single"
 readonly AIRPORT_CODES_KEY="96dc04b3fb"
 readonly AIRPORT_CODES_REFERER="https://www.air-port-codes.com/"
 
+readonly GOOGLE_SOCS_COOKIE="Cookie: SOCS=CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY"
+readonly ACCEPT_LANGUAGE_ENGLISH="Accept-Language: en-US,en;q=0.9"
+readonly YOUTUBE_PREMIUM_URL="https://www.youtube.com/premium"
+readonly YOUTUBE_PREMIUM_BLOCKED_MARKER="YouTube Premium is not available in your country"
+readonly SPOTIFY_SIGNUP_BLOCKED_STATUS_PATTERN='^(120|320)$'
+readonly DISNEY_PLUS_FORBIDDEN_MARKER="Forbidden location"
+readonly REDDIT_GUEST_URL="https://www.reddit.com"
+readonly GOOGLE_SEARCH_URL="https://www.google.com/search?q=cats"
+readonly GOOGLE_SEARCH_CAPTCHA_PATH="/sorry/"
+readonly GOOGLE_SEARCH_NO_JS_MARKER="enablejs"
+
 readonly CURL_EXIT_OK=0
 readonly CURL_EXIT_DNS=6
 readonly CURL_EXIT_CONNECT=7
@@ -179,6 +190,15 @@ readonly CDN_CHECKS=(
   check_cdn_cloudflare
   check_cdn_youtube
   check_cdn_netflix
+)
+
+readonly GROUP_AVAILABILITY="availability"
+readonly AVAILABILITY_CHECKS=(
+  check_availability_youtube_premium
+  check_availability_spotify_signup
+  check_availability_disney_plus
+  check_availability_reddit_guest
+  check_availability_google_search
 )
 
 readonly GROUP_GEOIP="geoip"
@@ -967,6 +987,27 @@ print_country() {
   print_result "$group" "$service" "$ip_version" "$country" "$STATUS_YES" ""
 }
 
+print_status() {
+  local group="$1"
+  local service="$2"
+  local ip_version="$3"
+  local status="$4"
+  local reason
+
+  if is_service_without_ipv6; then
+    print_result "$group" "$service" "$ip_version" "" "$STATUS_NONE" "$REASON_NO_IPV6"
+    return
+  fi
+
+  reason=$(http_failure_reason)
+  if [[ -n "$status" ]]; then
+    print_result "$group" "$service" "$ip_version" "" "$status" "$reason"
+    return
+  fi
+
+  print_failure "$group" "$service" "$ip_version" "${reason:-$REASON_UNEXPECTED_RESPONSE}"
+}
+
 check_geoip_json() {
   local service="$1"
   local ip_version="$2"
@@ -1290,6 +1331,104 @@ check_cdn_netflix() {
   print_edge Netflix "$ip_version" "$(json_value '.targets[0].location.country // empty')" "$iata" "$node"
 }
 
+youtube_premium_status() {
+  if [[ "$HTTP_CODE" != "$HTTP_OK" ]]; then
+    return
+  fi
+
+  if [[ "$HTTP_BODY" == *"$YOUTUBE_PREMIUM_BLOCKED_MARKER"* ]]; then
+    printf '%s' "$STATUS_NO"
+    return
+  fi
+
+  printf '%s' "$STATUS_YES"
+}
+
+check_availability_youtube_premium() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$YOUTUBE_PREMIUM_URL" \
+    --user-agent "$USER_AGENT" --header "$GOOGLE_SOCS_COOKIE" --header "$ACCEPT_LANGUAGE_ENGLISH"
+  print_status "$GROUP_AVAILABILITY" "YouTube Premium" "$ip_version" "$(youtube_premium_status)"
+}
+
+spotify_signup_status() {
+  if [[ "$(json_value '.status')" =~ $SPOTIFY_SIGNUP_BLOCKED_STATUS_PATTERN ]]; then
+    printf '%s' "$STATUS_NO"
+    return
+  fi
+
+  case "$(json_value '.is_country_launched')" in
+    true) printf '%s' "$STATUS_YES" ;;
+    false) printf '%s' "$STATUS_NO" ;;
+  esac
+}
+
+check_availability_spotify_signup() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$SPOTIFY_URL" --header "X-Client-Id: $SPOTIFY_CLIENT_ID"
+  print_status "$GROUP_AVAILABILITY" "Spotify Signup" "$ip_version" "$(spotify_signup_status)"
+}
+
+disney_plus_status() {
+  case "$(json_value '.extensions.sdk.session.inSupportedLocation')" in
+    true)
+      printf '%s' "$STATUS_YES"
+      return
+      ;;
+    false)
+      printf '%s' "$STATUS_NO"
+      return
+      ;;
+  esac
+
+  if [[ "$(json_value '.errors[0].message // empty')" == *"$DISNEY_PLUS_FORBIDDEN_MARKER"* ]]; then
+    printf '%s' "$STATUS_NO"
+  fi
+}
+
+check_availability_disney_plus() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$DISNEY_PLUS_URL" \
+    --header "Authorization: Bearer $DISNEY_PLUS_API_KEY" --json "$DISNEY_PLUS_QUERY"
+  print_status "$GROUP_AVAILABILITY" Disney+ "$ip_version" "$(disney_plus_status)"
+}
+
+reddit_guest_status() {
+  case "$HTTP_CODE" in
+    "$HTTP_OK") printf '%s' "$STATUS_YES" ;;
+    "$HTTP_FORBIDDEN") printf '%s' "$STATUS_IPBLOCK" ;;
+  esac
+}
+
+check_availability_reddit_guest() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$REDDIT_GUEST_URL" --user-agent "$USER_AGENT"
+  print_status "$GROUP_AVAILABILITY" "Reddit Guest" "$ip_version" "$(reddit_guest_status)"
+}
+
+google_search_status() {
+  if [[ "$HTTP_REDIRECT_URL" == *"$GOOGLE_SEARCH_CAPTCHA_PATH"* || "$HTTP_CODE" == "$HTTP_TOO_MANY_REQUESTS" ]]; then
+    printf '%s' "$STATUS_NO"
+    return
+  fi
+
+  if [[ "$HTTP_CODE" == "$HTTP_OK" && "$HTTP_BODY" == *"$GOOGLE_SEARCH_NO_JS_MARKER"* ]]; then
+    printf '%s' "$STATUS_YES"
+  fi
+}
+
+check_availability_google_search() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$GOOGLE_SEARCH_URL" \
+    --user-agent "$USER_AGENT" --header "$GOOGLE_SOCS_COOKIE" --header "$ACCEPT_LANGUAGE_ENGLISH"
+  print_status "$GROUP_AVAILABILITY" "Google Search" "$ip_version" "$(google_search_status)"
+}
+
 start_checks() {
   local check
 
@@ -1327,6 +1466,7 @@ main() {
   lookup_ip_registrations
   start_checks "${PLATFORMS_CHECKS[@]}"
   start_checks "${CDN_CHECKS[@]}"
+  start_checks "${AVAILABILITY_CHECKS[@]}"
   start_checks "${GEOIP_CHECKS[@]}"
   wait_for_jobs
   collect_results

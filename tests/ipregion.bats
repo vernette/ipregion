@@ -899,3 +899,94 @@ ROWS
 
   [[ "$(jq -r '.[] | select(.service == "Netflix") | .reason' <<<"$RESULTS")" == "access denied (403)" ]]
 }
+
+run_availability_checks() {
+  create_job_slots
+  start_checks "${AVAILABILITY_CHECKS[@]}"
+  wait_for_jobs
+  collect_results
+}
+
+availability_row() {
+  local service="$1"
+
+  jq -r --arg service "$service" '.[] | select(.service == $service) | [.status, .reason] | join(" ")' <<<"$RESULTS"
+}
+
+@test "availability checks give a status, no ipv6 or a reason per service and protocol" {
+  local expected
+
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+
+  run_availability_checks
+
+  expected=$(
+    cat <<'ROWS'
+YouTube Premium 4  yes 
+YouTube Premium 6  yes 
+Spotify Signup 4  yes 
+Spotify Signup 6  yes 
+Disney+ 4  yes 
+Disney+ 6  no 
+Reddit Guest 4  yes 
+Reddit Guest 6  none no IPv6
+Google Search 4  yes 
+Google Search 6  yes 
+ROWS
+  )
+  run result_rows
+  [[ "$output" == "$expected" ]]
+  run grep -c -- '--location' "$FAKE_CURL_LOG"
+  [[ "$output" -eq 0 ]]
+}
+
+@test "region blocked services are no" {
+  use_host_fixtures dual-stack
+  add_fixture 4 www.youtube.com_premium '<p>YouTube Premium is not available in your country</p>'
+  add_fixture 4 spclient.wg.spotify.com_signup_public_v1_account__validate_1_key_142b583129b2df829de3656f9eb484e6 \
+    '{"status":120,"country":"RU","is_country_launched":false}'
+  add_fixture 4 disney.api.edge.bamgrid.com_graph_v1_device_graphql \
+    '{"extensions":{"sdk":{"session":{"inSupportedLocation":false,"location":{"countryCode":"RU"}}}}}'
+  EXTERNAL_IPV4=203.0.113.7
+
+  run_availability_checks
+
+  [[ "$(availability_row "YouTube Premium")" == "no " ]]
+  [[ "$(availability_row "Spotify Signup")" == "no " ]]
+  [[ "$(availability_row Disney+)" == "no " ]]
+}
+
+@test "reddit guest 403 is an ip block with the reason" {
+  use_host_fixtures dual-stack
+  set_fixture_field 4 www.reddit.com code 403
+  EXTERNAL_IPV4=203.0.113.7
+
+  run_availability_checks
+
+  [[ "$(availability_row "Reddit Guest")" == "ipblock access denied (403)" ]]
+}
+
+@test "google search captcha redirect or 429 is no" {
+  use_host_fixtures dual-stack
+  set_fixture_field 4 www.google.com_search_q_cats code 302
+  set_fixture_field 4 www.google.com_search_q_cats redirect 'https://www.google.com/sorry/index?continue=x'
+  set_fixture_field 6 www.google.com_search_q_cats code 429
+  set_dual_stack_ips
+
+  run_availability_checks
+
+  [[ "$(jq -r '.[] | select(.service == "Google Search") | .status' <<<"$RESULTS")" == $'no\nno' ]]
+}
+
+@test "unknown availability response is a failure reason" {
+  use_host_fixtures dual-stack
+  add_fixture 4 www.google.com_search_q_cats '<html>results</html>'
+  set_fixture_field 4 www.youtube.com_premium exit 28
+  EXTERNAL_IPV4=203.0.113.7
+
+  run_availability_checks
+
+  [[ "$(availability_row "Google Search")" == " unexpected response" ]]
+  [[ "$(availability_row "YouTube Premium")" == " timeout" ]]
+}
