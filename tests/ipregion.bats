@@ -218,8 +218,6 @@ print_yes_color() {
 }
 
 @test "country cells keep their width with and without emoji" {
-  VERDICT=DE
-
   [[ "$(format_country DE 6)" == "DE    " ]]
   [[ "$(format_country NL 6)" == "NL    " ]]
   [[ "$(format_country "" 6)" == "?     " ]]
@@ -1094,4 +1092,136 @@ ROWS
 
   [[ "$(ai_row GLM)" == " timeout" ]]
   [[ "$(ai_row Kimi)" == " unexpected response" ]]
+}
+
+results_of() {
+  jq -cs . <<<"$1"
+}
+
+verdict_of_results() {
+  compute_verdict
+  printf '%s' "$VERDICT"
+}
+
+attention_rows() {
+  jq -r '.[] | [(.services | join(",")), .ip_version, .country, .status, .reason] | join(" ")' <<<"$ATTENTION"
+}
+
+@test "verdict gives platforms and geoip equal weight" {
+  RESULTS=$(results_of "$(
+    print_result platforms Google 4 DE yes ""
+    print_result platforms YouTube 4 DE yes ""
+    print_result geoip RIPE 4 NL yes ""
+    print_result geoip MaxMind 4 NL yes ""
+    print_result geoip ipinfo.io 4 NL yes ""
+    print_result geoip ipwho.is 4 DE yes ""
+  )")
+
+  [[ "$(verdict_of_results)" == DE ]]
+}
+
+@test "verdict tie leaves no verdict and names the tied countries" {
+  RESULTS=$(results_of "$(
+    print_result platforms Google 4 NL yes ""
+    print_result platforms YouTube 4 DE yes ""
+    print_result geoip RIPE 4 NL yes ""
+    print_result geoip MaxMind 4 DE yes ""
+    print_result geoip ipinfo.io 4 SE yes ""
+  )")
+
+  compute_verdict
+
+  [[ -z "$VERDICT" ]]
+  [[ "${VERDICT_TIED_COUNTRIES[*]}" == "DE NL" ]]
+}
+
+@test "verdict ignores cdn, failures and groups without countries" {
+  RESULTS=$(results_of "$(
+    print_result platforms Google 4 SE yes ""
+    print_result platforms YouTube 4 "" "" timeout
+    print_result cdn Cloudflare 4 DE yes ""
+    print_result cdn YouTube 6 DE yes ""
+    print_result availability Disney+ 4 "" yes ""
+  )")
+  [[ "$(verdict_of_results)" == SE ]]
+
+  RESULTS=$(results_of "$(
+    print_result availability Disney+ 4 "" yes ""
+    print_result ai Kimi 6 "" yes ""
+  )")
+  [[ -z "$(verdict_of_results)" ]]
+}
+
+@test "attention lists differences and failures, not geoip countries, cdn or the maxmind limit" {
+  VERDICT=DE
+  RESULTS=$(results_of "$(
+    print_result platforms Google 4 DE yes ""
+    print_result platforms Disney+ 6 "" "" timeout
+    print_result platforms ChatGPT 6 NL yes ""
+    print_result platforms Steam 6 "" none "no IPv6"
+    print_result cdn Netflix 6 NL yes ""
+    print_result cdn YouTube 4 "" "" timeout
+    print_result availability "Reddit Guest" 6 "" ipblock "access denied (403)"
+    print_result availability Disney+ 4 "" yes ""
+    print_result ai "Gemini Web" 4 "" no ""
+    print_result geoip RIPE 6 NL yes ""
+    print_result geoip ipquery.io 6 "" "" timeout
+    print_result geoip MaxMind 4 "" "" "daily limit used up"
+  )")
+
+  collect_attention
+
+  expected=$(
+    cat <<'ROWS'
+ChatGPT 6 NL yes different country
+Gemini Web 4  no 
+Reddit Guest 6  ipblock access denied (403)
+Disney+ 6   timeout
+ipquery.io 6   timeout
+ROWS
+  )
+  run attention_rows
+  [[ "$output" == "$expected" ]]
+}
+
+@test "attention without a verdict lists only failures" {
+  VERDICT=""
+  RESULTS=$(results_of "$(
+    print_result platforms Google 4 DE yes ""
+    print_result platforms YouTube 4 NL yes ""
+    print_result platforms Twitch 4 "" "" timeout
+  )")
+
+  collect_attention
+
+  run attention_rows
+  [[ "$output" == "Twitch 4   timeout" ]]
+}
+
+@test "attention merges protocols and collapses three alike rows" {
+  VERDICT=DE
+  RESULTS=$(results_of "$(
+    print_result ai "Grok API" 4 "" "" "TLS error"
+    print_result ai "Grok API" 6 "" "" "TLS error"
+    print_result platforms Google 6 "" "" timeout
+    print_result platforms YouTube 6 "" "" timeout
+    print_result platforms Twitch 6 "" "" timeout
+    print_result platforms Netflix 4 "" "" timeout
+    print_result platforms Spotify 4 "" "" timeout
+    print_result platforms Reddit 4 NL yes ""
+  )")
+
+  collect_attention
+
+  expected=$(
+    cat <<'ROWS'
+Reddit 4 NL yes different country
+Grok API both   TLS error
+Netflix 4   timeout
+Spotify 4   timeout
+Google,YouTube,Twitch 6   timeout
+ROWS
+  )
+  run attention_rows
+  [[ "$output" == "$expected" ]]
 }

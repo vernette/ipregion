@@ -264,6 +264,42 @@ readonly GEOIP_CHECKS=(
   check_geoip_ip_api_com
 )
 
+readonly REASON_DIFFERENT_COUNTRY="different country"
+readonly ATTENTION_COLLAPSE_MIN=3
+# shellcheck disable=SC2016 # $yes, $platforms and $geoip are jq variables, not shell expansions
+readonly VERDICT_FILTER='
+def country_counts: group_by(.country) | map({country: .[0].country, count: length});
+map(select(.status == $yes and (.group == $platforms or .group == $geoip)))
+| group_by(.group)
+| (map(length) | reduce .[] as $total (1; . * $total)) as $common_total
+| map(($common_total / length) as $scale | country_counts | map(.weight = .count * $scale))
+| add // []
+| group_by(.country)
+| map({country: .[0].country, weight: (map(.weight) | add)})
+| (map(.weight) | max) as $top_weight
+| map(select(.weight == $top_weight) | .country)
+| .[]'
+# shellcheck disable=SC2016 # $verdict, $collapse_min and the other names are jq variables, not shell expansions
+readonly ATTENTION_FILTER='
+def needs_attention:
+  if .group == $cdn or .status == $none or .reason == $daily_limit then false
+  elif .status == "" then true
+  elif .group == $geoip then false
+  elif .country != "" then $verdict != "" and .country != $verdict
+  else .status != $yes end;
+def severity:
+  if .status == "" then 3 elif .country != "" then 0 elif .status == $no then 1 else 2 end;
+to_entries
+| map(.value + {order: .key} | select(needs_attention))
+| map(if .status == $yes then .reason = $different_country else . end)
+| group_by([.group, .service, .country, .status, .reason])
+| map(.[0] + {ip_version: (if length == 2 then "both" else .[0].ip_version | tostring end)})
+| group_by([.country, .status, .reason, .ip_version])
+| map(if length >= $collapse_min then sort_by(.order) | [.[0] + {services: map(.service)}] else map(. + {services: [.service]}) end)
+| add // []
+| sort_by([(.services | length) >= $collapse_min, severity, .order])
+| map({services, ip_version, country, status, reason})'
+
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
   readonly C_VALUE=$'\033[1m'
   readonly C_DIM=$'\033[0;90m'
@@ -292,6 +328,8 @@ INTERFACE_NAME=""
 SHOW_EMOJI=false
 GEOIP_BREAKDOWN=false
 VERDICT=""
+VERDICT_TIED_COUNTRIES=()
+ATTENTION="[]"
 WORK_DIR=""
 EXTERNAL_IPV4=""
 EXTERNAL_IPV6=""
@@ -1655,6 +1693,43 @@ collect_results() {
   RESULTS=$(jq -cs . "$WORK_DIR/$RESULT_FILE_PREFIX"*)
 }
 
+compute_verdict() {
+  local -a leaders
+
+  mapfile -t leaders < <(
+    jq -r \
+      --arg yes "$STATUS_YES" \
+      --arg platforms "$GROUP_PLATFORMS" \
+      --arg geoip "$GROUP_GEOIP" \
+      "$VERDICT_FILTER" <<<"$RESULTS"
+  )
+
+  VERDICT=""
+  VERDICT_TIED_COUNTRIES=()
+  if ((${#leaders[@]} > 1)); then
+    VERDICT_TIED_COUNTRIES=("${leaders[@]}")
+    return
+  fi
+
+  VERDICT="${leaders[0]:-}"
+}
+
+collect_attention() {
+  ATTENTION=$(
+    jq -c \
+      --arg verdict "$VERDICT" \
+      --arg yes "$STATUS_YES" \
+      --arg no "$STATUS_NO" \
+      --arg none "$STATUS_NONE" \
+      --arg cdn "$GROUP_CDN" \
+      --arg geoip "$GROUP_GEOIP" \
+      --arg different_country "$REASON_DIFFERENT_COUNTRY" \
+      --arg daily_limit "$REASON_DAILY_LIMIT" \
+      --argjson collapse_min "$ATTENTION_COLLAPSE_MIN" \
+      "$ATTENTION_FILTER" <<<"$RESULTS"
+  )
+}
+
 main() {
   parse_args "$@"
   validate_args
@@ -1669,6 +1744,8 @@ main() {
   start_checks "${GEOIP_CHECKS[@]}"
   wait_for_jobs
   collect_results
+  compute_verdict
+  collect_attention
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
