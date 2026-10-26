@@ -90,7 +90,7 @@ readonly GEOIP_BREAKDOWN_HINT="Full GeoIP breakdown: ipregion --geoip-breakdown"
 readonly PROXY_EXITS_NOTE="exits over"
 readonly PROXY_DUAL_STACK_EXITS="IPv4 and IPv6"
 readonly PROXY_CHECKED_ONCE_NOTE="Through a proxy each service is checked once: the proxy picks IPv4 or IPv6"
-readonly PROXY_IGNORES_IP_VERSION_WARNING="Warning: --ipv4 and --ipv6 are ignored with --proxy, the proxy picks the protocol"
+readonly PROXY_IGNORES_IP_VERSION_WARNING="--ipv4 and --ipv6 are ignored with --proxy, the proxy picks the protocol"
 readonly PROXY_IP_VERSION="proxy"
 readonly OTHER_PROTOCOL_LEGEND="other protocol"
 
@@ -606,6 +606,24 @@ else
   readonly C_RESET=""
 fi
 
+if [[ -t 2 && -z "${NO_COLOR:-}" ]]; then
+  readonly M_ERROR=$'\033[1;31m'
+  readonly M_WARN=$'\033[1;33m'
+  readonly M_ASK=$'\033[1;36m'
+  readonly M_ACCENT=$'\033[0;36m'
+  readonly M_VALUE=$'\033[1m'
+  readonly M_DIM=$'\033[0;90m'
+  readonly M_RESET=$'\033[0m'
+else
+  readonly M_ERROR=""
+  readonly M_WARN=""
+  readonly M_ASK=""
+  readonly M_ACCENT=""
+  readonly M_VALUE=""
+  readonly M_DIM=""
+  readonly M_RESET=""
+fi
+
 VERBOSE=false
 DEBUG=false
 ASSUME_YES=false
@@ -659,11 +677,43 @@ use_utf8_locale() {
   export LC_ALL="$UTF8_LOCALE" 2>/dev/null || true
 }
 
+print_error() {
+  local message="$1"
+
+  printf '%sError:%s %s\n' "$M_ERROR" "$M_RESET" "$message" >&2
+}
+
+print_warning() {
+  local message="$1"
+
+  printf '%sWarning:%s %s\n' "$M_WARN" "$M_RESET" "$message" >&2
+}
+
+print_note() {
+  local message="$1"
+
+  printf '%s%s%s\n' "$M_DIM" "$message" "$M_RESET" >&2
+}
+
+ask_yes_no() {
+  local question="$1"
+  local answer
+
+  printf '%s%s%s %s[y/N]%s ' "$M_ASK" "$question" "$M_RESET" "$M_DIM" "$M_RESET" >/dev/tty
+  read -r answer </dev/tty
+  case "$answer" in
+    y | Y | yes) return ;;
+  esac
+
+  return 1
+}
+
 die() {
   local message="$1"
 
-  printf 'Error: %s\n' "$message" >&2
-  printf 'Run %s --help for usage\n' "$SCRIPT_NAME" >&2
+  print_error "$message"
+  printf '\n' >&2
+  print_note "Run $SCRIPT_NAME --help for usage"
   exit 1
 }
 
@@ -885,7 +935,7 @@ ignore_ip_version_with_proxy() {
     return
   fi
 
-  printf '%s\n' "$PROXY_IGNORES_IP_VERSION_WARNING" >&2
+  print_warning "$PROXY_IGNORES_IP_VERSION_WARNING"
   IPV4_ONLY=false
   IPV6_ONLY=false
 }
@@ -917,7 +967,7 @@ detect_package_manager() {
     fi
   done
 
-  printf 'Error: missing dependencies (%s) and no supported package manager found, install them manually\n' "$(missing_commands_list)" >&2
+  print_error "missing dependencies ($(missing_commands_list)) and no supported package manager found, install them manually"
   exit 1
 }
 
@@ -931,7 +981,7 @@ resolve_root_command() {
     return
   fi
 
-  printf 'Error: missing dependencies (%s), installing them with %s needs root or sudo\n' "$(missing_commands_list)" "$PACKAGE_MANAGER" >&2
+  print_error "missing dependencies ($(missing_commands_list)), installing them with $PACKAGE_MANAGER needs root or sudo"
   exit 1
 }
 
@@ -940,24 +990,21 @@ has_terminal() {
 }
 
 confirm_install() {
-  local answer
-
   if [[ "$ASSUME_YES" == true ]]; then
     return
   fi
 
   if ! has_terminal; then
-    printf 'Error: missing dependencies (%s), run with --yes to install them with %s\n' "$(missing_commands_list)" "$PACKAGE_MANAGER" >&2
+    print_error "missing dependencies ($(missing_commands_list)), run with --yes to install them with $PACKAGE_MANAGER"
     exit 1
   fi
 
-  printf 'Missing dependencies (%s). Install them with %s? [y/N] ' "$(missing_commands_list)" "$PACKAGE_MANAGER" >/dev/tty
-  read -r answer </dev/tty
-  case "$answer" in
-    y | Y | yes) return ;;
-  esac
+  printf '%sMissing dependencies:%s %s%s%s\n' "$M_WARN" "$M_RESET" "$M_VALUE" "$(missing_commands_list)" "$M_RESET" >/dev/tty
+  if ask_yes_no "Install them with $PACKAGE_MANAGER?"; then
+    return
+  fi
 
-  printf 'Error: missing dependencies (%s), installation cancelled\n' "$(missing_commands_list)" >&2
+  print_error "missing dependencies ($(missing_commands_list)), installation cancelled"
   exit 1
 }
 
@@ -982,7 +1029,7 @@ require_installed_commands() {
 
   for command_name in "${MISSING_COMMANDS[@]}"; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
-      printf 'Error: %s is still missing after installing it with %s\n' "$command_name" "$PACKAGE_MANAGER" >&2
+      print_error "$command_name is still missing after installing it with $PACKAGE_MANAGER"
       exit 1
     fi
   done
@@ -1275,25 +1322,17 @@ save_debug_log() {
 }
 
 confirm_debug_log_upload() {
-  local answer
-
   if [[ "$ASSUME_YES" == true ]]; then
     return
   fi
 
   if ! has_terminal; then
-    printf 'Run with --yes to upload it\n' >&2
+    print_note "Run with --yes to upload it"
     return 1
   fi
 
-  printf 'IP addresses, ASN and location are masked, but the log is public for anyone with the link.\n' >/dev/tty
-  printf 'Upload it and get a link for the issue? [y/N] ' >/dev/tty
-  read -r answer </dev/tty
-  case "$answer" in
-    y | Y | yes) return ;;
-  esac
-
-  return 1
+  printf '%sIP addresses, ASN and location are masked, but the log is public for anyone with the link.%s\n' "$M_DIM" "$M_RESET" >/dev/tty
+  ask_yes_no "Upload it and get a link for the issue?"
 }
 
 upload_request() {
@@ -1324,27 +1363,27 @@ print_debug_log_url() {
     return 1
   fi
 
-  printf 'Debug log: %s\n' "$HTTP_BODY" >&2
+  printf 'Debug log: %s%s%s\n' "$M_VALUE" "$HTTP_BODY" "$M_RESET" >&2
 }
 
 upload_debug_log() {
   build_curl_args ""
   CURL_ARGS+=(--max-time "$DEBUG_UPLOAD_TIMEOUT" --speed-limit "$UPLOAD_SPEED_LIMIT" --speed-time "$UPLOAD_SPEED_TIME")
-  printf 'Uploading the debug log...\n' >&2
+  print_note "Uploading the debug log..."
 
   upload_to_x0_at
   if print_debug_log_url; then
     return
   fi
-  printf '%s failed: %s, trying %s\n' "$X0_AT_NAME" "$(response_failure_reason)" "$LITTERBOX_NAME" >&2
+  print_warning "$X0_AT_NAME failed: $(response_failure_reason), trying $LITTERBOX_NAME"
 
   upload_to_litterbox
   if print_debug_log_url; then
     return
   fi
-  printf '%s failed: %s\n' "$LITTERBOX_NAME" "$(response_failure_reason)" >&2
+  print_warning "$LITTERBOX_NAME failed: $(response_failure_reason)"
 
-  printf 'Error: failed to upload the debug log, attach %s to the issue instead\n' "$DEBUG_LOG_FILE" >&2
+  print_error "failed to upload the debug log, attach $DEBUG_LOG_FILE to the issue instead"
 }
 
 start_debug_trace() {
@@ -1371,7 +1410,7 @@ finish_debug_trace() {
 
   set +x
   save_debug_log
-  printf 'Debug log saved to %s\n' "$DEBUG_LOG_FILE" >&2
+  printf '\nDebug log saved to %s%s%s\n' "$M_VALUE" "$DEBUG_LOG_FILE" "$M_RESET" >&2
   if confirm_debug_log_upload; then
     upload_debug_log
   fi
@@ -1728,7 +1767,7 @@ draw_spinner_line() {
   local spinner="${PROGRESS_SPINNER_FRAMES[PROGRESS_FRAME % ${#PROGRESS_SPINNER_FRAMES[@]}]}"
 
   PROGRESS_FRAME=$((PROGRESS_FRAME + 1))
-  printf '%s%s %s' "$CLEAR_LINE" "$spinner" "$text" >&2
+  printf '%s%s%s%s  %s' "$CLEAR_LINE" "$M_ACCENT" "$spinner" "$M_RESET" "$text" >&2
 }
 
 clear_progress() {
@@ -1812,11 +1851,11 @@ discover_external_ips() {
   fi
 
   if [[ -n "$INTERFACE_NAME" ]]; then
-    printf 'Error: failed to detect an external IP address through interface %s, check that it exists and routes traffic out\n' "$INTERFACE_NAME" >&2
+    print_error "failed to detect an external IP address through interface $INTERFACE_NAME, check that it exists and routes traffic out"
     exit 1
   fi
 
-  printf 'Error: failed to detect an external IP address, check the network connection\n' >&2
+  print_error "failed to detect an external IP address, check the network connection"
   exit 1
 }
 
@@ -1858,7 +1897,7 @@ print_progress_bar() {
 
   printf -v done_part '%*s' "$done_width" ''
   printf -v left_part '%*s' "$((PROGRESS_BAR_WIDTH - done_width))" ''
-  printf '%s%s%s%s' "${done_part// /$PROGRESS_BAR_DONE}" "$C_DIM" "${left_part// /$PROGRESS_BAR_LEFT}" "$C_RESET"
+  printf '%s%s%s%s%s' "$M_ACCENT" "${done_part// /$PROGRESS_BAR_DONE}" "$M_DIM" "${left_part// /$PROGRESS_BAR_LEFT}" "$M_RESET"
 }
 
 draw_progress() {
@@ -1869,7 +1908,7 @@ draw_progress() {
   fi
 
   finished=$((JOB_COUNT - $(count_running_jobs)))
-  draw_spinner_line "$PROGRESS_LABEL  $(print_progress_bar "$finished")  $C_DIM$finished/$JOB_COUNT$C_RESET"
+  draw_spinner_line "$PROGRESS_LABEL  $(print_progress_bar "$finished")  $M_DIM$finished/$JOB_COUNT$M_RESET"
 }
 
 create_job_slots() {

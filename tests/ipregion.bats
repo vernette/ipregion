@@ -194,7 +194,7 @@ curl_calls() {
   run bash "$SCRIPT" --nope
 
   [[ "$status" -eq 1 ]]
-  [[ "$output" == *"Error: unknown option --nope"* ]]
+  [[ "$output" == $'Error: unknown option --nope\n\nRun ipregion.sh --help for usage' ]]
 }
 
 @test "option without a value fails" {
@@ -1542,7 +1542,7 @@ run_report() {
   ignore_ip_version_with_proxy 2>"$BATS_TEST_TMPDIR/stderr"
 
   [[ "$IPV4_ONLY" == false ]]
-  [[ "$(<"$BATS_TEST_TMPDIR/stderr")" == "$PROXY_IGNORES_IP_VERSION_WARNING" ]]
+  [[ "$(<"$BATS_TEST_TMPDIR/stderr")" == "Warning: $PROXY_IGNORES_IP_VERSION_WARNING" ]]
 }
 
 @test "json through a dual-stack proxy keeps one result per service and geoip per protocol" {
