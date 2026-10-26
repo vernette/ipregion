@@ -4,7 +4,7 @@
  ┃ IPv4  203.0.*.*  AS64496 Example Hosting  registered in NL
  ┃
  ┃  SE   Sweden   seen by most services
- ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  44/47 checks passed
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  48/51 checks passed
 
  Attention
    JetBrains  SI   different country
@@ -23,13 +23,16 @@
  Steam        SE       Anthropic API    ✓
  Microsoft    SE       Grok API         ✓
  Ookla        SE       Qwen API         ✓
- JetBrains    SI       Kimi API         ✓
- PlayStation  SE       GLM API          ✓
-                       MiniMax API      ✓
- GeoIP    SE 13/15     Doubao API       ✓
- ━━━━━━━━━━━━━━━━━     SiliconFlow API  ✓
- RU ifconfig.co,       DeepSeek API     ✓
-    ipquery.io
+ JetBrains    SI       Qwen CN API      ✓
+ PlayStation  SE       Kimi API         ✓
+                       Kimi CN API      ✓
+ GeoIP    SE 13/15     GLM API          ✓
+ ━━━━━━━━━━━━━━━━━     GLM CN API       ✓
+ RU ifconfig.co,       MiniMax API      ✓
+    ipquery.io         MiniMax CN API   ✓
+                       Doubao API       ✓
+                       SiliconFlow API  ✓
+                       DeepSeek API     ✓
 
  CDN         IPv4
  Cloudflare  SE · ARN

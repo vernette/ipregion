@@ -325,9 +325,13 @@ readonly ANTHROPIC_API_REGION_BLOCKED_MARKER="Request not allowed"
 readonly GROK_API_URL="https://api.x.ai/v1/models"
 readonly GROK_API_REGION_BLOCKED_MARKER="not available in your region"
 readonly QWEN_API_URL="https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models"
+readonly QWEN_CN_API_URL="https://dashscope.aliyuncs.com/compatible-mode/v1/models"
 readonly KIMI_API_URL="https://api.moonshot.ai/v1/models"
+readonly KIMI_CN_API_URL="https://api.moonshot.cn/v1/models"
 readonly GLM_API_URL="https://api.z.ai/api/paas/v4/models"
+readonly GLM_CN_API_URL="https://open.bigmodel.cn/api/paas/v4/models"
 readonly MINIMAX_API_URL="https://api.minimax.io/v1/models"
+readonly MINIMAX_CN_API_URL="https://api.minimaxi.com/v1/models"
 readonly DOUBAO_API_URL="https://ark.cn-beijing.volces.com/api/v3/models"
 readonly SILICONFLOW_API_URL="https://api.siliconflow.cn/v1/models"
 readonly DEEPSEEK_API_URL="https://api.deepseek.com/models"
@@ -404,9 +408,13 @@ readonly AI_CHECKS=(
   check_ai_anthropic_api
   check_ai_grok_api
   check_ai_qwen_api
+  check_ai_qwen_cn_api
   check_ai_kimi_api
+  check_ai_kimi_cn_api
   check_ai_glm_api
+  check_ai_glm_cn_api
   check_ai_minimax_api
+  check_ai_minimax_cn_api
   check_ai_doubao_api
   check_ai_siliconflow_api
   check_ai_deepseek_api
@@ -2512,10 +2520,22 @@ check_ai_qwen_api() {
   check_ai_reachability "Qwen API" "$ip_version" "$QWEN_API_URL"
 }
 
+check_ai_qwen_cn_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "Qwen CN API" "$ip_version" "$QWEN_CN_API_URL"
+}
+
 check_ai_kimi_api() {
   local ip_version="$1"
 
   check_ai_reachability "Kimi API" "$ip_version" "$KIMI_API_URL"
+}
+
+check_ai_kimi_cn_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "Kimi CN API" "$ip_version" "$KIMI_CN_API_URL"
 }
 
 check_ai_glm_api() {
@@ -2524,10 +2544,22 @@ check_ai_glm_api() {
   check_ai_reachability "GLM API" "$ip_version" "$GLM_API_URL"
 }
 
+check_ai_glm_cn_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "GLM CN API" "$ip_version" "$GLM_CN_API_URL"
+}
+
 check_ai_minimax_api() {
   local ip_version="$1"
 
   check_ai_reachability "MiniMax API" "$ip_version" "$MINIMAX_API_URL"
+}
+
+check_ai_minimax_cn_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "MiniMax CN API" "$ip_version" "$MINIMAX_CN_API_URL"
 }
 
 check_ai_doubao_api() {

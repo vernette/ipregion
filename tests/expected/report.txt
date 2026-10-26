@@ -5,7 +5,7 @@
  ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
  ┃
  ┃  SE   Sweden   seen by most services
- ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  42/47 checks passed
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  46/51 checks passed
 
  Attention
    JetBrains  IPv4   SI   different country
@@ -26,15 +26,16 @@
  Steam        SE    -        Anthropic API    ✓    ✓
  Microsoft    SE    -        Grok API         ✓    ✓
  Ookla        SE    -        Qwen API         ✓    -
- JetBrains    SI    SE       Kimi API         ✓    ✓
- PlayStation  SE    SE       GLM API          ✓    ✓
-                             MiniMax API      ✓    ✓
- GeoIP          SE 13/15     Doubao API       ✓    ✓
- ━━━━━━━━━━━━━━━━━━━━━━━     SiliconFlow API  ✓    ✓
- RU ifconfig.co v4,          DeepSeek API     ✓    -
-    ipquery.io v4
- DE ifconfig.co v6,
-    ipquery.io v6
+ JetBrains    SI    SE       Qwen CN API      ✓    ✓
+ PlayStation  SE    SE       Kimi API         ✓    ✓
+                             Kimi CN API      ✓    -
+ GeoIP          SE 13/15     GLM API          ✓    ✓
+ ━━━━━━━━━━━━━━━━━━━━━━━     GLM CN API       ✓    ✓
+ RU ifconfig.co v4,          MiniMax API      ✓    ✓
+    ipquery.io v4            MiniMax CN API   ✓    -
+ DE ifconfig.co v6,          Doubao API       ✓    ✓
+    ipquery.io v6            SiliconFlow API  ✓    ✓
+                             DeepSeek API     ✓    -
 
  CDN         IPv4                        IPv6
  Cloudflare  SE · ARN                    SE · ARN

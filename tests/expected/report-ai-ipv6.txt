@@ -3,7 +3,7 @@
  ┃
  ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
  ┃
- ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  12/12 checks passed
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  16/16 checks passed
 
  AI               IPv6
  Gemini Web       ✓
@@ -12,9 +12,13 @@
  Anthropic API    ✓
  Grok API         ✓
  Qwen API         -
+ Qwen CN API      ✓
  Kimi API         ✓
+ Kimi CN API      -
  GLM API          ✓
+ GLM CN API       ✓
  MiniMax API      ✓
+ MiniMax CN API   -
  Doubao API       ✓
  SiliconFlow API  ✓
  DeepSeek API     -

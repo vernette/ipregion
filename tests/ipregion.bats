@@ -1269,12 +1269,20 @@ Grok API 4  yes
 Grok API 6  yes 
 Qwen API 4  yes 
 Qwen API 6  none no IPv6
+Qwen CN API 4  yes 
+Qwen CN API 6  yes 
 Kimi API 4  yes 
 Kimi API 6  yes 
+Kimi CN API 4  yes 
+Kimi CN API 6  none no IPv6
 GLM API 4  yes 
 GLM API 6  yes 
+GLM CN API 4  yes 
+GLM CN API 6  yes 
 MiniMax API 4  yes 
 MiniMax API 6  yes 
+MiniMax CN API 4  yes 
+MiniMax CN API 6  none no IPv6
 Doubao API 4  yes 
 Doubao API 6  yes 
 SiliconFlow API 4  yes 

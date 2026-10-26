@@ -5,7 +5,7 @@
  ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in 🇩🇪 DE
  ┃
  ┃ 🇸🇪  SE   Sweden   seen by most services
- ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  42/47 checks passed
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  46/51 checks passed
 
  🚨 Attention
    JetBrains  IPv4   🇸🇮 SI   different country
@@ -26,9 +26,13 @@
  Steam         🇸🇪 SE    -         Anthropic API    ✓       ✓
  Microsoft     🇸🇪 SE    -         Grok API         ✓       ✓
  Ookla         🇸🇪 SE    -         Qwen API         ✓       -
- JetBrains     🇸🇮 SI    🇸🇪 SE     Kimi API         ✓       ✓
- PlayStation   🇸🇪 SE    🇸🇪 SE     GLM API          ✓       ✓
+ JetBrains     🇸🇮 SI    🇸🇪 SE     Qwen CN API      ✓       ✓
+ PlayStation   🇸🇪 SE    🇸🇪 SE     Kimi API         ✓       ✓
+                                  Kimi CN API      ✓       -
+                                  GLM API          ✓       ✓
+                                  GLM CN API       ✓       ✓
                                   MiniMax API      ✓       ✓
+                                  MiniMax CN API   ✓       -
                                   Doubao API       ✓       ✓
                                   SiliconFlow API  ✓       ✓
                                   DeepSeek API     ✓       -
