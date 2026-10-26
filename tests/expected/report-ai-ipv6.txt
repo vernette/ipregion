@@ -3,7 +3,7 @@
  ┃
  ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
  ┃
- ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  12/12 look normal
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  12/12 checks passed
 
  AI               IPv6
  Gemini Web       ✓

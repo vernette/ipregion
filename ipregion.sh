@@ -74,7 +74,7 @@ readonly HEADER_MARK="┃"
 readonly AUTHOR="vernette"
 readonly VERDICT_NOTE="seen by most services"
 readonly TIE_NOTE="services split evenly"
-readonly CHECKS_NORMAL_NOTE="look normal"
+readonly CHECKS_PASSED_NOTE="checks passed"
 readonly CHECKS_GOOD_PERCENT=85
 readonly CHECKS_FAIR_PERCENT=65
 readonly CHECKS_GOOD="good"
@@ -2620,7 +2620,7 @@ count_abnormal_checks() {
 }
 
 count_checks() {
-  CHECKS_TOTAL=$(jq '[.[] | [.group, .service]] | unique | length' <<<"$RESULTS")
+  CHECKS_TOTAL=$(jq --arg cdn "$GROUP_CDN" '[.[] | select(.group != $cdn) | [.group, .service]] | unique | length' <<<"$RESULTS")
   CHECKS_NORMAL=$((CHECKS_TOTAL - $(count_abnormal_checks)))
 }
 
@@ -2869,7 +2869,7 @@ print_checks_bar() {
     return
   fi
 
-  print_header_line "$(format_summary_bar "$(checks_bar_color)" "$CHECKS_NORMAL" "$CHECKS_TOTAL" "$VERDICT_BAR_WIDTH")  $(paint "$C_DIM" "$CHECKS_NORMAL/$CHECKS_TOTAL $CHECKS_NORMAL_NOTE")"
+  print_header_line "$(format_summary_bar "$(checks_bar_color)" "$CHECKS_NORMAL" "$CHECKS_TOTAL" "$VERDICT_BAR_WIDTH")  $(paint "$C_DIM" "$CHECKS_NORMAL/$CHECKS_TOTAL $CHECKS_PASSED_NOTE")"
 }
 
 print_host_header() {
