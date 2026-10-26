@@ -1668,6 +1668,28 @@ run_report() {
   [[ "${table[2]}" == "Disney+          ✓    ✗" ]]
 }
 
+@test "debug log upload falls back to litterbox and says why x0.at failed" {
+  set_fixture_field 4 x0.at exit 28
+  add_fixture 4 litterbox.catbox.moe_resources_internals_api.php https://litter.catbox.moe/abc123.log
+
+  run upload_debug_log
+
+  [[ "$output" == *"x0.at failed: timeout, trying litterbox"* ]]
+  [[ "$output" == *"Debug log: https://litter.catbox.moe/abc123.log"* ]]
+}
+
+@test "failed debug log upload names the reason of each service" {
+  add_fixture 4 x0.at '<html>blocked</html>'
+  add_fixture 4 litterbox.catbox.moe_resources_internals_api.php 'error'
+  set_fixture_field 4 litterbox.catbox.moe_resources_internals_api.php code 500
+
+  run upload_debug_log
+
+  [[ "$output" == *"x0.at failed: unexpected response (200), trying litterbox"* ]]
+  [[ "$output" == *"litterbox failed: server error (500)"* ]]
+  [[ "$output" == *"Error: failed to upload the debug log"* ]]
+}
+
 @test "debug log masks the host and truncates long trace records" {
   set_dual_stack_ips
   REGISTRATION_ASN[4]=64500

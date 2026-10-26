@@ -122,10 +122,14 @@ readonly DEBUG_RECORD_LIMIT=4096
 readonly DEBUG_UPLOAD_TIMEOUT=60
 readonly UPLOAD_SPEED_LIMIT=1024
 readonly UPLOAD_SPEED_TIME=10
+readonly X0_AT_NAME="x0.at"
 readonly X0_AT_UPLOAD_URL="https://x0.at"
+readonly LITTERBOX_NAME="litterbox"
 readonly LITTERBOX_UPLOAD_URL="https://litterbox.catbox.moe/resources/internals/api.php"
 readonly LITTERBOX_RETENTION="72h"
 readonly UPLOADED_URL_PATTERN='^https://[^[:space:]]+$'
+readonly UPLOAD_RESPONSE_NAME="upload-response"
+readonly UPLOAD_WRITE_OUT='%{http_code}'
 readonly MASKED_VALUE="masked"
 readonly MASKED_ASN="AS64496"
 readonly MASKED_ORG="Example Hosting"
@@ -1263,38 +1267,53 @@ confirm_debug_log_upload() {
   return 1
 }
 
+upload_request() {
+  local url="$1"
+  shift
+  local response_file="$WORK_DIR/$UPLOAD_RESPONSE_NAME"
+
+  rm -f -- "$response_file"
+  HTTP_CURL_EXIT="$CURL_EXIT_OK"
+  HTTP_CODE=$(curl "${CURL_ARGS[@]}" --output "$response_file" --write-out "$UPLOAD_WRITE_OUT" "$@" "$url") || HTTP_CURL_EXIT=$?
+  HTTP_BODY=""
+  if [[ -f "$response_file" ]]; then
+    HTTP_BODY=$(<"$response_file")
+  fi
+}
+
 upload_to_x0_at() {
-  curl "${CURL_ARGS[@]}" --form "file=@$DEBUG_LOG_FILE" "$X0_AT_UPLOAD_URL"
+  upload_request "$X0_AT_UPLOAD_URL" --form "file=@$DEBUG_LOG_FILE"
 }
 
 upload_to_litterbox() {
-  curl "${CURL_ARGS[@]}" --form reqtype=fileupload --form "time=$LITTERBOX_RETENTION" \
-    --form "fileToUpload=@$DEBUG_LOG_FILE" "$LITTERBOX_UPLOAD_URL"
+  upload_request "$LITTERBOX_UPLOAD_URL" --form reqtype=fileupload --form "time=$LITTERBOX_RETENTION" \
+    --form "fileToUpload=@$DEBUG_LOG_FILE"
 }
 
-print_uploaded_url() {
-  local upload_function="$1"
-  local url
-
-  url=$("$upload_function" 2>/dev/null) || return 1
-  if [[ ! "$url" =~ $UPLOADED_URL_PATTERN ]]; then
+print_debug_log_url() {
+  if [[ "$HTTP_CURL_EXIT" != "$CURL_EXIT_OK" || ! "$HTTP_BODY" =~ $UPLOADED_URL_PATTERN ]]; then
     return 1
   fi
 
-  printf '%s\n' "$url"
+  printf 'Debug log: %s\n' "$HTTP_BODY" >&2
 }
 
 upload_debug_log() {
-  local url
-
   build_curl_args ""
   CURL_ARGS+=(--max-time "$DEBUG_UPLOAD_TIMEOUT" --speed-limit "$UPLOAD_SPEED_LIMIT" --speed-time "$UPLOAD_SPEED_TIME")
   printf 'Uploading the debug log...\n' >&2
 
-  if url=$(print_uploaded_url upload_to_x0_at) || url=$(print_uploaded_url upload_to_litterbox); then
-    printf 'Debug log: %s\n' "$url" >&2
+  upload_to_x0_at
+  if print_debug_log_url; then
     return
   fi
+  printf '%s failed: %s, trying %s\n' "$X0_AT_NAME" "$(response_failure_reason)" "$LITTERBOX_NAME" >&2
+
+  upload_to_litterbox
+  if print_debug_log_url; then
+    return
+  fi
+  printf '%s failed: %s\n' "$LITTERBOX_NAME" "$(response_failure_reason)" >&2
 
   printf 'Error: failed to upload the debug log, attach %s to the issue instead\n' "$DEBUG_LOG_FILE" >&2
 }
@@ -1444,6 +1463,18 @@ http_failure_reason() {
   esac
 }
 
+response_failure_reason() {
+  local reason
+
+  reason=$(http_failure_reason)
+  if [[ -n "$reason" ]]; then
+    printf '%s' "$reason"
+    return
+  fi
+
+  printf '%s (%s)' "$REASON_UNEXPECTED_RESPONSE" "$HTTP_CODE"
+}
+
 is_ip_address() {
   local ip_version="$1"
   local ip="$2"
@@ -1541,32 +1572,20 @@ json_value() {
   jq -r "$filter" <<<"$HTTP_BODY" 2>/dev/null || true
 }
 
-maxmind_token_failure_reason() {
-  local reason
-
-  reason=$(http_failure_reason)
-  if [[ -n "$reason" ]]; then
-    printf '%s' "$reason"
-    return
-  fi
-
-  printf '%s (%s)' "$REASON_UNEXPECTED_RESPONSE" "$HTTP_CODE"
-}
-
 request_maxmind_token() {
   local cookie_jar="$WORK_DIR/maxmind-cookies"
   local csrf_token
 
   http_request "$ANY_TRANSPORT" "$MAXMIND_DEMO_PAGE_URL" --cookie-jar "$cookie_jar"
   if [[ ! "$HTTP_BODY" =~ $MAXMIND_CSRF_PATTERN ]]; then
-    MAXMIND_TOKEN_FAILURE=$(maxmind_token_failure_reason)
+    MAXMIND_TOKEN_FAILURE=$(response_failure_reason)
     return
   fi
   csrf_token="${BASH_REMATCH[1]}"
 
   http_request "$ANY_TRANSPORT" "$MAXMIND_TOKEN_URL" --request POST --cookie "$cookie_jar" --header "X-CSRF-Token: $csrf_token"
   if [[ "$HTTP_CODE" != "$HTTP_CREATED" ]]; then
-    MAXMIND_TOKEN_FAILURE=$(maxmind_token_failure_reason)
+    MAXMIND_TOKEN_FAILURE=$(response_failure_reason)
     return
   fi
 
