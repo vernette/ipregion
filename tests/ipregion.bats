@@ -643,7 +643,7 @@ set_dual_stack_ips() {
   EXTERNAL_IPV6=2001:db8:85a3::8a2e:370:7334
 }
 
-@test "registration comes from maxmind for each protocol" {
+@test "asn comes from maxmind and the country from rir stats for each protocol" {
   use_host_fixtures dual-stack
   set_dual_stack_ips
 
@@ -655,7 +655,7 @@ set_dual_stack_ips() {
   [[ -z "${REGISTRATION_MAXMIND_FAILURE[4]:-}${REGISTRATION_MAXMIND_FAILURE[6]:-}" ]]
   grep -q -- '--header X-CSRF-Token: [0-9a-f]* ' "$FAKE_CURL_LOG"
   grep -q -- '-6 .*Authorization: Bearer v2.local.masked-demo-token .*city/2001:db8:85a3::8a2e:370:7334?demo=1' "$FAKE_CURL_LOG"
-  run grep -c -e rdap.db.ripe.net -e stat.ripe.net "$FAKE_CURL_LOG"
+  run grep -c -e rdap.db.ripe.net -e prefix-overview "$FAKE_CURL_LOG"
   [[ "$output" -eq 0 ]]
 }
 
@@ -680,7 +680,7 @@ use_up_maxmind_limit() {
 
   [[ "${REGISTRATION_MAXMIND_FAILURE[4]}" == "$REASON_DAILY_LIMIT" ]]
   [[ "${REGISTRATION_MAXMIND_FAILURE[6]}" == "$REASON_DAILY_LIMIT" ]]
-  [[ "${REGISTRATION_COUNTRY[4]}" == SE ]]
+  [[ "${REGISTRATION_COUNTRY[4]}" == NL ]]
   [[ "${REGISTRATION_ASN[4]}" == 64496 && "${REGISTRATION_ORG[4]}" == "Example Hosting" ]]
 }
 
@@ -719,7 +719,7 @@ use_up_maxmind_limit() {
 
   [[ "${REGISTRATION_MAXMIND_FAILURE[4]}" == "no demo token: unexpected response (200)" ]]
   [[ "${REGISTRATION_MAXMIND_FAILURE[6]}" == "no demo token: unexpected response (200)" ]]
-  [[ "${REGISTRATION_COUNTRY[4]}" == SE && "${REGISTRATION_COUNTRY[6]}" == SE ]]
+  [[ "${REGISTRATION_COUNTRY[4]}" == NL && "${REGISTRATION_COUNTRY[6]}" == DE ]]
   run grep -c -e geoip.maxmind.com -e demo/token "$FAKE_CURL_LOG"
   [[ "$output" -eq 0 ]]
 }
@@ -754,14 +754,12 @@ use_up_maxmind_limit() {
 }
 
 @test "ripe holder loses its as-name prefix" {
-  add_fixture 4 rdap.db.ripe.net_ip_203.0.113.7 '{"country":null}'
   add_fixture 4 stat.ripe.net_data_prefix-overview_data.json_resource_203.0.113.7 \
     '{"data":{"asns":[{"asn":15169,"holder":"GOOGLE - Google LLC"}]}}'
 
   lookup_ripe_registration 4 203.0.113.7
 
   [[ "${REGISTRATION_ORG[4]}" == "Google LLC" ]]
-  [[ -z "${REGISTRATION_COUNTRY[4]}" ]]
 }
 
 @test "maxmind token is requested once without a protocol flag" {
@@ -1604,7 +1602,7 @@ run_report() {
 
   run print_ip_lines
 
-  [[ "$(grep -c "MaxMind unavailable · ASN and registration from RIPE" <<<"$output")" -eq 1 ]]
+  [[ "$(grep -c "MaxMind unavailable · ASN from RIPE" <<<"$output")" -eq 1 ]]
   [[ "$output" != *"daily limit"* ]]
 }
 

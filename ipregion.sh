@@ -81,8 +81,8 @@ readonly CHECKS_GOOD="good"
 readonly CHECKS_FAIR="fair"
 readonly CHECKS_POOR="poor"
 readonly REGISTERED_NOTE="registered in"
-readonly MAXMIND_LIMIT_HEADER_NOTE="MaxMind daily limit used up · ASN and registration from RIPE"
-readonly MAXMIND_FAILURE_HEADER_NOTE="MaxMind unavailable · ASN and registration from RIPE"
+readonly MAXMIND_LIMIT_HEADER_NOTE="MaxMind daily limit used up · ASN from RIPE"
+readonly MAXMIND_FAILURE_HEADER_NOTE="MaxMind unavailable · ASN from RIPE"
 readonly MAXMIND_LIMIT_SUMMARY_NOTE="MaxMind limit used up"
 readonly MAXMIND_LIMIT_CELL="limit"
 readonly MAXMIND_LIMIT_CELLS="limit used"
@@ -233,6 +233,7 @@ readonly MAXMIND_CITY_URL="https://geoip.maxmind.com/geoip/v2.1/city"
 readonly MAXMIND_CSRF_PATTERN='value="([0-9a-f]+)" name="csrf_token"'
 readonly RIPE_RDAP_IP_URL="https://rdap.db.ripe.net/ip"
 readonly RIPESTAT_PREFIX_OVERVIEW_URL="https://stat.ripe.net/data/prefix-overview/data.json"
+readonly RIPESTAT_RIR_STATS_COUNTRY_URL="https://stat.ripe.net/data/rir-stats-country/data.json"
 
 readonly IPV4_TRANSPORT=4
 readonly ANY_TRANSPORT=""
@@ -1681,31 +1682,36 @@ lookup_maxmind_registration() {
 
   REGISTRATION_ASN[$ip_version]=$(json_value '.traits.autonomous_system_number // empty')
   REGISTRATION_ORG[$ip_version]=$(json_value '.traits.autonomous_system_organization // empty')
-  REGISTRATION_COUNTRY[$ip_version]=$(json_value '.registered_country.iso_code // empty')
 }
 
 lookup_ripe_registration() {
   local ip_version="$1"
   local ip="$2"
 
-  http_request "$ip_version" "$RIPE_RDAP_IP_URL/$ip" --location
-  REGISTRATION_COUNTRY[$ip_version]=$(json_value '.country // empty')
-
   http_request "$ip_version" "$RIPESTAT_PREFIX_OVERVIEW_URL?resource=$ip"
   REGISTRATION_ASN[$ip_version]=$(json_value '.data.asns[0].asn // empty')
   REGISTRATION_ORG[$ip_version]=$(json_value '.data.asns[0].holder // empty | sub("^\\S+ (- )?"; "")')
+}
+
+lookup_registration_country() {
+  local ip_version="$1"
+  local ip="$2"
+
+  http_request "$ip_version" "$RIPESTAT_RIR_STATS_COUNTRY_URL?resource=$ip"
+  REGISTRATION_COUNTRY[$ip_version]=$(json_value '.data.located_resources[0].location // empty')
 }
 
 lookup_ip_registration() {
   local ip_version="$1"
   local ip="$2"
 
+  lookup_registration_country "$ip_version" "$ip"
   if lookup_maxmind_registration "$ip_version" "$ip"; then
-    log_verbose "IPv$ip_version registration from MaxMind"
+    log_verbose "IPv$ip_version ASN from MaxMind"
     return
   fi
 
-  log_verbose "IPv$ip_version registration from RIPE, MaxMind: ${REGISTRATION_MAXMIND_FAILURE[$ip_version]}"
+  log_verbose "IPv$ip_version ASN from RIPE, MaxMind: ${REGISTRATION_MAXMIND_FAILURE[$ip_version]}"
   lookup_ripe_registration "$ip_version" "$ip"
 }
 
@@ -1737,6 +1743,7 @@ prefetch_ip_registration() {
   local ip_version="$1"
   local ip="$2"
 
+  lookup_registration_country "$ip_version" "$ip"
   request_maxmind_token
   if [[ -n "$MAXMIND_TOKEN" ]]; then
     fetch_maxmind_city "$ip_version" "$ip"
