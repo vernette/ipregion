@@ -76,6 +76,7 @@ readonly TIE_NOTE="services split evenly"
 readonly CHECKS_NORMAL_NOTE="look normal"
 readonly REGISTERED_NOTE="registered in"
 readonly MAXMIND_LIMIT_HEADER_NOTE="MaxMind daily limit used up · ASN and registration from RIPE"
+readonly MAXMIND_FAILURE_HEADER_NOTE="MaxMind unavailable · ASN and registration from RIPE"
 readonly MAXMIND_LIMIT_SUMMARY_NOTE="MaxMind limit used up"
 readonly MAXMIND_LIMIT_CELL="limit"
 readonly MAXMIND_LIMIT_CELLS="limit used"
@@ -2713,9 +2714,32 @@ is_maxmind_limit_used_up() {
   return 1
 }
 
+has_maxmind_failure() {
+  local failure
+
+  for failure in "${REGISTRATION_MAXMIND_FAILURE[@]}"; do
+    if [[ -n "$failure" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+maxmind_header_note() {
+  if is_maxmind_limit_used_up; then
+    printf '%s' "$MAXMIND_LIMIT_HEADER_NOTE"
+    return
+  fi
+
+  if has_maxmind_failure; then
+    printf '%s' "$MAXMIND_FAILURE_HEADER_NOTE"
+  fi
+}
+
 print_ip_lines() {
   local -a ip_versions=() masked_ips=() networks=()
-  local ip_width network_width i
+  local ip_width network_width i note
 
   if [[ -n "$EXTERNAL_IPV4" ]]; then
     ip_versions+=(4)
@@ -2735,8 +2759,9 @@ print_ip_lines() {
     print_ip_line "${ip_versions[i]}" "${masked_ips[i]}" "$ip_width" "$network_width"
   done
 
-  if is_maxmind_limit_used_up; then
-    print_header_line "      $(paint "$C_DIM" "$MAXMIND_LIMIT_HEADER_NOTE")"
+  note=$(maxmind_header_note)
+  if [[ -n "$note" ]]; then
+    print_header_line "      $(paint "$C_DIM" "$note")"
   fi
 }
 

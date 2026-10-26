@@ -1547,6 +1547,25 @@ run_report() {
   [[ "$output" == " ┃  DE   SE   Germany or Sweden   services split evenly" ]]
 }
 
+@test "failed maxmind is noted once in the header" {
+  set_dual_stack_ips
+  REGISTRATION_MAXMIND_FAILURE[4]="no demo token: timeout"
+  REGISTRATION_MAXMIND_FAILURE[6]="no demo token: timeout"
+
+  run print_ip_lines
+
+  [[ "$(grep -c "MaxMind unavailable · ASN and registration from RIPE" <<<"$output")" -eq 1 ]]
+  [[ "$output" != *"daily limit"* ]]
+}
+
+@test "header has no maxmind note when maxmind answered" {
+  set_dual_stack_ips
+
+  run print_ip_lines
+
+  [[ "$output" != *"MaxMind"* ]]
+}
+
 @test "used up maxmind limit is noted once in the header and leaves the geoip summary" {
   local -a summary=() table=()
 
