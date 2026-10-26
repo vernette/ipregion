@@ -3,6 +3,8 @@
 # shellcheck disable=SC2154 # BATS_TEST_DIRNAME and BATS_TEST_TMPDIR are set by bats
 setup() {
   SCRIPT="$BATS_TEST_DIRNAME/../ipregion.sh"
+  export IPREGION_PROC_NET_DIR="$BATS_TEST_TMPDIR/proc-net"
+  mkdir "$IPREGION_PROC_NET_DIR"
   # shellcheck source=../ipregion.sh
   source "$SCRIPT"
 
@@ -32,6 +34,30 @@ set_fixture_field() {
 
   mkdir -p "$FAKE_CURL_FIXTURES/ipv$ip_version"
   printf '%s' "$value" >"$FAKE_CURL_FIXTURES/ipv$ip_version/$name.$field"
+}
+
+add_ipv4_default_route() {
+  local iface="$1"
+  local flags="$2"
+
+  if [[ ! -e "$IPV4_ROUTE_TABLE" ]]; then
+    printf 'Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n' >"$IPV4_ROUTE_TABLE"
+  fi
+  printf '%s\t00000000\t0100000A\t%s\t0\t0\t0\t00000000\t0\t0\t0\n' "$iface" "$flags" >>"$IPV4_ROUTE_TABLE"
+}
+
+add_ipv6_default_route() {
+  local iface="$1"
+  local flags="$2"
+  local any="00000000000000000000000000000000"
+
+  printf '%s 00 %s 00 %s 00000400 00000001 00000000 %s %s\n' "$any" "$any" "$any" "$flags" "$iface" >>"$IPV6_ROUTE_TABLE"
+}
+
+print_ip_versions_left() {
+  detect_main_interface
+  limit_ip_versions_to_main_interface 2>/dev/null
+  printf '%s ipv4_only=%s ipv6_only=%s' "${MAIN_INTERFACE:--}" "$IPV4_ONLY" "$IPV6_ONLY"
 }
 
 add_identity_fixtures() {
@@ -598,6 +624,40 @@ print_yes_color() {
   [[ -z "$EXTERNAL_IPV4" && -n "$EXTERNAL_IPV6" ]]
   run grep -c -- ' -4 ' "$FAKE_CURL_LOG"
   [[ "$output" -eq 0 ]]
+}
+
+@test "ipv6 routed through another interface is not checked" {
+  add_ipv4_default_route eth0 0003
+  add_ipv6_default_route lo 00200200
+  add_ipv6_default_route warp 00000001
+
+  run print_ip_versions_left
+  [[ "$output" == "eth0 ipv4_only=true ipv6_only=false" ]]
+}
+
+@test "ipv4 routed through another interface is not checked" {
+  add_ipv4_default_route warp 0001
+  add_ipv6_default_route eth0 00450003
+
+  run print_ip_versions_left
+  [[ "$output" == "eth0 ipv4_only=false ipv6_only=true" ]]
+}
+
+@test "both ip versions through the main interface are checked" {
+  add_ipv4_default_route eth0 0003
+  add_ipv6_default_route eth0 00000001
+
+  run print_ip_versions_left
+  [[ "$output" == "eth0 ipv4_only=false ipv6_only=false" ]]
+}
+
+@test "explicit interface skips the main interface limit" {
+  add_ipv4_default_route eth0 0003
+  add_ipv6_default_route warp 00000001
+  INTERFACE_NAME=warp
+
+  run print_ip_versions_left
+  [[ "$output" == "- ipv4_only=false ipv6_only=false" ]]
 }
 
 @test "host without ipv6 keeps ipv4 only" {

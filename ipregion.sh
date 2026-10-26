@@ -223,6 +223,14 @@ readonly IPV6_IDENTITY_URLS=(
   https://ipv6.seeip.org
   https://ipv6.wtfismyip.com/text
 )
+readonly PROC_NET_DIR="${IPREGION_PROC_NET_DIR:-/proc/net}"
+readonly IPV4_ROUTE_TABLE="$PROC_NET_DIR/route"
+readonly IPV6_ROUTE_TABLE="$PROC_NET_DIR/ipv6_route"
+readonly IPV4_DEFAULT_ROUTE="00000000"
+readonly IPV6_DEFAULT_ROUTE="00000000000000000000000000000000"
+readonly IPV6_DEFAULT_PREFIX_LENGTH="00"
+readonly ROUTE_FLAG_UP=1
+readonly ROUTE_FLAG_GATEWAY=2
 readonly IPV4_PATTERN='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
 readonly IPV6_PATTERN='^[0-9A-Fa-f]{0,4}(:[0-9A-Fa-f]{0,4}){2,7}$'
 readonly IPV6_GROUP_COUNT=8
@@ -640,6 +648,7 @@ IPV4_ONLY=false
 IPV6_ONLY=false
 PROXY_ADDR=""
 INTERFACE_NAME=""
+MAIN_INTERFACE=""
 SHOW_EMOJI=false
 COUNTRY_EXTRA=0
 GEOIP_BREAKDOWN=false
@@ -938,6 +947,121 @@ ignore_ip_version_with_proxy() {
   print_warning "$PROXY_IGNORES_IP_VERSION_WARNING"
   IPV4_ONLY=false
   IPV6_ONLY=false
+}
+
+print_ipv4_default_routes() {
+  local iface destination flags mask
+
+  if [[ ! -r "$IPV4_ROUTE_TABLE" ]]; then
+    return
+  fi
+
+  while read -r iface destination _ flags _ _ _ mask _; do
+    if [[ "$destination" == "$IPV4_DEFAULT_ROUTE" && "$mask" == "$IPV4_DEFAULT_ROUTE" ]]; then
+      printf '%s %s\n' "$iface" "$flags"
+    fi
+  done <"$IPV4_ROUTE_TABLE"
+}
+
+print_ipv6_default_routes() {
+  local destination prefix_length flags iface
+
+  if [[ ! -r "$IPV6_ROUTE_TABLE" ]]; then
+    return
+  fi
+
+  while read -r destination prefix_length _ _ _ _ _ _ flags iface; do
+    if [[ "$destination" == "$IPV6_DEFAULT_ROUTE" && "$prefix_length" == "$IPV6_DEFAULT_PREFIX_LENGTH" ]]; then
+      printf '%s %s\n' "$iface" "$flags"
+    fi
+  done <"$IPV6_ROUTE_TABLE"
+}
+
+print_default_routes() {
+  local ip_version="$1"
+
+  case "$ip_version" in
+    4) print_ipv4_default_routes ;;
+    6) print_ipv6_default_routes ;;
+  esac
+}
+
+has_route_flag() {
+  local flags="$1"
+  local flag="$2"
+
+  ((16#$flags & flag))
+}
+
+print_gateway_interface() {
+  local ip_version="$1"
+  local iface flags
+
+  while read -r iface flags; do
+    if has_route_flag "$flags" "$ROUTE_FLAG_UP" && has_route_flag "$flags" "$ROUTE_FLAG_GATEWAY"; then
+      printf '%s' "$iface"
+      return
+    fi
+  done < <(print_default_routes "$ip_version")
+}
+
+has_default_route_through() {
+  local ip_version="$1"
+  local interface="$2"
+  local iface flags
+
+  while read -r iface flags; do
+    if [[ "$iface" == "$interface" ]] && has_route_flag "$flags" "$ROUTE_FLAG_UP"; then
+      return 0
+    fi
+  done < <(print_default_routes "$ip_version")
+
+  return 1
+}
+
+has_default_route() {
+  local ip_version="$1"
+  local iface flags
+
+  while read -r iface flags; do
+    if has_route_flag "$flags" "$ROUTE_FLAG_UP"; then
+      return 0
+    fi
+  done < <(print_default_routes "$ip_version")
+
+  return 1
+}
+
+detect_main_interface() {
+  if [[ -n "$INTERFACE_NAME" || -n "$PROXY_ADDR" || "$IPV4_ONLY" == true || "$IPV6_ONLY" == true ]]; then
+    return
+  fi
+
+  MAIN_INTERFACE=$(print_gateway_interface 4)
+  if [[ -z "$MAIN_INTERFACE" ]]; then
+    MAIN_INTERFACE=$(print_gateway_interface 6)
+  fi
+}
+
+limit_ip_versions_to_main_interface() {
+  if [[ -z "$MAIN_INTERFACE" ]]; then
+    return
+  fi
+
+  if ! has_default_route_through 6 "$MAIN_INTERFACE"; then
+    IPV4_ONLY=true
+    if has_default_route 6; then
+      print_note "IPv6 goes out through another interface than the main one $MAIN_INTERFACE, checking IPv4 only (-6 or -i IFACE to check IPv6)"
+    fi
+    return
+  fi
+
+  if ! has_default_route_through 4 "$MAIN_INTERFACE"; then
+    IPV6_ONLY=true
+    if has_default_route 4; then
+      print_note "IPv4 goes out through another interface than the main one $MAIN_INTERFACE, checking IPv6 only (-4 or -i IFACE to check IPv4)"
+    fi
+  fi
 }
 
 detect_missing_commands() {
@@ -3693,6 +3817,8 @@ main() {
   parse_args "$@"
   validate_args
   ignore_ip_version_with_proxy
+  detect_main_interface
+  limit_ip_versions_to_main_interface
   install_missing_dependencies
   resolve_selected_groups
   resolve_selected_checks
