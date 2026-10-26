@@ -1323,7 +1323,7 @@ save_debug_log() {
 
 confirm_debug_log_upload() {
   if [[ "$ASSUME_YES" == true ]]; then
-    return
+    return 0
   fi
 
   if ! has_terminal; then
@@ -1373,13 +1373,13 @@ upload_debug_log() {
 
   upload_to_x0_at
   if print_debug_log_url; then
-    return
+    return 0
   fi
   print_warning "$X0_AT_NAME failed: $(response_failure_reason), trying $LITTERBOX_NAME"
 
   upload_to_litterbox
   if print_debug_log_url; then
-    return
+    return 0
   fi
   print_warning "$LITTERBOX_NAME failed: $(response_failure_reason)"
 
@@ -1405,7 +1405,7 @@ start_debug_trace() {
 
 finish_debug_trace() {
   if [[ -z "$DEBUG_TRACE_FILE" ]]; then
-    return
+    return 0
   fi
 
   set +x
@@ -1521,7 +1521,7 @@ curl_failure_reason() {
 http_failure_reason() {
   if [[ "$HTTP_CURL_EXIT" != "$CURL_EXIT_OK" ]]; then
     curl_failure_reason
-    return
+    return 0
   fi
 
   case "$HTTP_CODE" in
@@ -1537,7 +1537,7 @@ response_failure_reason() {
   reason=$(http_failure_reason)
   if [[ -n "$reason" ]]; then
     printf '%s' "$reason"
-    return
+    return 0
   fi
 
   printf '%s (%s)' "$REASON_UNEXPECTED_RESPONSE" "$HTTP_CODE"
