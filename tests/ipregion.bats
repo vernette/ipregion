@@ -73,11 +73,12 @@ curl_calls() {
 }
 
 @test "short options set every flag" {
-  parse_args -v -d -j -g geoip -t 10 -4 -p 127.0.0.1:1080 -i eth1
+  parse_args -v -d -y -j -g geoip -t 10 -4 -p 127.0.0.1:1080 -i eth1
   validate_args
 
   [[ "$VERBOSE" == true ]]
   [[ "$DEBUG" == true ]]
+  [[ "$ASSUME_YES" == true ]]
   [[ "$JSON_OUTPUT" == true ]]
   resolve_selected_groups
   [[ "${SELECTED_GROUPS[*]}" == geoip ]]
@@ -88,12 +89,13 @@ curl_calls() {
 }
 
 @test "long options set every flag" {
-  parse_args --verbose --debug --json --group ai --timeout 3 --ipv6 \
+  parse_args --verbose --debug --yes --json --group ai --timeout 3 --ipv6 \
     --proxy '[::1]:1080' --interface wg0 --emoji --geoip-breakdown
   validate_args
 
   [[ "$VERBOSE" == true ]]
   [[ "$DEBUG" == true ]]
+  [[ "$ASSUME_YES" == true ]]
   [[ "$JSON_OUTPUT" == true ]]
   resolve_selected_groups
   [[ "${SELECTED_GROUPS[*]}" == ai ]]
@@ -236,6 +238,62 @@ curl_calls() {
     [[ "$status" -eq 1 ]]
     [[ "$output" == *"invalid timeout"* ]]
   done
+}
+
+add_fake_package_manager() {
+  local bin_dir="$BATS_TEST_TMPDIR/bin"
+
+  cat >"$bin_dir/sudo" <<EOF
+#!$BASH
+printf 'sudo ' >>"$BATS_TEST_TMPDIR/install.log"
+"\$@"
+EOF
+  cat >"$bin_dir/apt-get" <<EOF
+#!$BASH
+printf 'apt-get %s\n' "\$*" >>"$BATS_TEST_TMPDIR/install.log"
+if [[ "\$1" == install ]]; then
+  printf '#!$BASH\n' >"$bin_dir/jq"
+  /bin/chmod +x "$bin_dir/jq"
+fi
+EOF
+  chmod +x "$bin_dir/sudo" "$bin_dir/apt-get"
+}
+
+@test "missing jq is installed with the package manager after --yes" {
+  add_fake_package_manager
+  ASSUME_YES=true
+
+  PATH="$BATS_TEST_TMPDIR/bin" run install_missing_dependencies
+  [[ "$status" -eq 0 ]]
+  [[ "$(<"$BATS_TEST_TMPDIR/install.log")" == *"apt-get update"*"apt-get install -y jq" ]]
+}
+
+@test "missing jq is not installed without a terminal or --yes" {
+  add_fake_package_manager
+  has_terminal() { return 1; }
+
+  PATH="$BATS_TEST_TMPDIR/bin" run install_missing_dependencies
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == "Error: missing dependencies (jq), run with --yes to install them with apt-get" ]]
+  [[ ! -e "$BATS_TEST_TMPDIR/install.log" ]]
+}
+
+@test "missing jq without a package manager names it" {
+  PATH="$BATS_TEST_TMPDIR/bin" run install_missing_dependencies
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == "Error: missing dependencies (jq) and no supported package manager found, install them manually" ]]
+
+  rm "$BATS_TEST_TMPDIR/bin/curl"
+  PATH="$BATS_TEST_TMPDIR/bin" run install_missing_dependencies
+  [[ "$output" == "Error: missing dependencies (curl, jq) and"* ]]
+}
+
+@test "nothing is installed when curl and jq are present" {
+  add_fake_package_manager
+
+  run install_missing_dependencies
+  [[ "$status" -eq 0 ]]
+  [[ ! -e "$BATS_TEST_TMPDIR/install.log" ]]
 }
 
 @test "ipv4 and ipv6 only together are rejected" {

@@ -28,6 +28,8 @@ require_bash_version "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"
 
 readonly SCRIPT_NAME="ipregion.sh"
 readonly SCRIPT_URL="https://github.com/vernette/ipregion"
+readonly REQUIRED_COMMANDS=(curl jq)
+readonly PACKAGE_MANAGERS=(apt-get dnf yum pacman zypper apk xbps-install)
 readonly SERVICE_GROUPS=(platforms cdn availability ai geoip)
 readonly ALL_GROUPS="all"
 readonly DEFAULT_TIMEOUT=5
@@ -471,6 +473,10 @@ fi
 
 VERBOSE=false
 DEBUG=false
+ASSUME_YES=false
+MISSING_COMMANDS=()
+PACKAGE_MANAGER=""
+ROOT_COMMAND=()
 JSON_OUTPUT=false
 REQUESTED_GROUPS=()
 SELECTED_GROUPS=("${SERVICE_GROUPS[@]}")
@@ -530,6 +536,7 @@ Options:
   -h, --help             Show this help and exit
   -v, --verbose          Log every step to stderr
   -d, --debug            Save a full trace to a file and upload it to 0x0.st
+  -y, --yes              Install missing curl and jq without asking
   -j, --json             Print results as JSON
   -g, --group GROUPS     Check only these groups, comma-separated or repeated:
                          ${SERVICE_GROUPS[*]} (default: $ALL_GROUPS)
@@ -601,6 +608,10 @@ parse_args() {
         ;;
       -d | --debug)
         DEBUG=true
+        shift
+        ;;
+      -y | --yes)
+        ASSUME_YES=true
         shift
         ;;
       -j | --json)
@@ -708,6 +719,117 @@ validate_args() {
   if [[ -n "$PROXY_ADDR" && ! "$PROXY_ADDR" =~ $PROXY_PATTERN ]]; then
     die "invalid proxy $PROXY_ADDR, expected HOST:PORT"
   fi
+}
+
+detect_missing_commands() {
+  local command_name
+
+  for command_name in "${REQUIRED_COMMANDS[@]}"; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+      MISSING_COMMANDS+=("$command_name")
+    fi
+  done
+}
+
+missing_commands_list() {
+  local list
+
+  printf -v list '%s, ' "${MISSING_COMMANDS[@]}"
+  printf '%s' "${list%, }"
+}
+
+detect_package_manager() {
+  local manager
+
+  for manager in "${PACKAGE_MANAGERS[@]}"; do
+    if command -v "$manager" >/dev/null 2>&1; then
+      PACKAGE_MANAGER="$manager"
+      return
+    fi
+  done
+
+  printf 'Error: missing dependencies (%s) and no supported package manager found, install them manually\n' "$(missing_commands_list)" >&2
+  exit 1
+}
+
+resolve_root_command() {
+  if ((EUID == 0)) || [[ -n "${TERMUX_VERSION:-}" ]]; then
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    ROOT_COMMAND=(sudo)
+    return
+  fi
+
+  printf 'Error: missing dependencies (%s), installing them with %s needs root or sudo\n' "$(missing_commands_list)" "$PACKAGE_MANAGER" >&2
+  exit 1
+}
+
+has_terminal() {
+  : 2>/dev/null </dev/tty
+}
+
+confirm_install() {
+  local answer
+
+  if [[ "$ASSUME_YES" == true ]]; then
+    return
+  fi
+
+  if ! has_terminal; then
+    printf 'Error: missing dependencies (%s), run with --yes to install them with %s\n' "$(missing_commands_list)" "$PACKAGE_MANAGER" >&2
+    exit 1
+  fi
+
+  printf 'Missing dependencies (%s). Install them with %s? [y/N] ' "$(missing_commands_list)" "$PACKAGE_MANAGER" >/dev/tty
+  read -r answer </dev/tty
+  case "$answer" in
+    y | Y | yes) return ;;
+  esac
+
+  printf 'Error: missing dependencies (%s), installation cancelled\n' "$(missing_commands_list)" >&2
+  exit 1
+}
+
+install_packages() {
+  local -a manager=("${ROOT_COMMAND[@]}" "$PACKAGE_MANAGER")
+
+  case "$PACKAGE_MANAGER" in
+    apt-get)
+      "${manager[@]}" update
+      "${manager[@]}" install -y "${MISSING_COMMANDS[@]}"
+      ;;
+    dnf | yum) "${manager[@]}" install -y "${MISSING_COMMANDS[@]}" ;;
+    pacman) "${manager[@]}" -Sy --needed --noconfirm "${MISSING_COMMANDS[@]}" ;;
+    zypper) "${manager[@]}" --non-interactive install "${MISSING_COMMANDS[@]}" ;;
+    apk) "${manager[@]}" add --no-cache "${MISSING_COMMANDS[@]}" ;;
+    xbps-install) "${manager[@]}" -Sy "${MISSING_COMMANDS[@]}" ;;
+  esac >&2
+}
+
+require_installed_commands() {
+  local command_name
+
+  for command_name in "${MISSING_COMMANDS[@]}"; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+      printf 'Error: %s is still missing after installing it with %s\n' "$command_name" "$PACKAGE_MANAGER" >&2
+      exit 1
+    fi
+  done
+}
+
+install_missing_dependencies() {
+  detect_missing_commands
+  if ((${#MISSING_COMMANDS[@]} == 0)); then
+    return
+  fi
+
+  detect_package_manager
+  resolve_root_command
+  confirm_install
+  install_packages
+  require_installed_commands
 }
 
 resolve_selected_groups() {
@@ -2880,6 +3002,7 @@ main() {
   use_utf8_locale
   parse_args "$@"
   validate_args
+  install_missing_dependencies
   resolve_selected_groups
   resolve_selected_checks
   create_work_dir
