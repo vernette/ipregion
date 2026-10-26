@@ -220,7 +220,6 @@ All options can be combined. A service that exists in several groups needs the g
 - `access` - `yes`, `no` (region blocked) or `ipblock` in Availability and AI, always `null` in the other groups
 - `proxy` - set only through a proxy that exits over both IPv4 and IPv6. Such a proxy picks the protocol of each connection itself, so Platforms, Availability, AI and CDN are checked once: the result is under `proxy`, `ipv4` / `ipv6` are `null`. GeoIP stays per protocol, because its services are asked about each exit IP explicitly; Cloudflare reports the address it saw, so the other protocol gets `reason: "proxy picked IPv4"` or `"proxy picked IPv6"`. Through a proxy with one protocol everything stays under `ipv4` or `ipv6`
 - `ip_version` in Attention - `4`, `6`, `both` or `proxy`
-- Version 2 is not compatible with version 1: groups `primary` / `custom` became `platforms`, `availability`, `ai`, `geoip`, and `--group primary|custom` no longer exists
 
 ## Country codes
 
