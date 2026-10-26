@@ -1664,6 +1664,10 @@ fetch_external_ip_and_registration() {
     return
   fi
 
+  case "$ip_version" in
+    4) EXTERNAL_IPV4="$ip" ;;
+    6) EXTERNAL_IPV6="$ip" ;;
+  esac
   prefetch_ip_registration "$ip_version" "$ip"
 }
 
