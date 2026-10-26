@@ -87,8 +87,8 @@ readonly MAXMIND_LIMIT_SUMMARY_NOTE="MaxMind limit used up"
 readonly MAXMIND_LIMIT_CELL="limit"
 readonly MAXMIND_LIMIT_CELLS="limit used"
 readonly GEOIP_BREAKDOWN_HINT="Full GeoIP breakdown: ipregion --geoip-breakdown"
-readonly PROXY_EXITS_NOTE="exits over"
-readonly PROXY_DUAL_STACK_EXITS="IPv4 and IPv6"
+readonly EXITS_NOTE="exits over"
+readonly DUAL_STACK_EXITS="IPv4 and IPv6"
 readonly PROXY_CHECKED_ONCE_NOTE="Through a proxy each service is checked once: the proxy picks IPv4 or IPv6"
 readonly PROXY_IGNORES_IP_VERSION_WARNING="--ipv4 and --ipv6 are ignored with --proxy, the proxy picks the protocol"
 readonly PROXY_IP_VERSION="proxy"
@@ -1033,7 +1033,7 @@ has_default_route() {
 }
 
 detect_main_interface() {
-  if [[ -n "$INTERFACE_NAME" || -n "$PROXY_ADDR" || "$IPV4_ONLY" == true || "$IPV6_ONLY" == true ]]; then
+  if [[ -n "$INTERFACE_NAME" ]]; then
     return
   fi
 
@@ -1043,8 +1043,30 @@ detect_main_interface() {
   fi
 }
 
+log_interface() {
+  if [[ -n "$INTERFACE_NAME" ]]; then
+    log_verbose "Interface: $INTERFACE_NAME (--interface)"
+    return
+  fi
+
+  if [[ -n "$MAIN_INTERFACE" ]]; then
+    log_verbose "Interface: $MAIN_INTERFACE (main, carries the default route)"
+    return
+  fi
+
+  log_verbose "Interface: not detected, the system routing picks it"
+}
+
+log_proxy() {
+  if [[ -z "$PROXY_ADDR" ]]; then
+    return
+  fi
+
+  log_verbose "Proxy: socks5h://$PROXY_ADDR"
+}
+
 limit_ip_versions_to_main_interface() {
-  if [[ -z "$MAIN_INTERFACE" ]]; then
+  if [[ -z "$MAIN_INTERFACE" || -n "$PROXY_ADDR" || "$IPV4_ONLY" == true || "$IPV6_ONLY" == true ]]; then
     return
   fi
 
@@ -3183,18 +3205,29 @@ print_checks_bar() {
   print_header_line "$(format_summary_bar "$(checks_bar_color)" "$CHECKS_NORMAL" "$CHECKS_TOTAL" "$VERDICT_BAR_WIDTH")  $(paint "$C_DIM" "$CHECKS_NORMAL/$CHECKS_TOTAL $CHECKS_PASSED_NOTE")"
 }
 
-print_proxy_line() {
-  local exits="$PROXY_DUAL_STACK_EXITS"
+format_exits() {
+  if is_dual_stack; then
+    printf '%s' "$DUAL_STACK_EXITS"
+    return
+  fi
 
+  printf 'IPv%s only' "$(first_ip_version)"
+}
+
+print_proxy_line() {
   if [[ -z "$PROXY_ADDR" ]]; then
     return
   fi
 
-  if ! is_dual_stack; then
-    exits="IPv$(first_ip_version) only"
+  print_header_line "$(paint "$C_TITLE" Proxy) $(paint "$C_DIM" "$EXITS_NOTE") $(paint "$C_VALUE" "$(format_exits)")"
+}
+
+print_interface_line() {
+  if [[ -z "$INTERFACE_NAME" || -n "$PROXY_ADDR" ]]; then
+    return
   fi
 
-  print_header_line "$(paint "$C_TITLE" Proxy) $(paint "$C_DIM" "$PROXY_EXITS_NOTE") $(paint "$C_VALUE" "$exits")"
+  print_header_line "$(paint "$C_TITLE" Interface) $(paint "$C_VALUE" "$INTERFACE_NAME") $(paint "$C_DIM" "$EXITS_NOTE") $(paint "$C_VALUE" "$(format_exits)")"
 }
 
 print_host_header() {
@@ -3203,6 +3236,7 @@ print_host_header() {
   print_header_line ""
   print_ip_lines
   print_proxy_line
+  print_interface_line
 }
 
 print_header() {
@@ -3818,6 +3852,8 @@ main() {
   validate_args
   ignore_ip_version_with_proxy
   detect_main_interface
+  log_interface
+  log_proxy
   limit_ip_versions_to_main_interface
   install_missing_dependencies
   resolve_selected_groups

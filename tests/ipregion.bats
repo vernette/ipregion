@@ -813,6 +813,20 @@ use_up_maxmind_limit() {
   [[ "$output" != *"Made with"*"territories.json"* ]]
 }
 
+@test "verbose log names the interface and proxy before any request" {
+  use_host_fixtures dual-stack
+  add_ipv4_default_route eth0 0003
+
+  run bash -c 'NO_COLOR=1 bash "$1" --verbose --group geoip 2>&1 >/dev/null' _ "$SCRIPT"
+  [[ "$output" == *"Interface: eth0 (main, carries the default route)"*"IPv4 https://"* ]]
+
+  run bash -c 'NO_COLOR=1 bash "$1" --verbose --group geoip --interface wg0 2>&1 >/dev/null' _ "$SCRIPT"
+  [[ "$output" == *"Interface: wg0 (--interface)"*"IPv4 https://"* ]]
+
+  run bash -c 'NO_COLOR=1 bash "$1" --verbose --group geoip --proxy 127.0.0.1:1080 2>&1 >/dev/null' _ "$SCRIPT"
+  [[ "$output" == *"Proxy: socks5h://127.0.0.1:1080"*"IPv4/6 https://"* ]]
+}
+
 @test "ripe holder loses its as-name prefix" {
   add_fixture 4 stat.ripe.net_data_prefix-overview_data.json_resource_203.0.113.7 \
     '{"data":{"asns":[{"asn":15169,"holder":"GOOGLE - Google LLC"}]}}'
@@ -1606,6 +1620,14 @@ run_report() {
   LC_ALL=C run_report >"$BATS_TEST_TMPDIR/report.txt"
 
   diff -u "$BATS_TEST_DIRNAME/expected/report.txt" "$BATS_TEST_TMPDIR/report.txt"
+}
+
+@test "interface report names the interface and its protocols" {
+  run run_report --interface wg0 --group geoip
+  [[ "$output" == *"Interface wg0 exits over IPv4 and IPv6"* ]]
+
+  run run_report --interface wg0 --group geoip --ipv6
+  [[ "$output" == *"Interface wg0 exits over IPv6 only"* ]]
 }
 
 @test "dual-stack proxy report checks each service once in one column" {
