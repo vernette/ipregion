@@ -616,6 +616,13 @@ print_yes_color() {
   [[ "$output" == *"Error: failed to detect an external IP address"* ]]
 }
 
+@test "no external ip through an interface names the interface" {
+  run bash "$SCRIPT" --interface wg0
+
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"failed to detect an external IP address through interface wg0"* ]]
+}
+
 @test "ip addresses are masked" {
   [[ "$(mask_ipv4 203.0.113.7)" == "203.0.*.*" ]]
   [[ "$(mask_ipv6 2001:db8:85a3:1:2:3:4:5)" == "2001:db8:85a3::" ]]

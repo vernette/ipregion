@@ -1780,10 +1780,17 @@ discover_external_ips() {
 
   log_verbose "External IPv4: ${EXTERNAL_IPV4:-not found}, IPv6: ${EXTERNAL_IPV6:-not found}"
 
-  if [[ -z "$EXTERNAL_IPV4" && -z "$EXTERNAL_IPV6" ]]; then
-    printf 'Error: failed to detect an external IP address, check the network connection\n' >&2
+  if [[ -n "$EXTERNAL_IPV4" || -n "$EXTERNAL_IPV6" ]]; then
+    return
+  fi
+
+  if [[ -n "$INTERFACE_NAME" ]]; then
+    printf 'Error: failed to detect an external IP address through interface %s, check that it exists and routes traffic out\n' "$INTERFACE_NAME" >&2
     exit 1
   fi
+
+  printf 'Error: failed to detect an external IP address, check the network connection\n' >&2
+  exit 1
 }
 
 lookup_ip_registrations() {
