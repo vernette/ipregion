@@ -5,6 +5,27 @@
 set -euo pipefail
 shopt -s extglob
 
+readonly MIN_BASH_MAJOR=4
+readonly MIN_BASH_MINOR=4
+
+# Runs before the other constants: bash 3.2 (macOS) fails on readonly -A below.
+require_bash_version() {
+  local major="$1"
+  local minor="$2"
+
+  if ((major > MIN_BASH_MAJOR || (major == MIN_BASH_MAJOR && minor >= MIN_BASH_MINOR))); then
+    return
+  fi
+
+  printf 'Error: bash %s.%s+ is required, this is bash %s.%s\n' "$MIN_BASH_MAJOR" "$MIN_BASH_MINOR" "$major" "$minor" >&2
+  if [[ "$OSTYPE" == darwin* ]]; then
+    printf 'Install a newer one with: brew install bash, then run the script again in a new terminal\n' >&2
+  fi
+  exit 1
+}
+
+require_bash_version "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"
+
 readonly SCRIPT_NAME="ipregion.sh"
 readonly SCRIPT_URL="https://github.com/vernette/ipregion"
 readonly SERVICE_GROUPS=(platforms cdn availability ai geoip)

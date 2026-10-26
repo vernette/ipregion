@@ -215,6 +215,19 @@ curl_calls() {
   done
 }
 
+@test "bash older than 4.4 is rejected with a brew hint on macOS" {
+  require_bash_version 4 4
+  require_bash_version 5 0
+
+  run require_bash_version 4 3
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == "Error: bash 4.4+ is required, this is bash 4.3" ]]
+
+  OSTYPE=darwin23 run require_bash_version 3 2
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"brew install bash"* ]]
+}
+
 @test "invalid timeout values are rejected" {
   local timeout
 
