@@ -355,6 +355,7 @@ readonly REASON_CONNECT="connection failed"
 readonly REASON_TIMEOUT="timeout"
 readonly REASON_TLS="TLS error"
 readonly REASON_PROXY="proxy error"
+readonly REASON_CAPTCHA="captcha"
 readonly REASON_NETWORK="network error"
 readonly REASON_FORBIDDEN="access denied"
 readonly REASON_RATE_LIMITED="rate limited"
@@ -2390,12 +2391,11 @@ check_availability_reddit_guest() {
   print_status "$GROUP_AVAILABILITY" "Reddit Guest" "$ip_version" "$(reddit_guest_status)"
 }
 
-google_search_status() {
-  if [[ "$HTTP_REDIRECT_URL" == *"$GOOGLE_SEARCH_CAPTCHA_PATH"* || "$HTTP_CODE" == "$HTTP_TOO_MANY_REQUESTS" ]]; then
-    printf '%s' "$STATUS_NO"
-    return
-  fi
+is_google_search_captcha() {
+  [[ "$HTTP_REDIRECT_URL" == *"$GOOGLE_SEARCH_CAPTCHA_PATH"* || "$HTTP_CODE" == "$HTTP_TOO_MANY_REQUESTS" ]]
+}
 
+google_search_status() {
   if [[ "$HTTP_CODE" == "$HTTP_OK" && "$HTTP_BODY" == *"$GOOGLE_SEARCH_NO_JS_MARKER"* ]]; then
     printf '%s' "$STATUS_YES"
   fi
@@ -2406,6 +2406,11 @@ check_availability_google_search() {
 
   http_request "$ip_version" "$GOOGLE_SEARCH_URL" \
     --user-agent "$USER_AGENT" --header "$GOOGLE_SOCS_COOKIE" --header "$ACCEPT_LANGUAGE_ENGLISH"
+  if is_google_search_captcha; then
+    print_result "$GROUP_AVAILABILITY" "Google Search" "$ip_version" "" "$STATUS_IPBLOCK" "$REASON_CAPTCHA"
+    return
+  fi
+
   print_status "$GROUP_AVAILABILITY" "Google Search" "$ip_version" "$(google_search_status)"
 }
 

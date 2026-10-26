@@ -1217,7 +1217,7 @@ ROWS
   [[ "$(availability_row "Reddit Guest")" == "ipblock access denied (403)" ]]
 }
 
-@test "google search captcha redirect or 429 is no" {
+@test "google search captcha redirect or 429 is an ip block" {
   use_host_fixtures dual-stack
   set_fixture_field 4 www.google.com_search_q_cats code 302
   set_fixture_field 4 www.google.com_search_q_cats redirect 'https://www.google.com/sorry/index?continue=x'
@@ -1226,7 +1226,7 @@ ROWS
 
   run_availability_checks
 
-  [[ "$(jq -r '.[] | select(.service == "Google Search") | .status' <<<"$RESULTS")" == $'no\nno' ]]
+  [[ "$(availability_row "Google Search")" == $'ipblock captcha\nipblock captcha' ]]
 }
 
 @test "unknown availability response is a failure reason" {
