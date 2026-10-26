@@ -813,7 +813,7 @@ print_active_job_count() {
 @test "result is one json object with every field" {
   run print_result geoip ipinfo 6 SE yes ""
 
-  [[ "$output" == '{"group":"geoip","service":"ipinfo","ip_version":6,"country":"SE","status":"yes","reason":""}' ]]
+  [[ "$output" == '{"group":"geoip","service":"ipinfo","ip_version":"6","country":"SE","status":"yes","reason":""}' ]]
 }
 
 @test "results come in start order, not finish order" {
@@ -981,7 +981,7 @@ ROWS
   run_geoip_checks
 
   [[ "$(jq 'length' <<<"$RESULTS")" -eq 15 ]]
-  [[ "$(jq '[.[].ip_version] | unique' -c <<<"$RESULTS")" == "[4]" ]]
+  [[ "$(jq '[.[].ip_version] | unique' -c <<<"$RESULTS")" == '["4"]' ]]
 }
 
 @test "geoip is skipped when another group is selected" {
@@ -1532,6 +1532,31 @@ run_report() {
   diff -u "$BATS_TEST_DIRNAME/expected/report.txt" "$BATS_TEST_TMPDIR/report.txt"
 }
 
+@test "dual-stack proxy report checks each service once in one column" {
+  run_report --proxy 127.0.0.1:1080 --geoip-breakdown >"$BATS_TEST_TMPDIR/report.txt"
+  diff -u "$BATS_TEST_DIRNAME/expected/report-proxy.txt" "$BATS_TEST_TMPDIR/report.txt"
+}
+
+@test "ip version with a proxy is dropped with a warning" {
+  PROXY_ADDR=127.0.0.1:1080
+  IPV4_ONLY=true
+
+  ignore_ip_version_with_proxy 2>"$BATS_TEST_TMPDIR/stderr"
+
+  [[ "$IPV4_ONLY" == false ]]
+  [[ "$(<"$BATS_TEST_TMPDIR/stderr")" == "$PROXY_IGNORES_IP_VERSION_WARNING" ]]
+}
+
+@test "json through a dual-stack proxy keeps one result per service and geoip per protocol" {
+  run run_report --json --proxy 127.0.0.1:1080
+
+  jq -e '
+    (.results.platforms[0] | .ipv4 == null and .ipv6 == null and .proxy.country == "SE")
+    and (.results.geoip[] | select(.id == "cloudflare") | .ipv4.reason == "proxy picked IPv6" and .ipv6.country == "SE" and .proxy == null)
+    and all(.attention[]; .ip_version == "proxy" or .ip_version == "both" or .ip_version == "4" or .ip_version == "6")
+  ' <<<"$output"
+}
+
 @test "json output prints the results instead of the report" {
   run run_report --json -g cdn
 
@@ -1544,8 +1569,9 @@ run_report() {
   fi
 
   run_report --json >"$BATS_TEST_TMPDIR/report.json"
+  run_report --json --proxy 127.0.0.1:1080 >"$BATS_TEST_TMPDIR/report-proxy.json"
 
-  check-jsonschema --schemafile "$BATS_TEST_DIRNAME/../schema/ipregion-v2.schema.json" "$BATS_TEST_TMPDIR/report.json"
+  check-jsonschema --schemafile "$BATS_TEST_DIRNAME/../schema/ipregion-v2.schema.json" "$BATS_TEST_TMPDIR/report.json" "$BATS_TEST_TMPDIR/report-proxy.json"
 }
 
 @test "json output groups both protocols of a service under its id" {
@@ -1610,7 +1636,7 @@ run_report() {
   [[ "${summary[0]}" == "GeoIP              SE 1/1" ]]
   [[ "${summary[-1]}" == "MaxMind limit used up" ]]
 
-  append_table_lines table GeoIP "$(table_name_width GeoIP MaxMind limit limit)" "$COUNTRY_CELL_WIDTH" MaxMind limit limit
+  append_table_lines table "$GROUP_GEOIP" GeoIP "$(table_name_width GeoIP MaxMind limit limit)" "$COUNTRY_CELL_WIDTH" MaxMind limit limit
   [[ "${table[1]}" == "MaxMind  limit used" ]]
 }
 
@@ -1676,7 +1702,7 @@ run_report() {
   local -a rows=("YouTube Premium" yes yes Disney+ yes no)
 
   set_dual_stack_ips
-  append_table_lines table Availability "$(table_name_width Availability "${rows[@]}")" "$STATUS_CELL_WIDTH" "${rows[@]}"
+  append_table_lines table "$GROUP_AVAILABILITY" Availability "$(table_name_width Availability "${rows[@]}")" "$STATUS_CELL_WIDTH" "${rows[@]}"
 
   [[ "${table[0]}" == "Availability     IPv4 IPv6" ]]
   [[ "${table[1]}" == "YouTube Premium  ✓    ✓" ]]

@@ -2,7 +2,7 @@
 
 # Stands in for curl in tests (setup links it as curl into PATH): serves saved responses from $FAKE_CURL_FIXTURES/ipv4|ipv6/<url without scheme, unsafe chars as _>
 # with optional <name>.code, <name>.redirect, <name>.exit and <name>.delay next to the body.
-# Without -4 / -6 (requests through a proxy) ipv6 fixtures win, like a dual-stack proxy that prefers IPv6.
+# Without -4 / -6 (requests through a proxy) an ipv6 body wins, like a dual-stack proxy that prefers IPv6 and falls back to IPv4.
 
 set -euo pipefail
 
@@ -46,7 +46,7 @@ name="${name//[^A-Za-z0-9._-]/_}"
 
 if [[ -z "$ip_version" ]]; then
   ip_version=4
-  if [[ -e "$FAKE_CURL_FIXTURES/ipv6/$name" || -e "$FAKE_CURL_FIXTURES/ipv6/$name.exit" ]]; then
+  if [[ -e "$FAKE_CURL_FIXTURES/ipv6/$name" ]]; then
     ip_version=6
   fi
 fi

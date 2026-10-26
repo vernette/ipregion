@@ -87,6 +87,12 @@ readonly MAXMIND_LIMIT_SUMMARY_NOTE="MaxMind limit used up"
 readonly MAXMIND_LIMIT_CELL="limit"
 readonly MAXMIND_LIMIT_CELLS="limit used"
 readonly GEOIP_BREAKDOWN_HINT="Full GeoIP breakdown: ipregion --geoip-breakdown"
+readonly PROXY_EXITS_NOTE="exits over"
+readonly PROXY_DUAL_STACK_EXITS="IPv4 and IPv6"
+readonly PROXY_CHECKED_ONCE_NOTE="Through a proxy each service is checked once: the proxy picks IPv4 or IPv6"
+readonly PROXY_IGNORES_IP_VERSION_WARNING="Warning: --ipv4 and --ipv6 are ignored with --proxy, the proxy picks the protocol"
+readonly PROXY_IP_VERSION="proxy"
+readonly OTHER_PROTOCOL_LEGEND="other protocol"
 
 readonly STATUS_YES="yes"
 readonly STATUS_NO="no"
@@ -234,6 +240,7 @@ readonly IPINFO_IPV4_URL="https://ipinfo.io/widget/demo"
 readonly IPINFO_IPV6_URL="https://v6.ipinfo.io/widget/demo"
 readonly CLOUDFLARE_TRACE_URL="https://www.cloudflare.com/cdn-cgi/trace"
 readonly CLOUDFLARE_COUNTRY_PATTERN=$'(^|\n)loc=([A-Z]{2})(\n|$)'
+readonly CLOUDFLARE_IP_PATTERN=$'(^|\n)ip=([^\n]+)(\n|$)'
 readonly IPREGISTRY_URL="https://api.ipregistry.co"
 readonly IPREGISTRY_KEY="sb69ksjcajfs4c"
 readonly IPREGISTRY_ORIGIN="https://ipregistry.co"
@@ -356,6 +363,7 @@ readonly REASON_TIMEOUT="timeout"
 readonly REASON_TLS="TLS error"
 readonly REASON_PROXY="proxy error"
 readonly REASON_CAPTCHA="captcha"
+readonly REASON_PROXY_PICKED="proxy picked IPv"
 readonly REASON_NETWORK="network error"
 readonly REASON_FORBIDDEN="access denied"
 readonly REASON_RATE_LIMITED="rate limited"
@@ -475,7 +483,7 @@ map(select(.group == $group)) as $rows
 | reduce ($rows[].service) as $service ([]; if any(.[]; . == $service) then . else . + [$service] end)
 | .[] as $service
 | ($rows | map(select(.service == $service))) as $results
-| $service, ($results | result_of(4) | cell), ($results | result_of(6) | cell)'
+| $service, ($results | result_of("4") | cell), ($results | result_of("6") | cell)'
 # shellcheck disable=SC2016 # $cdn, $unknown and $service are jq variables, not shell expansions
 readonly CDN_ROWS_FILTER='
 def result_of($ip_version): (map(select(.ip_version == $ip_version)) | first) // first;
@@ -484,7 +492,7 @@ map(select(.group == $cdn)) as $rows
 | reduce ($rows[].service) as $service ([]; if any(.[]; . == $service) then . else . + [$service] end)
 | .[] as $service
 | ($rows | map(select(.service == $service))) as $results
-| $service, ($results | result_of(4) | edge), ($results | result_of(6) | edge)'
+| $service, ($results | result_of("4") | edge), ($results | result_of("6") | edge)'
 # shellcheck disable=SC2016 # $geoip and $yes are jq variables, not shell expansions
 readonly GEOIP_MAJORITY_FILTER='
 map(select(.group == $geoip and .status == $yes and .country != ""))
@@ -512,7 +520,7 @@ to_entries
 | map(.value + {order: .key} | select(needs_attention))
 | map(if .status == $yes then .reason = $different_country elif .status == $no then .reason = $region_blocked else . end)
 | group_by([.group, .service, .country, .status, .reason])
-| map(.[0] + {ip_version: (if length == 2 then "both" else .[0].ip_version | tostring end)})
+| map(.[0] + {ip_version: (if length == 2 then "both" else .[0].ip_version end)})
 | group_by([.country, .status, .reason, .ip_version])
 | map(if length >= $collapse_min then sort_by(.order) | [.[0] + {services: map(.service)}] else map(. + {services: [.service]}) end)
 | add // []
@@ -546,8 +554,9 @@ def service_entries($results; $group):
   | map(. as $id | [$rows[] | select(.id == $id)] as $service_rows | {
       id: $id,
       service: $service_rows[0].service,
-      ipv4: protocol_entry($service_rows; 4),
-      ipv6: protocol_entry($service_rows; 6)
+      ipv4: protocol_entry($service_rows; "4"),
+      ipv6: protocol_entry($service_rows; "6"),
+      proxy: protocol_entry($service_rows; $proxy)
     });
 . as $results
 | {
@@ -868,6 +877,16 @@ validate_args() {
   if [[ -n "$PROXY_ADDR" && ! "$PROXY_ADDR" =~ $PROXY_PATTERN ]]; then
     die "invalid proxy $PROXY_ADDR, expected HOST:PORT"
   fi
+}
+
+ignore_ip_version_with_proxy() {
+  if [[ -z "$PROXY_ADDR" || ("$IPV4_ONLY" == false && "$IPV6_ONLY" == false) ]]; then
+    return
+  fi
+
+  printf '%s\n' "$PROXY_IGNORES_IP_VERSION_WARNING" >&2
+  IPV4_ONLY=false
+  IPV6_ONLY=false
 }
 
 detect_missing_commands() {
@@ -1818,7 +1837,7 @@ print_result() {
   jq -cn \
     --arg group "$group" \
     --arg service "$service" \
-    --argjson ip_version "$ip_version" \
+    --arg ip_version "$ip_version" \
     --arg country "$country" \
     --arg status "$status" \
     --arg reason "$reason" \
@@ -1901,6 +1920,11 @@ start_job() {
 start_check() {
   local check="$1"
 
+  if is_checked_once "$(check_group "$check")"; then
+    start_job run_check "$check" "$PROXY_IP_VERSION"
+    return
+  fi
+
   if [[ -n "$EXTERNAL_IPV4" ]]; then
     start_job run_check "$check" 4
   fi
@@ -1908,6 +1932,16 @@ start_check() {
   if [[ -n "$EXTERNAL_IPV6" ]]; then
     start_job run_check "$check" 6
   fi
+}
+
+is_dual_stack() {
+  [[ -n "$EXTERNAL_IPV4" && -n "$EXTERNAL_IPV6" ]]
+}
+
+is_checked_once() {
+  local group="$1"
+
+  [[ -n "$PROXY_ADDR" && "$group" != "$GROUP_GEOIP" ]] && is_dual_stack
 }
 
 is_check_selected() {
@@ -2038,11 +2072,29 @@ check_geoip_ipinfo_io() {
   check_geoip_json ipinfo.io "$ip_version" "$ip_version" "$url/$(external_ip "$ip_version")" '.data.country // empty'
 }
 
+cloudflare_trace_ip_version() {
+  if [[ ! "$HTTP_BODY" =~ $CLOUDFLARE_IP_PATTERN ]]; then
+    return
+  fi
+
+  case "${BASH_REMATCH[2]}" in
+    "$EXTERNAL_IPV4") printf '4' ;;
+    "$EXTERNAL_IPV6") printf '6' ;;
+  esac
+}
+
 check_geoip_cloudflare() {
   local ip_version="$1"
   local country=""
+  local used_ip_version
 
   http_request "$ip_version" "$CLOUDFLARE_TRACE_URL"
+  used_ip_version=$(cloudflare_trace_ip_version)
+  if [[ -n "$PROXY_ADDR" && -n "$used_ip_version" && "$used_ip_version" != "$ip_version" ]]; then
+    print_result "$GROUP_GEOIP" Cloudflare "$ip_version" "" "$STATUS_NONE" "$REASON_PROXY_PICKED$used_ip_version"
+    return
+  fi
+
   if [[ "$HTTP_BODY" =~ $CLOUDFLARE_COUNTRY_PATTERN ]]; then
     country="${BASH_REMATCH[2]}"
   fi
@@ -2658,10 +2710,6 @@ collect_attention() {
   )
 }
 
-is_dual_stack() {
-  [[ -n "$EXTERNAL_IPV4" && -n "$EXTERNAL_IPV6" ]]
-}
-
 first_ip_version() {
   if [[ -n "$EXTERNAL_IPV4" ]]; then
     printf '4'
@@ -2734,12 +2782,19 @@ format_summary_bar() {
   printf '%s%s%s%s%s' "$color" "${done_part// /$SUMMARY_BAR_CHAR}" "$C_DIM" "${left_part// /$SUMMARY_BAR_CHAR}" "$C_RESET"
 }
 
-format_cells() {
-  local v4="$1"
-  local v6="$2"
-  local v4_width="$3"
+has_protocol_columns() {
+  local group="$1"
 
-  if ! is_dual_stack; then
+  is_dual_stack && ! is_checked_once "$group"
+}
+
+format_cells() {
+  local group="$1"
+  local v4="$2"
+  local v6="$3"
+  local v4_width="$4"
+
+  if ! has_protocol_columns "$group"; then
     format_cell "$v4" 0
     return
   fi
@@ -2753,7 +2808,12 @@ format_cells() {
 }
 
 format_protocol_labels() {
-  local v4_width="$1"
+  local group="$1"
+  local v4_width="$2"
+
+  if is_checked_once "$group"; then
+    return
+  fi
 
   if ! is_dual_stack; then
     printf 'IPv%s' "$(first_ip_version)"
@@ -2764,12 +2824,19 @@ format_protocol_labels() {
 }
 
 format_group_header() {
-  local title="$1"
-  local name_width="$2"
-  local cell_width="$3"
+  local group="$1"
+  local title="$2"
+  local name_width="$3"
+  local cell_width="$4"
+  local labels
 
-  printf '%s%s' "$(paint "$C_TITLE" "$(pad "$(label_group "$title")" "$name_width")")" \
-    "$(paint "$C_DIM" "$(format_protocol_labels "$cell_width")")"
+  labels=$(format_protocol_labels "$group" "$cell_width")
+  if [[ -z "$labels" ]]; then
+    paint "$C_TITLE" "$(label_group "$title")"
+    return
+  fi
+
+  printf '%s%s' "$(paint "$C_TITLE" "$(pad "$(label_group "$title")" "$name_width")")" "$(paint "$C_DIM" "$labels")"
 }
 
 format_badge() {
@@ -2935,11 +3002,26 @@ print_checks_bar() {
   print_header_line "$(format_summary_bar "$(checks_bar_color)" "$CHECKS_NORMAL" "$CHECKS_TOTAL" "$VERDICT_BAR_WIDTH")  $(paint "$C_DIM" "$CHECKS_NORMAL/$CHECKS_TOTAL $CHECKS_PASSED_NOTE")"
 }
 
+print_proxy_line() {
+  local exits="$PROXY_DUAL_STACK_EXITS"
+
+  if [[ -z "$PROXY_ADDR" ]]; then
+    return
+  fi
+
+  if ! is_dual_stack; then
+    exits="IPv$(first_ip_version) only"
+  fi
+
+  print_header_line "$(paint "$C_TITLE" Proxy) $(paint "$C_DIM" "$PROXY_EXITS_NOTE") $(paint "$C_VALUE" "$exits")"
+}
+
 print_host_header() {
   printf '\n'
   print_header_line "$(paint "$C_DIM" "Made with $(paint "$C_NO" "<3")${C_DIM} by $AUTHOR ·") ${SCRIPT_URL#https://}"
   print_header_line ""
   print_ip_lines
+  print_proxy_line
 }
 
 print_header() {
@@ -2958,9 +3040,10 @@ format_scope() {
     return
   fi
 
-  if [[ "$ip_version" == both ]]; then
-    label="$ip_version"
-  fi
+  case "$ip_version" in
+    both) label="$ip_version" ;;
+    "$PROXY_IP_VERSION") label="" ;;
+  esac
 
   printf '%s  ' "$(paint "$C_DIM" "$(pad "$label" "$SCOPE_WIDTH")")"
 }
@@ -3097,16 +3180,17 @@ table_name_width() {
 
 append_table_lines() {
   local -n table_lines=$1
-  local title="$2"
-  local name_width="$3"
-  local cell_width="$4"
-  shift 4
+  local group="$2"
+  local title="$3"
+  local name_width="$4"
+  local cell_width="$5"
+  shift 5
   local -a rows=("$@")
   local i
 
-  table_lines+=("$(format_group_header "$title" "$name_width" "$cell_width")")
+  table_lines+=("$(format_group_header "$group" "$title" "$name_width" "$cell_width")")
   for ((i = 0; i < ${#rows[@]}; i += GROUP_ROW_FIELDS)); do
-    table_lines+=("$(pad "${rows[i]}" "$name_width")$(format_cells "${rows[i + 1]}" "${rows[i + 2]}" "$cell_width")")
+    table_lines+=("$(pad "${rows[i]}" "$name_width")$(format_cells "$group" "${rows[i + 1]}" "${rows[i + 2]}" "$cell_width")")
   done
 }
 
@@ -3122,7 +3206,7 @@ append_group_lines() {
     return
   fi
 
-  append_table_lines "$lines_name" "$title" "$(table_name_width "$title" "${fields[@]}")" "$cell_width" "${fields[@]}"
+  append_table_lines "$lines_name" "$group" "$title" "$(table_name_width "$title" "${fields[@]}")" "$cell_width" "${fields[@]}"
 }
 
 append_separated_group_lines() {
@@ -3373,10 +3457,10 @@ print_cdn_table() {
   name_width=$(($(max_length "${names[@]}") + NAME_GAP))
   edge_width=$(($(max_length "${v4_edges[@]}" IPv4) + EDGE_GAP))
 
-  printf ' %s\n' "$(format_group_header CDN "$name_width" "$edge_width")"
+  printf ' %s\n' "$(format_group_header "$GROUP_CDN" CDN "$name_width" "$edge_width")"
   for i in "${!v4_edges[@]}"; do
     line="$(pad "${names[i + 1]}" "$name_width")${v4_edges[i]}"
-    if is_dual_stack; then
+    if has_protocol_columns "$GROUP_CDN"; then
       line="$(pad "${names[i + 1]}" "$name_width")$(pad "${v4_edges[i]}" "$edge_width")${v6_edges[i]}"
     fi
     printf ' %s\n' "$line"
@@ -3400,11 +3484,20 @@ print_geoip_breakdown() {
   half=$((${#fields[@]} / GROUP_ROW_FIELDS))
   half=$(((half + 1) / 2))
   half=$((half * GROUP_ROW_FIELDS))
-  append_table_lines first GeoIP "$(table_name_width GeoIP "${fields[@]:0:half}")" $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA)) "${fields[@]:0:half}"
+  append_table_lines first "$GROUP_GEOIP" GeoIP "$(table_name_width GeoIP "${fields[@]:0:half}")" $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA)) "${fields[@]:0:half}"
   if ((${#fields[@]} > half)); then
-    append_table_lines second "" "$(table_name_width "" "${fields[@]:half}")" $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA)) "${fields[@]:half}"
+    append_table_lines second "$GROUP_GEOIP" "" "$(table_name_width "" "${fields[@]:half}")" $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA)) "${fields[@]:half}"
   fi
   print_two_columns first second
+}
+
+none_legend() {
+  if [[ -n "$PROXY_ADDR" ]]; then
+    printf '%s' "$OTHER_PROTOCOL_LEGEND"
+    return
+  fi
+
+  printf 'no IPv6'
 }
 
 print_legend() {
@@ -3420,10 +3513,18 @@ print_legend() {
   legend+="$(paint "$C_NO" "$SYMBOL_IPBLOCK") $(paint "$C_DIM" "IP blocked")$separator"
   legend+="$(paint "$C_DIM" "$SYMBOL_UNKNOWN unknown")"
   if [[ -n "$EXTERNAL_IPV6" ]]; then
-    legend+="$separator$(paint "$C_DIM" "$SYMBOL_NONE no IPv6")"
+    legend+="$separator$(paint "$C_DIM" "$SYMBOL_NONE $(none_legend)")"
   fi
 
   printf ' %s\n\n' "$legend"
+}
+
+print_proxy_note() {
+  if ! is_checked_once "$GROUP_PLATFORMS"; then
+    return
+  fi
+
+  printf ' %s\n\n' "$(paint "$C_DIM" "$PROXY_CHECKED_ONCE_NOTE")"
 }
 
 print_breakdown_hint() {
@@ -3450,6 +3551,7 @@ print_report() {
   print_cdn_table
   print_geoip_breakdown
   print_legend
+  print_proxy_note
   print_breakdown_hint
 }
 
@@ -3471,6 +3573,7 @@ print_service_report() {
   fi
   print_cdn_table
   print_legend
+  print_proxy_note
 }
 
 print_json_array() {
@@ -3510,6 +3613,7 @@ print_json() {
     --arg ai "$GROUP_AI" \
     --arg yes "$STATUS_YES" \
     --arg none "$STATUS_NONE" \
+    --arg proxy "$PROXY_IP_VERSION" \
     "$JSON_REPORT_FILTER" <<<"$RESULTS"
 }
 
@@ -3531,6 +3635,7 @@ main() {
   use_utf8_locale
   parse_args "$@"
   validate_args
+  ignore_ip_version_with_proxy
   install_missing_dependencies
   resolve_selected_groups
   resolve_selected_checks

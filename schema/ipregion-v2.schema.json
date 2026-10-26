@@ -79,13 +79,14 @@
     },
     "service": {
       "type": "object",
-      "required": ["id", "service", "ipv4", "ipv6"],
+      "required": ["id", "service", "ipv4", "ipv6", "proxy"],
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
         "service": { "type": "string" },
         "ipv4": { "oneOf": [{ "$ref": "#/$defs/result" }, { "type": "null" }] },
-        "ipv6": { "oneOf": [{ "$ref": "#/$defs/result" }, { "type": "null" }] }
+        "ipv6": { "oneOf": [{ "$ref": "#/$defs/result" }, { "type": "null" }] },
+        "proxy": { "oneOf": [{ "$ref": "#/$defs/result" }, { "type": "null" }] }
       }
     },
     "countryService": {
@@ -94,20 +95,22 @@
         {
           "properties": {
             "ipv4": { "properties": { "access": { "type": "null" } } },
-            "ipv6": { "properties": { "access": { "type": "null" } } }
+            "ipv6": { "properties": { "access": { "type": "null" } } },
+            "proxy": { "properties": { "access": { "type": "null" } } }
           }
         }
       ]
     },
     "cdnService": {
       "type": "object",
-      "required": ["id", "service", "ipv4", "ipv6"],
+      "required": ["id", "service", "ipv4", "ipv6", "proxy"],
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
         "service": { "type": "string" },
         "ipv4": { "oneOf": [{ "$ref": "#/$defs/cdnResult" }, { "type": "null" }] },
-        "ipv6": { "oneOf": [{ "$ref": "#/$defs/cdnResult" }, { "type": "null" }] }
+        "ipv6": { "oneOf": [{ "$ref": "#/$defs/cdnResult" }, { "type": "null" }] },
+        "proxy": { "oneOf": [{ "$ref": "#/$defs/cdnResult" }, { "type": "null" }] }
       }
     },
     "attentionEntry": {
@@ -116,7 +119,7 @@
       "additionalProperties": false,
       "properties": {
         "services": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-        "ip_version": { "enum": ["4", "6", "both"] },
+        "ip_version": { "enum": ["4", "6", "both", "proxy"] },
         "country": { "$ref": "#/$defs/country" },
         "access": { "$ref": "#/$defs/access" },
         "reason": { "$ref": "#/$defs/nullableString" }

@@ -123,7 +123,7 @@ docker run --rm --network=host vernette/ipregion:latest --interface eth1
 ./ipregion.sh --group ai --service chatgpt  # A whole group plus single services from other groups
 ./ipregion.sh --ipv4                        # IPv4 only
 ./ipregion.sh --ipv6                        # IPv6 only
-./ipregion.sh --proxy 127.0.0.1:1080        # Use a SOCKS5 proxy
+./ipregion.sh --proxy 127.0.0.1:1080        # Use a SOCKS5 proxy, it picks IPv4 or IPv6 itself
 ./ipregion.sh --interface eth1              # Use a network interface
 ./ipregion.sh --timeout 10                  # Request timeout in seconds
 ./ipregion.sh --emoji                       # Country flags and group icons
@@ -177,7 +177,8 @@ All options can be combined. A service that exists in several groups needs the g
           "access": null,
           "reason": null
         },
-        "ipv6": null
+        "ipv6": null,
+        "proxy": null
       }
     ],
     "cdn": [
@@ -191,7 +192,8 @@ All options can be combined. A service that exists in several groups needs the g
           "iata": "ARN",
           "node": null
         },
-        "ipv6": null
+        "ipv6": null,
+        "proxy": null
       }
     ],
     "availability": [
@@ -203,7 +205,8 @@ All options can be combined. A service that exists in several groups needs the g
           "access": "yes",
           "reason": null
         },
-        "ipv6": null
+        "ipv6": null,
+        "proxy": null
       }
     ],
     "ai": [],
@@ -215,7 +218,8 @@ All options can be combined. A service that exists in several groups needs the g
 - `ipv4` / `ipv6` - `null` when the protocol is not available or not selected
 - `verdict.country` - `null` on a tie, then the tied countries are in `verdict.tied`
 - `access` - `yes`, `no` (region blocked) or `ipblock` in Availability and AI, always `null` in the other groups
-- `ip_version` in Attention - `4`, `6` or `both`
+- `proxy` - set only through a proxy that exits over both IPv4 and IPv6. Such a proxy picks the protocol of each connection itself, so Platforms, Availability, AI and CDN are checked once: the result is under `proxy`, `ipv4` / `ipv6` are `null`. GeoIP stays per protocol, because its services are asked about each exit IP explicitly; Cloudflare reports the address it saw, so the other protocol gets `reason: "proxy picked IPv4"` or `"proxy picked IPv6"`. Through a proxy with one protocol everything stays under `ipv4` or `ipv6`
+- `ip_version` in Attention - `4`, `6`, `both` or `proxy`
 - Version 2 is not compatible with version 1: groups `primary` / `custom` became `platforms`, `availability`, `ai`, `geoip`, and `--group primary|custom` no longer exists
 
 ## Country codes

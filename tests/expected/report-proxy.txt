@@ -1,0 +1,58 @@
+
+ ┃ Made with <3 by vernette · github.com/vernette/ipregion
+ ┃
+ ┃ IPv4  203.0.*.*        AS64496 Example Hosting  registered in NL
+ ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
+ ┃ Proxy exits over IPv4 and IPv6
+ ┃
+ ┃  SE   Sweden   seen by most services
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  47/51 checks passed
+
+ Attention
+   Disney+         ✗    region blocked
+   Disney+         ?    unexpected response
+
+ Platforms           Availability
+ Google       SE     YouTube Premium  ✓
+ YouTube      SE     Google Search    ✓
+ Twitch       SE     Spotify Signup   ✓
+ ChatGPT      SE     Disney+          ✗
+ Netflix      SE     Reddit Guest     ✓
+ Spotify      SE
+ Reddit       SE     AI
+ Disney+      ?      Gemini Web       ✓
+ TikTok       SE     Gemini API       ✓
+ Apple        SE     OpenAI API       ✓
+ Steam        SE     Anthropic API    ✓
+ Microsoft    SE     Grok API         ✓
+ Ookla        SE     Qwen API         ✓
+ JetBrains    SE     Qwen CN API      ✓
+ PlayStation  SE     Kimi API         ✓
+                     Kimi CN API      ✓
+                     GLM API          ✓
+                     GLM CN API       ✓
+                     MiniMax API      ✓
+                     MiniMax CN API   ✓
+                     Doubao API       ✓
+                     SiliconFlow API  ✓
+                     DeepSeek API     ✓
+
+ CDN
+ Cloudflare  SE · ARN
+ YouTube     DE · FRA · tzfraa-cd
+ Netflix     DE · FRA · c002-fra001-ix
+
+ GeoIP           IPv4  IPv6                   IPv4  IPv6
+ MaxMind         SE    SE       country.is    SE    SE
+ RIPE            SE    SE       geoapify.com  SE    SE
+ ipinfo.io       SE    SE       geojs.io      SE    SE
+ Cloudflare      -     SE       ipbase.com    SE    SE
+ ipregistry.co   SE    SE       ipquery.io    RU    DE
+ ipapi.co        SE    SE       ipwho.is      SE    SE
+ ifconfig.co     RU    DE       ip-api.com    SE    SE
+ ip2location.io  SE    SE
+
+ ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - other protocol
+
+ Through a proxy each service is checked once: the proxy picks IPv4 or IPv6
+
