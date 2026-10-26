@@ -472,14 +472,21 @@ map(select(.group == $geoip and .status == $yes and .country != ""))
 | group_by(.country)
 | max_by(length)
 | .[0].country // empty'
-# shellcheck disable=SC2016 # $verdict, $collapse_min and the other names are jq variables, not shell expansions
-readonly ATTENTION_FILTER='
+# shellcheck disable=SC2016 # $verdict, $geoip and the other names are jq variables, not shell expansions
+readonly NEEDS_ATTENTION_DEFINITION='
 def needs_attention:
   if .group == $cdn or .status == $none or .reason == $daily_limit then false
   elif .status == "" then true
   elif .group == $geoip then false
   elif .country != "" then $verdict != "" and .country != $verdict
-  else .status != $yes end;
+  else .status != $yes end;'
+# shellcheck disable=SC2016 # $verdict and $geoip are jq variables, not shell expansions
+readonly ABNORMAL_CHECKS_FILTER="$NEEDS_ATTENTION_DEFINITION"'
+def differs_from_verdict:
+  .group == $geoip and .country != "" and $verdict != "" and .country != $verdict;
+[.[] | select(needs_attention or differs_from_verdict) | [.group, .service]] | unique | length'
+# shellcheck disable=SC2016 # $collapse_min, $different_country and the other names are jq variables, not shell expansions
+readonly ATTENTION_FILTER="$NEEDS_ATTENTION_DEFINITION"'
 def severity:
   if .status == "" then 3 elif .country != "" then 0 elif .status == $no then 1 else 2 end;
 to_entries
@@ -2790,16 +2797,26 @@ print_verdict_line() {
   print_header_line "$badges  $(paint "$C_VALUE" "$names")   $(paint "$C_DIM" "$note")"
 }
 
+count_abnormal_checks() {
+  jq \
+    --arg verdict "$VERDICT" \
+    --arg yes "$STATUS_YES" \
+    --arg none "$STATUS_NONE" \
+    --arg cdn "$GROUP_CDN" \
+    --arg geoip "$GROUP_GEOIP" \
+    --arg daily_limit "$REASON_DAILY_LIMIT" \
+    "$ABNORMAL_CHECKS_FILTER" <<<"$RESULTS"
+}
+
 print_checks_bar() {
-  local total attention normal
+  local total normal
 
   total=$(jq '[.[] | [.group, .service]] | unique | length' <<<"$RESULTS")
   if ((total == 0)); then
     return
   fi
 
-  attention=$(jq '[.[].services[]] | unique | length' <<<"$ATTENTION")
-  normal=$((total - attention))
+  normal=$((total - $(count_abnormal_checks)))
   print_header_line "$(format_summary_bar "$normal" "$total" "$VERDICT_BAR_WIDTH")  $(paint "$C_DIM" "$normal/$total $CHECKS_NORMAL_NOTE")"
 }
 

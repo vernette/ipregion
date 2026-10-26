@@ -4,7 +4,7 @@
  ┃ IPv4  203.0.*.*  AS64496 Example Hosting  registered in NL
  ┃
  ┃  SE   Sweden   seen by most services
- ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  49/50 look normal
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  47/50 look normal
 
  Attention
    JetBrains  SI   different country

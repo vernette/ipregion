@@ -5,7 +5,7 @@
  ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in 🇩🇪 DE
  ┃
  ┃ 🇸🇪  SE   Sweden   seen by most services
- ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  48/50 look normal
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  45/50 look normal
 
  🚨 Attention
    JetBrains  IPv4   🇸🇮 SI   different country
