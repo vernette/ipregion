@@ -710,11 +710,21 @@ use_up_maxmind_limit() {
 
   lookup_ip_registrations
 
-  [[ "${REGISTRATION_MAXMIND_FAILURE[4]}" == "$REASON_NO_DEMO_TOKEN" ]]
-  [[ "${REGISTRATION_MAXMIND_FAILURE[6]}" == "$REASON_NO_DEMO_TOKEN" ]]
+  [[ "${REGISTRATION_MAXMIND_FAILURE[4]}" == "no demo token: unexpected response (200)" ]]
+  [[ "${REGISTRATION_MAXMIND_FAILURE[6]}" == "no demo token: unexpected response (200)" ]]
   [[ "${REGISTRATION_COUNTRY[4]}" == SE && "${REGISTRATION_COUNTRY[6]}" == SE ]]
   run grep -c -e geoip.maxmind.com -e demo/token "$FAKE_CURL_LOG"
   [[ "$output" -eq 0 ]]
+}
+
+@test "failed token request names its reason" {
+  use_host_fixtures dual-stack
+  set_fixture_field 4 www.maxmind.com_en_geoip2_demo_token exit 28
+  set_dual_stack_ips
+
+  lookup_ip_registrations
+
+  [[ "${REGISTRATION_MAXMIND_FAILURE[4]}" == "no demo token: timeout" ]]
 }
 
 @test "verbose log masks the ip of registration lookups" {

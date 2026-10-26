@@ -588,6 +588,7 @@ EXTERNAL_IPV4=""
 EXTERNAL_IPV6=""
 CURL_ARGS=()
 MAXMIND_TOKEN=""
+MAXMIND_TOKEN_FAILURE=""
 JOB_COUNT=0
 JOB_SLOTS_FD=""
 PROGRESS_FRAME=0
@@ -1516,22 +1517,45 @@ json_value() {
   jq -r "$filter" <<<"$HTTP_BODY" 2>/dev/null || true
 }
 
+maxmind_token_failure_reason() {
+  local reason
+
+  reason=$(http_failure_reason)
+  if [[ -n "$reason" ]]; then
+    printf '%s' "$reason"
+    return
+  fi
+
+  printf '%s (%s)' "$REASON_UNEXPECTED_RESPONSE" "$HTTP_CODE"
+}
+
 request_maxmind_token() {
   local cookie_jar="$WORK_DIR/maxmind-cookies"
   local csrf_token
 
   http_request "$ANY_TRANSPORT" "$MAXMIND_DEMO_PAGE_URL" --cookie-jar "$cookie_jar"
   if [[ ! "$HTTP_BODY" =~ $MAXMIND_CSRF_PATTERN ]]; then
+    MAXMIND_TOKEN_FAILURE=$(maxmind_token_failure_reason)
     return
   fi
   csrf_token="${BASH_REMATCH[1]}"
 
   http_request "$ANY_TRANSPORT" "$MAXMIND_TOKEN_URL" --request POST --cookie "$cookie_jar" --header "X-CSRF-Token: $csrf_token"
   if [[ "$HTTP_CODE" != "$HTTP_CREATED" ]]; then
+    MAXMIND_TOKEN_FAILURE=$(maxmind_token_failure_reason)
     return
   fi
 
   MAXMIND_TOKEN=$(json_value '.token // empty')
+}
+
+no_demo_token_reason() {
+  if [[ -z "$MAXMIND_TOKEN_FAILURE" ]]; then
+    printf '%s' "$REASON_NO_DEMO_TOKEN"
+    return
+  fi
+
+  printf '%s: %s' "$REASON_NO_DEMO_TOKEN" "$MAXMIND_TOKEN_FAILURE"
 }
 
 fetch_maxmind_city() {
@@ -1573,7 +1597,7 @@ lookup_maxmind_registration() {
   local failure
 
   if [[ -z "$MAXMIND_TOKEN" ]]; then
-    REGISTRATION_MAXMIND_FAILURE[$ip_version]="$REASON_NO_DEMO_TOKEN"
+    REGISTRATION_MAXMIND_FAILURE[$ip_version]=$(no_demo_token_reason)
     return 1
   fi
 
@@ -1923,7 +1947,7 @@ check_geoip_maxmind() {
   local failure
 
   if [[ -z "$MAXMIND_TOKEN" ]]; then
-    print_failure "$GROUP_GEOIP" MaxMind "$ip_version" "$REASON_NO_DEMO_TOKEN"
+    print_failure "$GROUP_GEOIP" MaxMind "$ip_version" "$(no_demo_token_reason)"
     return
   fi
 
