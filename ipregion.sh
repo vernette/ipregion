@@ -105,6 +105,93 @@ readonly PROGRESS_BAR_WIDTH=24
 readonly PROGRESS_BAR_DONE="━"
 readonly PROGRESS_BAR_LEFT="─"
 
+readonly VERBOSE_TIME_FORMAT='%H:%M:%S'
+# shellcheck disable=SC2016 # expanded by bash on every trace line, not here
+readonly DEBUG_TRACE_PS4='+ [${BASHPID}] ${FUNCNAME[0]:-main}:${LINENO} '
+readonly DEBUG_LOG_TEMPLATE="ipregion-debug.XXXXXX"
+readonly DEBUG_RECORD_LIMIT=4096
+readonly DEBUG_UPLOAD_TIMEOUT=60
+readonly UPLOAD_SPEED_LIMIT=1024
+readonly UPLOAD_SPEED_TIME=10
+readonly X0_AT_UPLOAD_URL="https://x0.at"
+readonly LITTERBOX_UPLOAD_URL="https://litterbox.catbox.moe/resources/internals/api.php"
+readonly LITTERBOX_RETENTION="72h"
+readonly UPLOADED_URL_PATTERN='^https://[^[:space:]]+$'
+readonly MASKED_VALUE="masked"
+readonly MASKED_ASN="AS64496"
+readonly MASKED_ORG="Example Hosting"
+readonly MASKED_HOME="~"
+# shellcheck disable=SC2016 # awk program, $0 belongs to awk
+readonly DEBUG_LOG_FILTER='
+function replace_literal(text, from_text, to_text,    result, position) {
+  result = ""
+  while ((position = index(text, from_text)) > 0) {
+    result = result substr(text, 1, position - 1) to_text
+    text = substr(text, position + length(from_text))
+  }
+  return result text
+}
+
+function mask_keys(text,    result, matched, colon) {
+  result = ""
+  while (match(text, key_pattern)) {
+    matched = substr(text, RSTART, RLENGTH)
+    colon = index(matched, ":")
+    result = result substr(text, 1, RSTART - 1) substr(matched, 1, colon) "\"" masked "\""
+    text = substr(text, RSTART + RLENGTH)
+  }
+  return result text
+}
+
+function print_truncated() {
+  if (truncated > 0) {
+    printf "[... %d bytes truncated]\n", truncated
+  }
+  truncated = 0
+}
+
+BEGIN {
+  for (i = 1; i < ARGC; i += 2) {
+    from[++pairs] = ARGV[i]
+    to[pairs] = ARGV[i + 1]
+    delete ARGV[i]
+    delete ARGV[i + 1]
+  }
+  key_pattern = "\"(ip|query|ip_address|network|hostname|host|domain|org|isp|isp_name|ispName|as|asn|" \
+    "asname|organization|company|name|sponsor|autonomous_system_number|autonomous_system_organization|" \
+    "city|city_name|cityName|region|region_name|regionName|" \
+    "region_code|state|district|postal|zip|postal_code|latitude|longitude|lat|lon|loc|names|" \
+    "metro_code|accuracy_radius|timezone|time_zone)\" *: *(\"[^\"]*\"|-?[0-9.]+|[{][^}]*[}])"
+}
+
+/^\++ \[[0-9]+\] / {
+  print_truncated()
+  record_size = 0
+}
+
+{
+  line = $0
+  for (i = 1; i <= pairs; i++) {
+    line = replace_literal(line, from[i], to[i])
+  }
+  line = mask_keys(line)
+
+  if (record_size >= limit) {
+    truncated += length(line) + 1
+    next
+  }
+  if (record_size + length(line) > limit) {
+    truncated += record_size + length(line) - limit
+    line = substr(line, 1, limit - record_size)
+  }
+  record_size += length(line) + 1
+  print line
+}
+
+END {
+  print_truncated()
+}'
+
 readonly IPV4_IDENTITY_URLS=(
   https://ipv4.icanhazip.com
   https://api.ipify.org
@@ -502,6 +589,10 @@ JOB_COUNT=0
 JOB_SLOTS_FD=""
 PROGRESS_FRAME=0
 RESULTS=""
+DEBUG_TRACE_FILE=""
+DEBUG_TRACE_DIR=""
+DEBUG_LOG_FILE=""
+DEBUG_MASKS=()
 declare -gA REGISTRATION_ASN=()
 declare -gA REGISTRATION_ORG=()
 declare -gA REGISTRATION_COUNTRY=()
@@ -525,6 +616,22 @@ die() {
   exit 1
 }
 
+log_verbose() {
+  local message="$1"
+
+  if [[ "$VERBOSE" != true ]]; then
+    return
+  fi
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    message="${message//"$EXTERNAL_IPV4"/"$(mask_ipv4 "$EXTERNAL_IPV4")"}"
+  fi
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    message="${message//"$EXTERNAL_IPV6"/"$(mask_ipv6 "$EXTERNAL_IPV6")"}"
+  fi
+  printf "[%($VERBOSE_TIME_FORMAT)T] %s\n" -1 "$message" >&2
+}
+
 usage() {
   cat <<EOF
 Usage: $SCRIPT_NAME [OPTIONS]
@@ -535,8 +642,9 @@ host over IPv4 and IPv6.
 Options:
   -h, --help             Show this help and exit
   -v, --verbose          Log every step to stderr
-  -d, --debug            Save a full trace to a file and upload it to 0x0.st
-  -y, --yes              Install missing curl and jq without asking
+  -d, --debug            Save a masked trace to a file and offer to upload it
+  -y, --yes              Install missing curl and jq and upload the debug
+                         log without asking
   -j, --json             Print results as JSON
   -g, --group GROUPS     Check only these groups, comma-separated or repeated:
                          ${SERVICE_GROUPS[*]} (default: $ALL_GROUPS)
@@ -1040,8 +1148,162 @@ stop_jobs() {
   done
 }
 
+print_debug_environment() {
+  local curl_version
+
+  curl_version=$(curl --version)
+  printf 'Arguments: %s\n' "$*"
+  printf 'Bash: %s\n' "$BASH_VERSION"
+  printf 'System: %s\n' "$(uname -srm)"
+  printf 'Locale: %s\n' "${LC_ALL:-${LANG:-}}"
+  printf 'Curl: %s\n' "${curl_version%%$'\n'*}"
+  printf 'Jq: %s\n\n' "$(jq --version)"
+}
+
+add_debug_mask() {
+  local value="$1"
+  local replacement="$2"
+
+  if [[ -n "$value" ]]; then
+    DEBUG_MASKS+=("$value" "$replacement")
+  fi
+}
+
+collect_debug_masks() {
+  local ip_version
+
+  DEBUG_MASKS=()
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    add_debug_mask "$EXTERNAL_IPV4" "$(mask_ipv4 "$EXTERNAL_IPV4")"
+    add_debug_mask "${EXTERNAL_IPV4%.*}." "${EXTERNAL_IPV4%.*.*}.*."
+  fi
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    add_debug_mask "$EXTERNAL_IPV6" "$(mask_ipv6 "$EXTERNAL_IPV6")"
+  fi
+
+  for ip_version in 4 6; do
+    add_debug_mask "${REGISTRATION_ORG[$ip_version]:-}" "$MASKED_ORG"
+    if [[ -n "${REGISTRATION_ASN[$ip_version]:-}" ]]; then
+      add_debug_mask "AS${REGISTRATION_ASN[$ip_version]}" "$MASKED_ASN"
+    fi
+  done
+
+  add_debug_mask "$PROXY_ADDR" "$MASKED_VALUE"
+  add_debug_mask "$HOME" "$MASKED_HOME"
+}
+
+print_debug_traces() {
+  local trace
+
+  cat -- "$DEBUG_TRACE_FILE"
+  for trace in "$DEBUG_TRACE_DIR"/*; do
+    if [[ ! -e "$trace" ]]; then
+      continue
+    fi
+
+    printf '\n=== job %s\n' "${trace##*/}"
+    cat -- "$trace"
+  done
+}
+
+save_debug_log() {
+  collect_debug_masks
+  DEBUG_LOG_FILE=$(mktemp "${TMPDIR:-/tmp}/$DEBUG_LOG_TEMPLATE")
+  print_debug_traces | LC_ALL=C awk -v limit="$DEBUG_RECORD_LIMIT" -v masked="$MASKED_VALUE" \
+    "$DEBUG_LOG_FILTER" "${DEBUG_MASKS[@]}" >"$DEBUG_LOG_FILE"
+}
+
+confirm_debug_log_upload() {
+  local answer
+
+  if [[ "$ASSUME_YES" == true ]]; then
+    return
+  fi
+
+  if ! has_terminal; then
+    printf 'Run with --yes to upload it\n' >&2
+    return 1
+  fi
+
+  printf 'IP addresses, ASN and location are masked, but the log is public for anyone with the link.\n' >/dev/tty
+  printf 'Upload it and get a link for the issue? [y/N] ' >/dev/tty
+  read -r answer </dev/tty
+  case "$answer" in
+    y | Y | yes) return ;;
+  esac
+
+  return 1
+}
+
+upload_to_x0_at() {
+  curl "${CURL_ARGS[@]}" --form "file=@$DEBUG_LOG_FILE" "$X0_AT_UPLOAD_URL"
+}
+
+upload_to_litterbox() {
+  curl "${CURL_ARGS[@]}" --form reqtype=fileupload --form "time=$LITTERBOX_RETENTION" \
+    --form "fileToUpload=@$DEBUG_LOG_FILE" "$LITTERBOX_UPLOAD_URL"
+}
+
+print_uploaded_url() {
+  local upload_function="$1"
+  local url
+
+  url=$("$upload_function" 2>/dev/null) || return 1
+  if [[ ! "$url" =~ $UPLOADED_URL_PATTERN ]]; then
+    return 1
+  fi
+
+  printf '%s\n' "$url"
+}
+
+upload_debug_log() {
+  local url
+
+  build_curl_args ""
+  CURL_ARGS+=(--max-time "$DEBUG_UPLOAD_TIMEOUT" --speed-limit "$UPLOAD_SPEED_LIMIT" --speed-time "$UPLOAD_SPEED_TIME")
+  printf 'Uploading the debug log...\n' >&2
+
+  if url=$(print_uploaded_url upload_to_x0_at) || url=$(print_uploaded_url upload_to_litterbox); then
+    printf 'Debug log: %s\n' "$url" >&2
+    return
+  fi
+
+  printf 'Error: failed to upload the debug log, attach %s to the issue instead\n' "$DEBUG_LOG_FILE" >&2
+}
+
+start_debug_trace() {
+  local trace_fd
+
+  if [[ "$DEBUG" != true ]]; then
+    return
+  fi
+
+  DEBUG_TRACE_FILE="$WORK_DIR/debug-trace"
+  DEBUG_TRACE_DIR="$WORK_DIR/debug-traces"
+  mkdir -- "$DEBUG_TRACE_DIR"
+  print_debug_environment "$@" >"$DEBUG_TRACE_FILE"
+  exec {trace_fd}>>"$DEBUG_TRACE_FILE"
+  BASH_XTRACEFD="$trace_fd"
+  PS4="$DEBUG_TRACE_PS4"
+  set -x
+}
+
+finish_debug_trace() {
+  if [[ -z "$DEBUG_TRACE_FILE" ]]; then
+    return
+  fi
+
+  set +x
+  save_debug_log
+  printf 'Debug log saved to %s\n' "$DEBUG_LOG_FILE" >&2
+  if confirm_debug_log_upload; then
+    upload_debug_log
+  fi
+}
+
 cleanup() {
   stop_jobs
+  finish_debug_trace
 
   if [[ -n "$WORK_DIR" ]]; then
     rm -rf -- "$WORK_DIR"
@@ -1069,7 +1331,7 @@ build_curl_args() {
 
   if [[ -n "$PROXY_ADDR" ]]; then
     CURL_ARGS+=(--proxy "socks5h://$PROXY_ADDR")
-  else
+  elif [[ -n "$ip_version" ]]; then
     CURL_ARGS+=("-$ip_version")
   fi
 
@@ -1084,10 +1346,13 @@ fetch_to_cache() {
   local url="$3"
   shift 3
   local curl_exit=0
+  local http_code
 
   build_curl_args "$ip_version"
   curl "${CURL_ARGS[@]}" --output "$entry.body" --write-out "$CURL_WRITE_OUT" "$@" "$url" >"$entry.meta" || curl_exit=$?
   printf '%s\n' "$curl_exit" >>"$entry.meta"
+  read -r http_code <"$entry.meta"
+  log_verbose "IPv$ip_version $url: HTTP $http_code, curl exit $curl_exit"
   touch -- "$entry.body"
   : >"$entry.done"
 }
@@ -1232,6 +1497,8 @@ discover_external_ips() {
   EXTERNAL_IPV4=$(<"$ipv4_file")
   EXTERNAL_IPV6=$(<"$ipv6_file")
 
+  log_verbose "External IPv4: ${EXTERNAL_IPV4:-not found}, IPv6: ${EXTERNAL_IPV6:-not found}"
+
   if [[ -z "$EXTERNAL_IPV4" && -z "$EXTERNAL_IPV6" ]]; then
     printf 'Error: failed to detect an external IP address, check the network connection\n' >&2
     exit 1
@@ -1364,9 +1631,11 @@ lookup_ip_registration() {
   local ip="$2"
 
   if lookup_maxmind_registration "$ip_version" "$ip"; then
+    log_verbose "IPv$ip_version registration from MaxMind"
     return
   fi
 
+  log_verbose "IPv$ip_version registration from RIPE, MaxMind: ${REGISTRATION_MAXMIND_FAILURE[$ip_version]}"
   lookup_ripe_registration "$ip_version" "$ip"
 }
 
@@ -1396,6 +1665,7 @@ print_result() {
   local status="$5"
   local reason="$6"
 
+  log_verbose "$group / $service IPv$ip_version: country ${country:--}, status ${status:--}, reason ${reason:--}"
   jq -cn \
     --arg group "$group" \
     --arg service "$service" \
@@ -1424,7 +1694,7 @@ draw_progress() {
   local finished
   local spinner
 
-  if [[ ! -t 2 ]]; then
+  if [[ ! -t 2 || "$VERBOSE" == true ]]; then
     return
   fi
 
@@ -1436,7 +1706,7 @@ draw_progress() {
 }
 
 clear_progress() {
-  if [[ ! -t 2 ]]; then
+  if [[ ! -t 2 || "$VERBOSE" == true ]]; then
     return
   fi
 
@@ -1466,6 +1736,12 @@ return_job_slot() {
 run_job() {
   local result_file="$1"
   shift
+  local trace_fd
+
+  if [[ -n "$DEBUG_TRACE_DIR" ]]; then
+    exec {trace_fd}>"$DEBUG_TRACE_DIR/${result_file##*/}"
+    BASH_XTRACEFD="$trace_fd"
+  fi
 
   take_job_slot
   trap return_job_slot EXIT
@@ -3006,6 +3282,7 @@ main() {
   resolve_selected_groups
   resolve_selected_checks
   create_work_dir
+  start_debug_trace "$@"
   create_job_slots
   discover_external_ips
   lookup_ip_registrations

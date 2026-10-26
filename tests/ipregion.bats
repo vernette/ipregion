@@ -1578,3 +1578,33 @@ run_report() {
   [[ "${table[1]}" == "YouTube Premium  ✓    ✓" ]]
   [[ "${table[2]}" == "Disney+          ✓    ✗" ]]
 }
+
+@test "debug log masks the host and truncates long trace records" {
+  set_dual_stack_ips
+  REGISTRATION_ASN[4]=64500
+  REGISTRATION_ORG[4]="Acme Hosting"
+  DEBUG_TRACE_FILE="$BATS_TEST_TMPDIR/trace"
+  DEBUG_TRACE_DIR="$BATS_TEST_TMPDIR/traces"
+  TMPDIR="$BATS_TEST_TMPDIR"
+  mkdir "$DEBUG_TRACE_DIR"
+  {
+    printf "+ [1] main:1 curl https://ipinfo.io/203.0.113.7 -6 http://[2001:db8:85a3::8a2e:370:7334]\n"
+    printf "+ [1] main:2 HTTP_BODY='{\"ip\":\"203.0.113.9\",\"city\":\"Riga\",\"loc\":\"56.9,24.1\",\"country\":\"LV\"}'\n"
+    printf '+ [1] main:3 org AS64500 Acme Hosting, neighbour 203.0.113.200\n'
+    printf "+ [1] main:4 HTTP_BODY='%s'\n" "$(printf '%*s' 5000 '' | tr ' ' x)"
+    printf '+ [1] main:5 done\n'
+  } >"$DEBUG_TRACE_FILE"
+  printf '++ [2] run_job:1 job\n' >"$DEBUG_TRACE_DIR/result-0001"
+
+  save_debug_log
+  run cat "$DEBUG_LOG_FILE"
+
+  [[ "$output" != *203.0.113.7* && "$output" != *203.0.113.9* && "$output" != *203.0.113.200* ]]
+  [[ "$output" != *2001:db8:85a3::8a2e* && "$output" != *Riga* && "$output" != *56.9* && "$output" != *Acme* ]]
+  [[ "$output" == *'https://ipinfo.io/203.0.*.*'* ]]
+  [[ "$output" == *'"ip":"masked","city":"masked","loc":"masked","country":"LV"'* ]]
+  [[ "$output" == *'org AS64496 Example Hosting'* ]]
+  [[ "$output" == *'[... '*' bytes truncated]'* ]]
+  [[ "$output" == *'+ [1] main:5 done'* ]]
+  [[ "$output" == *'=== job result-0001'* ]]
+}
