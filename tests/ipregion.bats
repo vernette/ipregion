@@ -349,6 +349,11 @@ print_yes_color() {
 }
 
 @test "visible length counts group icons as two columns, flags as their width" {
+  local title
+
+  for title in "${!GROUP_EMOJI[@]}"; do
+    [[ "$(visible_length "${GROUP_EMOJI[$title]}")" -eq 2 ]]
+  done
   [[ "$(visible_length "🤖 AI")" -eq 5 ]]
   [[ "$(visible_length "🇩🇪 DE")" -eq 5 ]]
 }

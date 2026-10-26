@@ -39,7 +39,8 @@ readonly COUNTRY_CODE_PATTERN='^[A-Z]{2}$'
 readonly REGIONAL_INDICATOR_A=0x1F1E6
 readonly ASCII_A=65
 readonly UTF8_LOCALE="C.UTF-8"
-readonly WIDE_EMOJI_PATTERN='[🌀-🫿]'
+# A bracket range like [🌀-🫿] follows the locale collation and misses emoji under en_US.UTF-8 on glibc 2.36
+readonly WIDE_EMOJI_PATTERN='[🚨📱🌍🔓🤖📡]'
 readonly FLAG_WIDTH=3
 readonly -A GROUP_EMOJI=(
   ["Attention"]=🚨
