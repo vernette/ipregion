@@ -737,6 +737,15 @@ use_up_maxmind_limit() {
   [[ "$output" != *"8a2e:370:7334"* ]]
 }
 
+@test "verbose log of country names comes before the report" {
+  use_host_fixtures dual-stack
+
+  run bash -c 'NO_COLOR=1 bash "$1" --verbose --group geoip 2>&1' _ "$SCRIPT"
+
+  [[ "$output" == *"territories.json"*"Made with"* ]]
+  [[ "$output" != *"Made with"*"territories.json"* ]]
+}
+
 @test "ripe holder loses its as-name prefix" {
   add_fixture 4 rdap.db.ripe.net_ip_203.0.113.7 '{"country":null}'
   add_fixture 4 stat.ripe.net_data_prefix-overview_data.json_resource_203.0.113.7 \

@@ -3289,7 +3289,16 @@ print_breakdown_hint() {
   printf ' %s\n\n' "$(paint "$C_DIM" "$GEOIP_BREAKDOWN_HINT")"
 }
 
+fetch_verdict_country_names() {
+  if [[ -z "$VERDICT" ]] && ((${#VERDICT_TIED_COUNTRIES[@]} == 0)); then
+    return
+  fi
+
+  http_request "$(first_ip_version)" "$CLDR_TERRITORIES_URL"
+}
+
 print_report() {
+  fetch_verdict_country_names
   print_header
   print_attention
   print_service_tables
