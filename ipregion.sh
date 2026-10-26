@@ -1871,6 +1871,17 @@ lookup_ip_registrations() {
   fi
 }
 
+escape_json_string() {
+  local -n json_value_ref=$1
+
+  json_value_ref=${json_value_ref//\\/\\\\}
+  json_value_ref=${json_value_ref//\"/\\\"}
+  json_value_ref=${json_value_ref//$'\n'/\\n}
+  json_value_ref=${json_value_ref//$'\r'/\\r}
+  json_value_ref=${json_value_ref//$'\t'/\\t}
+  json_value_ref=${json_value_ref//[$'\001'-$'\037']/}
+}
+
 print_result() {
   local group="$1"
   local service="$2"
@@ -1879,15 +1890,14 @@ print_result() {
   local status="$5"
   local reason="$6"
 
+  local field
+
   log_verbose "$group / $service IPv$ip_version: country ${country:--}, status ${status:--}, reason ${reason:--}"
-  jq -cn \
-    --arg group "$group" \
-    --arg service "$service" \
-    --arg ip_version "$ip_version" \
-    --arg country "$country" \
-    --arg status "$status" \
-    --arg reason "$reason" \
-    '$ARGS.named'
+  for field in group service ip_version country status reason; do
+    escape_json_string "$field"
+  done
+  printf '{"group":"%s","service":"%s","ip_version":"%s","country":"%s","status":"%s","reason":"%s"}\n' \
+    "$group" "$service" "$ip_version" "$country" "$status" "$reason"
 }
 
 print_progress_bar() {
@@ -1949,8 +1959,11 @@ run_job() {
 run_check() {
   local check="$1"
   local ip_version="$2"
+  local id result
 
-  "$check" "$ip_version" | jq -c --arg id "$(check_id "$check")" '{id: $id} + .'
+  id=$(check_id "$check")
+  result=$("$check" "$ip_version")
+  printf '{"id":"%s",%s\n' "$id" "${result#\{}"
 }
 
 start_job() {

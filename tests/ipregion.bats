@@ -814,6 +814,24 @@ print_active_job_count() {
   [[ "$output" == '{"group":"geoip","service":"ipinfo","ip_version":"6","country":"SE","status":"yes","reason":""}' ]]
 }
 
+@test "result keeps quotes, backslashes and line breaks of its values as json" {
+  local reason=$'say "hi" \\ to\nall\tof\001 us'
+
+  run print_result geoip ipinfo 6 SE yes "$reason"
+
+  [[ "$(jq -r .reason <<<"$output")" == $'say "hi" \\ to\nall\tof us' ]]
+}
+
+@test "check result starts with the check id" {
+  check_geoip_fake() {
+    print_result geoip Fake "$1" SE yes ""
+  }
+
+  run run_check check_geoip_fake 4
+
+  [[ "$output" == '{"id":"fake","group":"geoip","service":"Fake","ip_version":"4","country":"SE","status":"yes","reason":""}' ]]
+}
+
 @test "results come in start order, not finish order" {
   create_job_slots
   start_job print_delayed_number 0.3 1
