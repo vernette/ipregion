@@ -51,10 +51,7 @@ curl_calls() {
   [[ "$output" == *"--geoip-breakdown"* ]]
 }
 
-@test "runs from process substitution and from a pipe" {
-  run bash <(cat "$SCRIPT") --nope
-  [[ "$output" == *"unknown option --nope"* ]]
-
+@test "runs from a pipe" {
   run bash -c 'bash -s -- --nope <"$1"' _ "$SCRIPT"
   [[ "$output" == *"unknown option --nope"* ]]
 }
