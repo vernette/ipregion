@@ -1067,7 +1067,7 @@ fetch_external_ip() {
   done
 
   kill "${pids[@]}" 2>/dev/null || true
-  wait
+  wait 2>/dev/null
 }
 
 discover_external_ips() {
@@ -1327,6 +1327,8 @@ run_job() {
   take_job_slot
   trap return_job_slot EXIT
   "$@" >"$result_file"
+  # bash 4.4 skips the EXIT trap of a background function that returns without exit
+  exit
 }
 
 run_check() {
