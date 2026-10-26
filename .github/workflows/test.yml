@@ -30,3 +30,35 @@ jobs:
 
       - name: bats
         run: bats tests/
+
+  install:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:12
+          - image: ubuntu:24.04
+          - image: fedora:41
+          - image: rockylinux:9
+          - image: almalinux:8
+          - image: archlinux:latest
+          - image: opensuse/leap:15.6
+          - image: alpine:3.20
+            prepare: apk add --no-cache bash
+          - image: ghcr.io/void-linux/void-glibc:latest
+            prepare: xbps-install -Syu xbps && xbps-install -Sy bash
+
+    name: install (${{ matrix.image }})
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install curl and jq, print json
+        run: |
+          docker run --rm -v "$PWD/ipregion.sh:/ipregion.sh:ro" "${{ matrix.image }}" sh -c '
+            ${{ matrix.prepare }}
+            bash /ipregion.sh --yes --json --service cdn/cloudflare
+          ' | jq -e '.version == 2'
