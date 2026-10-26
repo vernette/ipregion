@@ -75,6 +75,11 @@ readonly AUTHOR="vernette"
 readonly VERDICT_NOTE="seen by most services"
 readonly TIE_NOTE="services split evenly"
 readonly CHECKS_NORMAL_NOTE="look normal"
+readonly CHECKS_GOOD_PERCENT=85
+readonly CHECKS_FAIR_PERCENT=65
+readonly CHECKS_GOOD="good"
+readonly CHECKS_FAIR="fair"
+readonly CHECKS_POOR="poor"
 readonly REGISTERED_NOTE="registered in"
 readonly MAXMIND_LIMIT_HEADER_NOTE="MaxMind daily limit used up · ASN and registration from RIPE"
 readonly MAXMIND_FAILURE_HEADER_NOTE="MaxMind unavailable · ASN and registration from RIPE"
@@ -551,7 +556,11 @@ def service_entries($results; $group):
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
   readonly C_TITLE=$'\033[1;36m'
   readonly C_BADGE=$'\033[1;30;46m'
+  readonly C_BADGE_FAIR=$'\033[1;30;43m'
+  readonly C_BADGE_POOR=$'\033[1;30;41m'
   readonly C_BAR=$'\033[0;36m'
+  readonly C_BAR_FAIR=$'\033[0;33m'
+  readonly C_BAR_POOR=$'\033[0;31m'
   readonly C_VALUE=$'\033[1m'
   readonly C_DIM=$'\033[0;90m'
   readonly C_YES=$'\033[1;32m'
@@ -561,7 +570,11 @@ if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
 else
   readonly C_TITLE=""
   readonly C_BADGE=""
+  readonly C_BADGE_FAIR=""
+  readonly C_BADGE_POOR=""
   readonly C_BAR=""
+  readonly C_BAR_FAIR=""
+  readonly C_BAR_POOR=""
   readonly C_VALUE=""
   readonly C_DIM=""
   readonly C_YES=""
@@ -592,6 +605,8 @@ GEOIP_BREAKDOWN=false
 VERDICT=""
 VERDICT_TIED_COUNTRIES=()
 ATTENTION="[]"
+CHECKS_TOTAL=0
+CHECKS_NORMAL=0
 WORK_DIR=""
 EXTERNAL_IPV4=""
 EXTERNAL_IPV6=""
@@ -2593,16 +2608,67 @@ first_ip_version() {
   printf '6'
 }
 
+count_abnormal_checks() {
+  jq \
+    --arg verdict "$VERDICT" \
+    --arg yes "$STATUS_YES" \
+    --arg none "$STATUS_NONE" \
+    --arg cdn "$GROUP_CDN" \
+    --arg geoip "$GROUP_GEOIP" \
+    --arg daily_limit "$REASON_DAILY_LIMIT" \
+    "$ABNORMAL_CHECKS_FILTER" <<<"$RESULTS"
+}
+
+count_checks() {
+  CHECKS_TOTAL=$(jq '[.[] | [.group, .service]] | unique | length' <<<"$RESULTS")
+  CHECKS_NORMAL=$((CHECKS_TOTAL - $(count_abnormal_checks)))
+}
+
+checks_health() {
+  local percent
+
+  if ((CHECKS_TOTAL == 0)); then
+    printf '%s' "$CHECKS_GOOD"
+    return
+  fi
+
+  percent=$((CHECKS_NORMAL * 100 / CHECKS_TOTAL))
+  if ((percent >= CHECKS_GOOD_PERCENT)); then
+    printf '%s' "$CHECKS_GOOD"
+  elif ((percent >= CHECKS_FAIR_PERCENT)); then
+    printf '%s' "$CHECKS_FAIR"
+  else
+    printf '%s' "$CHECKS_POOR"
+  fi
+}
+
+checks_bar_color() {
+  case "$(checks_health)" in
+    "$CHECKS_GOOD") printf '%s' "$C_BAR" ;;
+    "$CHECKS_FAIR") printf '%s' "$C_BAR_FAIR" ;;
+    "$CHECKS_POOR") printf '%s' "$C_BAR_POOR" ;;
+  esac
+}
+
+checks_badge_color() {
+  case "$(checks_health)" in
+    "$CHECKS_GOOD") printf '%s' "$C_BADGE" ;;
+    "$CHECKS_FAIR") printf '%s' "$C_BADGE_FAIR" ;;
+    "$CHECKS_POOR") printf '%s' "$C_BADGE_POOR" ;;
+  esac
+}
+
 format_summary_bar() {
-  local done_count="$1"
-  local total="$2"
-  local width="$3"
+  local color="$1"
+  local done_count="$2"
+  local total="$3"
+  local width="$4"
   local done_width=$((width * done_count / total))
   local done_part left_part
 
   printf -v done_part '%*s' "$done_width" ''
   printf -v left_part '%*s' "$((width - done_width))" ''
-  printf '%s%s%s%s%s' "$C_BAR" "${done_part// /$SUMMARY_BAR_CHAR}" "$C_DIM" "${left_part// /$SUMMARY_BAR_CHAR}" "$C_RESET"
+  printf '%s%s%s%s%s' "$color" "${done_part// /$SUMMARY_BAR_CHAR}" "$C_DIM" "${left_part// /$SUMMARY_BAR_CHAR}" "$C_RESET"
 }
 
 format_cells() {
@@ -2651,7 +2717,7 @@ format_badge() {
     flag="$(format_flag "$country") "
   fi
 
-  printf '%s%s' "$flag" "$(paint "$C_BADGE" " $country ")"
+  printf '%s%s' "$flag" "$(paint "$(checks_badge_color)" " $country ")"
 }
 
 country_name() {
@@ -2798,27 +2864,12 @@ print_verdict_line() {
   print_header_line "$badges  $(paint "$C_VALUE" "$names")   $(paint "$C_DIM" "$note")"
 }
 
-count_abnormal_checks() {
-  jq \
-    --arg verdict "$VERDICT" \
-    --arg yes "$STATUS_YES" \
-    --arg none "$STATUS_NONE" \
-    --arg cdn "$GROUP_CDN" \
-    --arg geoip "$GROUP_GEOIP" \
-    --arg daily_limit "$REASON_DAILY_LIMIT" \
-    "$ABNORMAL_CHECKS_FILTER" <<<"$RESULTS"
-}
-
 print_checks_bar() {
-  local total normal
-
-  total=$(jq '[.[] | [.group, .service]] | unique | length' <<<"$RESULTS")
-  if ((total == 0)); then
+  if ((CHECKS_TOTAL == 0)); then
     return
   fi
 
-  normal=$((total - $(count_abnormal_checks)))
-  print_header_line "$(format_summary_bar "$normal" "$total" "$VERDICT_BAR_WIDTH")  $(paint "$C_DIM" "$normal/$total $CHECKS_NORMAL_NOTE")"
+  print_header_line "$(format_summary_bar "$(checks_bar_color)" "$CHECKS_NORMAL" "$CHECKS_TOTAL" "$VERDICT_BAR_WIDTH")  $(paint "$C_DIM" "$CHECKS_NORMAL/$CHECKS_TOTAL $CHECKS_NORMAL_NOTE")"
 }
 
 print_host_header() {
@@ -3148,7 +3199,7 @@ append_geoip_summary() {
   summary_lines+=(
     "${separator[@]}"
     "$(paint "$C_TITLE" "$(pad "$(label_group GeoIP)" $((column_width - $(visible_length "$counts"))))")$counts"
-    "$(format_summary_bar "$agree" "$total" "$column_width")"
+    "$(format_summary_bar "$C_BAR" "$agree" "$total" "$column_width")"
   )
   append_geoip_difference_lines summary_lines "$column_width" "${differences[@]}"
 
@@ -3434,6 +3485,7 @@ main() {
   collect_results
   compute_verdict
   collect_attention
+  count_checks
   print_output
 }
 

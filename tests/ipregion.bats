@@ -1642,6 +1642,20 @@ run_report() {
   [[ "$output" != *"✓"* ]]
 }
 
+@test "checks health follows the share of normal checks" {
+  CHECKS_TOTAL=100
+  CHECKS_NORMAL=85
+  [[ "$(checks_health)" == "$CHECKS_GOOD" ]]
+  CHECKS_NORMAL=84
+  [[ "$(checks_health)" == "$CHECKS_FAIR" ]]
+  CHECKS_NORMAL=65
+  [[ "$(checks_health)" == "$CHECKS_FAIR" ]]
+  CHECKS_NORMAL=64
+  [[ "$(checks_health)" == "$CHECKS_POOR" ]]
+  CHECKS_TOTAL=0
+  [[ "$(checks_health)" == "$CHECKS_GOOD" ]]
+}
+
 @test "table names get the same gap before the first cell" {
   local -a table=()
   local -a rows=("YouTube Premium" yes yes Disney+ yes no)
