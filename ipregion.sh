@@ -100,6 +100,7 @@ readonly JOB_POLL_INTERVAL=0.1
 readonly RESULT_FILE_PREFIX="result-"
 readonly CLEAR_LINE=$'\r\033[K'
 readonly PROGRESS_LABEL="Checking services"
+readonly PREPARATION_LABEL="Detecting IP addresses"
 readonly PROGRESS_SPINNER_FRAMES=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
 readonly PROGRESS_BAR_WIDTH=24
 readonly PROGRESS_BAR_DONE="━"
@@ -216,6 +217,7 @@ readonly RIPE_RDAP_IP_URL="https://rdap.db.ripe.net/ip"
 readonly RIPESTAT_PREFIX_OVERVIEW_URL="https://stat.ripe.net/data/prefix-overview/data.json"
 
 readonly IPV4_TRANSPORT=4
+readonly ANY_TRANSPORT=""
 readonly IPINFO_IPV4_URL="https://ipinfo.io/widget/demo"
 readonly IPINFO_IPV6_URL="https://v6.ipinfo.io/widget/demo"
 readonly CLOUDFLARE_TRACE_URL="https://www.cloudflare.com/cdn-cgi/trace"
@@ -1352,7 +1354,7 @@ fetch_to_cache() {
   curl "${CURL_ARGS[@]}" --output "$entry.body" --write-out "$CURL_WRITE_OUT" "$@" "$url" >"$entry.meta" || curl_exit=$?
   printf '%s\n' "$curl_exit" >>"$entry.meta"
   read -r http_code <"$entry.meta"
-  log_verbose "IPv$ip_version $url: HTTP $http_code, curl exit $curl_exit"
+  log_verbose "IPv${ip_version:-4/6} $url: HTTP $http_code, curl exit $curl_exit"
   touch -- "$entry.body"
   : >"$entry.done"
 }
@@ -1478,33 +1480,6 @@ fetch_external_ip() {
   wait 2>/dev/null
 }
 
-discover_external_ips() {
-  local ipv4_file="$WORK_DIR/external-ipv4"
-  local ipv6_file="$WORK_DIR/external-ipv6"
-
-  : >"$ipv4_file"
-  : >"$ipv6_file"
-
-  if [[ "$IPV6_ONLY" != true ]]; then
-    fetch_external_ip 4 >"$ipv4_file" &
-  fi
-
-  if [[ "$IPV4_ONLY" != true ]]; then
-    fetch_external_ip 6 >"$ipv6_file" &
-  fi
-
-  wait
-  EXTERNAL_IPV4=$(<"$ipv4_file")
-  EXTERNAL_IPV6=$(<"$ipv6_file")
-
-  log_verbose "External IPv4: ${EXTERNAL_IPV4:-not found}, IPv6: ${EXTERNAL_IPV6:-not found}"
-
-  if [[ -z "$EXTERNAL_IPV4" && -z "$EXTERNAL_IPV6" ]]; then
-    printf 'Error: failed to detect an external IP address, check the network connection\n' >&2
-    exit 1
-  fi
-}
-
 mask_ipv4() {
   local ip="$1"
 
@@ -1541,17 +1516,16 @@ json_value() {
 }
 
 request_maxmind_token() {
-  local ip_version="$1"
   local cookie_jar="$WORK_DIR/maxmind-cookies"
   local csrf_token
 
-  http_request "$ip_version" "$MAXMIND_DEMO_PAGE_URL" --cookie-jar "$cookie_jar"
+  http_request "$ANY_TRANSPORT" "$MAXMIND_DEMO_PAGE_URL" --cookie-jar "$cookie_jar"
   if [[ ! "$HTTP_BODY" =~ $MAXMIND_CSRF_PATTERN ]]; then
     return
   fi
   csrf_token="${BASH_REMATCH[1]}"
 
-  http_request "$ip_version" "$MAXMIND_TOKEN_URL" --request POST --cookie "$cookie_jar" --header "X-CSRF-Token: $csrf_token"
+  http_request "$ANY_TRANSPORT" "$MAXMIND_TOKEN_URL" --request POST --cookie "$cookie_jar" --header "X-CSRF-Token: $csrf_token"
   if [[ "$HTTP_CODE" != "$HTTP_CREATED" ]]; then
     return
   fi
@@ -1639,14 +1613,101 @@ lookup_ip_registration() {
   lookup_ripe_registration "$ip_version" "$ip"
 }
 
-lookup_ip_registrations() {
-  local token_ip_version=4
+count_running_jobs() {
+  jobs -pr | wc -l
+}
 
-  if [[ -z "$EXTERNAL_IPV4" ]]; then
-    token_ip_version=6
+is_progress_shown() {
+  [[ -t 2 && "$VERBOSE" != true ]]
+}
+
+draw_spinner_line() {
+  local text="$1"
+  local spinner="${PROGRESS_SPINNER_FRAMES[PROGRESS_FRAME % ${#PROGRESS_SPINNER_FRAMES[@]}]}"
+
+  PROGRESS_FRAME=$((PROGRESS_FRAME + 1))
+  printf '%s%s %s' "$CLEAR_LINE" "$spinner" "$text" >&2
+}
+
+clear_progress() {
+  if ! is_progress_shown; then
+    return
   fi
 
-  request_maxmind_token "$token_ip_version"
+  printf '%s' "$CLEAR_LINE" >&2
+}
+
+prefetch_ip_registration() {
+  local ip_version="$1"
+  local ip="$2"
+
+  request_maxmind_token
+  if [[ -n "$MAXMIND_TOKEN" ]]; then
+    fetch_maxmind_city "$ip_version" "$ip"
+    if [[ -z "$(maxmind_failure_reason)" ]]; then
+      return
+    fi
+  fi
+
+  lookup_ripe_registration "$ip_version" "$ip"
+}
+
+fetch_external_ip_and_registration() {
+  local ip_version="$1"
+  local ip_file="$2"
+  local ip
+
+  fetch_external_ip "$ip_version" >"$ip_file"
+  ip=$(<"$ip_file")
+  if [[ -z "$ip" ]]; then
+    return
+  fi
+
+  prefetch_ip_registration "$ip_version" "$ip"
+}
+
+wait_for_preparation() {
+  while (($(count_running_jobs) > 0)); do
+    if is_progress_shown; then
+      draw_spinner_line "$PREPARATION_LABEL"
+    fi
+    sleep "$JOB_POLL_INTERVAL"
+  done
+
+  clear_progress
+}
+
+discover_external_ips() {
+  local ipv4_file="$WORK_DIR/external-ipv4"
+  local ipv6_file="$WORK_DIR/external-ipv6"
+
+  : >"$ipv4_file"
+  : >"$ipv6_file"
+
+  request_maxmind_token &
+
+  if [[ "$IPV6_ONLY" != true ]]; then
+    fetch_external_ip_and_registration 4 "$ipv4_file" &
+  fi
+
+  if [[ "$IPV4_ONLY" != true ]]; then
+    fetch_external_ip_and_registration 6 "$ipv6_file" &
+  fi
+
+  wait_for_preparation
+  EXTERNAL_IPV4=$(<"$ipv4_file")
+  EXTERNAL_IPV6=$(<"$ipv6_file")
+
+  log_verbose "External IPv4: ${EXTERNAL_IPV4:-not found}, IPv6: ${EXTERNAL_IPV6:-not found}"
+
+  if [[ -z "$EXTERNAL_IPV4" && -z "$EXTERNAL_IPV6" ]]; then
+    printf 'Error: failed to detect an external IP address, check the network connection\n' >&2
+    exit 1
+  fi
+}
+
+lookup_ip_registrations() {
+  request_maxmind_token
 
   if [[ -n "$EXTERNAL_IPV4" ]]; then
     lookup_ip_registration 4 "$EXTERNAL_IPV4"
@@ -1676,10 +1737,6 @@ print_result() {
     '$ARGS.named'
 }
 
-count_running_jobs() {
-  jobs -pr | wc -l
-}
-
 print_progress_bar() {
   local finished="$1"
   local done_width=$((PROGRESS_BAR_WIDTH * finished / JOB_COUNT))
@@ -1692,25 +1749,13 @@ print_progress_bar() {
 
 draw_progress() {
   local finished
-  local spinner
 
-  if [[ ! -t 2 || "$VERBOSE" == true ]]; then
+  if ! is_progress_shown; then
     return
   fi
 
   finished=$((JOB_COUNT - $(count_running_jobs)))
-  spinner="${PROGRESS_SPINNER_FRAMES[PROGRESS_FRAME % ${#PROGRESS_SPINNER_FRAMES[@]}]}"
-  PROGRESS_FRAME=$((PROGRESS_FRAME + 1))
-  printf '%s%s %s  %s  %s%d/%d%s' "$CLEAR_LINE" "$spinner" "$PROGRESS_LABEL" "$(print_progress_bar "$finished")" \
-    "$C_DIM" "$finished" "$JOB_COUNT" "$C_RESET" >&2
-}
-
-clear_progress() {
-  if [[ ! -t 2 || "$VERBOSE" == true ]]; then
-    return
-  fi
-
-  printf '%s' "$CLEAR_LINE" >&2
+  draw_spinner_line "$PROGRESS_LABEL  $(print_progress_bar "$finished")  $C_DIM$finished/$JOB_COUNT$C_RESET"
 }
 
 create_job_slots() {

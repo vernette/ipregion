@@ -726,17 +726,31 @@ use_up_maxmind_limit() {
   [[ -z "${REGISTRATION_COUNTRY[4]}" ]]
 }
 
-@test "ipv6 only host requests the maxmind token over ipv6" {
+@test "maxmind token is requested once without a protocol flag" {
   use_host_fixtures dual-stack
-  mv "$FAKE_CURL_FIXTURES"/ipv4/www.maxmind.com_* "$FAKE_CURL_FIXTURES/ipv6/"
-  EXTERNAL_IPV6=2001:db8:85a3::8a2e:370:7334
+  set_dual_stack_ips
 
   lookup_ip_registrations
 
-  [[ "${REGISTRATION_COUNTRY[6]}" == DE ]]
-  grep -q -- '-6 .*demo/token' "$FAKE_CURL_LOG"
-  run grep -c -- ' -4 ' "$FAKE_CURL_LOG"
+  run grep -c demo/token "$FAKE_CURL_LOG"
+  [[ "$output" -eq 1 ]]
+  run grep -cE -- ' -[46] .*demo/token' "$FAKE_CURL_LOG"
   [[ "$output" -eq 0 ]]
+}
+
+@test "registration of one protocol starts without waiting for the other ip" {
+  use_host_fixtures dual-stack
+  set_fixture_field 4 ipv4.icanhazip.com delay 2
+  set_fixture_field 6 geoip.maxmind.com_geoip_v2.1_city_2001_db8_85a3__8a2e_370_7334_demo_1 delay 2
+
+  SECONDS=0
+  discover_external_ips
+  lookup_ip_registrations
+
+  ((SECONDS < 4))
+  [[ "${REGISTRATION_COUNTRY[4]}" == NL && "${REGISTRATION_COUNTRY[6]}" == DE ]]
+  run grep -c geoip.maxmind.com "$FAKE_CURL_LOG"
+  [[ "$output" -eq 2 ]]
 }
 
 print_delayed_number() {
