@@ -1922,9 +1922,7 @@ create_job_slots() {
 }
 
 take_job_slot() {
-  local slot
-
-  read -r -N 1 -u "$JOB_SLOTS_FD" slot
+  read -r -N 1 -u "$JOB_SLOTS_FD" _
 }
 
 return_job_slot() {
@@ -3167,14 +3165,14 @@ print_attention_group() {
   local reason="$4"
   shift 4
   local prefix indent line
-  local -a lines
+  local -a service_lines
 
   prefix="   $(format_attention_group_value "$country" "$status") $(paint "$C_DIM" "$(pad "$reason" "$ATTENTION_NOTE_WIDTH")")  $(format_scope "$ip_version")"
   indent=$(visible_length "$prefix")
-  wrap_service_list lines "$indent" "$@"
+  wrap_service_list service_lines "$indent" "$@"
 
-  printf '%s%s\n' "$prefix" "${lines[0]}"
-  for line in "${lines[@]:1}"; do
+  printf '%s%s\n' "$prefix" "${service_lines[0]}"
+  for line in "${service_lines[@]:1}"; do
     printf '%*s%s\n' "$indent" '' "$line"
   done
 }
@@ -3260,17 +3258,17 @@ append_separated_group_lines() {
   local group="$2"
   local title="$3"
   local cell_width="$4"
-  local -a lines=()
+  local -a group_lines=()
 
-  append_group_lines lines "$group" "$title" "$cell_width"
-  if ((${#lines[@]} == 0)); then
+  append_group_lines group_lines "$group" "$title" "$cell_width"
+  if ((${#group_lines[@]} == 0)); then
     return
   fi
 
   if ((${#separated_lines[@]} > 0)); then
     separated_lines+=("")
   fi
-  separated_lines+=("${lines[@]}")
+  separated_lines+=("${group_lines[@]}")
 }
 
 country_of_cell() {
