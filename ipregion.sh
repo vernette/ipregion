@@ -58,6 +58,7 @@ readonly COUNTRY_CELL_WIDTH=6
 readonly STATUS_CELL_WIDTH=5
 readonly ATTENTION_CELL_WIDTH=3
 readonly SUMMARY_COUNTRY_WIDTH=2
+readonly COUNTRY_CODE_WIDTH=2
 readonly SUMMARY_DEFAULT_WIDTH=25
 readonly COLUMN_GAP="     "
 readonly SCOPE_WIDTH=5
@@ -2904,15 +2905,28 @@ wrap_service_list() {
   fi
 }
 
+format_attention_group_value() {
+  local country="$1"
+  local status="$2"
+
+  if [[ -n "$country" ]]; then
+    format_country "$country" $((COUNTRY_CODE_WIDTH + COUNTRY_EXTRA))
+    return
+  fi
+
+  format_status "${status:-$STATUS_UNKNOWN}" 1
+}
+
 print_attention_group() {
   local ip_version="$1"
-  local status="$2"
-  local reason="$3"
-  shift 3
+  local country="$2"
+  local status="$3"
+  local reason="$4"
+  shift 4
   local prefix indent line
   local -a lines
 
-  prefix="   $(format_status "${status:-$STATUS_UNKNOWN}" 1) $(paint "$C_DIM" "$(pad "$reason" "$ATTENTION_NOTE_WIDTH")")  $(format_scope "$ip_version")"
+  prefix="   $(format_attention_group_value "$country" "$status") $(paint "$C_DIM" "$(pad "$reason" "$ATTENTION_NOTE_WIDTH")")  $(format_scope "$ip_version")"
   indent=$(visible_length "$prefix")
   wrap_service_list lines "$indent" "$@"
 
@@ -2948,7 +2962,7 @@ print_attention() {
       print_attention_row "$name_width" "${services[0]}" "${fields[i]}" "${fields[i + 1]}" "${fields[i + 2]}" "${fields[i + 3]}"
       continue
     fi
-    print_attention_group "${fields[i]}" "${fields[i + 2]}" "${fields[i + 3]}" "${services[@]}"
+    print_attention_group "${fields[i]}" "${fields[i + 1]}" "${fields[i + 2]}" "${fields[i + 3]}" "${services[@]}"
   done
   printf '\n'
 }

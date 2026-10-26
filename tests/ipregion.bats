@@ -1631,6 +1631,17 @@ run_report() {
   [[ "${wrapped[1]}" == "Reddit, TikTok, Apple, Steam, Microsoft, +3" ]]
 }
 
+@test "collapsed attention row names the country the services see" {
+  EXTERNAL_IPV4=203.0.113.7
+  VERDICT=RU
+  ATTENTION='[{"services":["Twitch","Spotify","TikTok","Steam"],"ip_version":"4","country":"FI","status":"yes","reason":"different country"}]'
+
+  run print_attention
+
+  [[ "$output" == *"FI different country"*"Twitch, Spotify, TikTok, Steam"* ]]
+  [[ "$output" != *"✓"* ]]
+}
+
 @test "table names get the same gap before the first cell" {
   local -a table=()
   local -a rows=("YouTube Premium" yes yes Disney+ yes no)
