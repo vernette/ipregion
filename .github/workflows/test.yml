@@ -49,9 +49,9 @@ jobs:
           - image: archlinux:latest
           - image: opensuse/leap:15.6
           - image: alpine:3.20
-            prepare: apk add --no-cache bash
+            prepare: apk add --no-cache bash >&2
           - image: ghcr.io/void-linux/void-glibc:latest
-            prepare: xbps-install -Syu xbps && xbps-install -Sy bash
+            prepare: (xbps-install -Syu xbps && xbps-install -Sy bash) >&2
 
     name: install (${{ matrix.image }})
 
