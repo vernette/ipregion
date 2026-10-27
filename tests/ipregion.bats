@@ -1125,6 +1125,8 @@ Twitch 4 SE yes
 Twitch 6  none no IPv6
 ChatGPT 4 SE yes 
 ChatGPT 6 SE yes 
+Claude 4 SE yes 
+Claude 6 SE yes 
 Netflix 4 SE yes 
 Netflix 6 SE yes 
 Spotify 4 SE yes 

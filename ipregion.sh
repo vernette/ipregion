@@ -278,6 +278,9 @@ readonly TWITCH_QUERY='[{"operationName":"VerifyEmail_CurrentUser","variables":{
 readonly CHATGPT_URL="https://ab.chatgpt.com/v1/initialize"
 readonly CHATGPT_STATSIG_API_KEY="client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG"
 readonly CHATGPT_COUNTRY_PATTERN='"derived_fields":\{[^}]*"country":"([^"]*)"'
+readonly CLAUDE_URL="https://claude.ai/api/bootstrap"
+readonly CLAUDE_USER_AGENT="Claude com.anthropic.claude/1.261023.20 (Android 30) Claude/1.261023.20"
+readonly CLAUDE_PLATFORM_HEADER="Anthropic-Client-Platform: android"
 readonly NETFLIX_URL="https://api.fast.com/netflix/speedtest/v2?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=1"
 readonly SPOTIFY_URL="https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=142b583129b2df829de3656f9eb484e6"
 readonly SPOTIFY_CLIENT_ID="9a8d2f0ce77a4e248bb71fefcb557637"
@@ -389,6 +392,7 @@ readonly PLATFORMS_CHECKS=(
   check_platforms_youtube
   check_platforms_twitch
   check_platforms_chatgpt
+  check_platforms_claude
   check_platforms_netflix
   check_platforms_spotify
   check_platforms_reddit
@@ -2431,6 +2435,13 @@ check_platforms_chatgpt() {
 
   check_platforms_pattern ChatGPT "$ip_version" "$CHATGPT_URL" "$CHATGPT_COUNTRY_PATTERN" \
     --request POST --header "Statsig-Api-Key: $CHATGPT_STATSIG_API_KEY"
+}
+
+check_platforms_claude() {
+  local ip_version="$1"
+
+  check_platforms_json Claude "$ip_version" "$CLAUDE_URL" '.statsig.user.country // empty' \
+    --user-agent "$CLAUDE_USER_AGENT" --header "$CLAUDE_PLATFORM_HEADER"
 }
 
 check_platforms_netflix() {

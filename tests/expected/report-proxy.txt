@@ -6,7 +6,7 @@
  ┃ Proxy exits over IPv4 and IPv6
  ┃
  ┃  SE   Sweden   seen by most services
- ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  47/51 checks passed
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  48/52 checks passed
 
  Attention
    Disney+         ✗    region blocked
@@ -17,18 +17,18 @@
  YouTube      SE     Google Search    ✓
  Twitch       SE     Spotify Signup   ✓
  ChatGPT      SE     Disney+          ✗
- Netflix      SE     Reddit Guest     ✓
- Spotify      SE
- Reddit       SE     AI
- Disney+      ?      Gemini Web       ✓
- TikTok       SE     Gemini API       ✓
- Apple        SE     OpenAI API       ✓
- Steam        SE     Anthropic API    ✓
- Microsoft    SE     Grok API         ✓
- Ookla        SE     Qwen API         ✓
- JetBrains    SE     Qwen CN API      ✓
- PlayStation  SE     Kimi API         ✓
-                     Kimi CN API      ✓
+ Claude       SE     Reddit Guest     ✓
+ Netflix      SE
+ Spotify      SE     AI
+ Reddit       SE     Gemini Web       ✓
+ Disney+      ?      Gemini API       ✓
+ TikTok       SE     OpenAI API       ✓
+ Apple        SE     Anthropic API    ✓
+ Steam        SE     Grok API         ✓
+ Microsoft    SE     Qwen API         ✓
+ Ookla        SE     Qwen CN API      ✓
+ JetBrains    SE     Kimi API         ✓
+ PlayStation  SE     Kimi CN API      ✓
                      GLM API          ✓
                      GLM CN API       ✓
                      MiniMax API      ✓

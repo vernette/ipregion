@@ -5,7 +5,7 @@
  ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in 🇩🇪 DE
  ┃
  ┃ 🇸🇪  SE   Sweden   seen by most services
- ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  46/51 checks passed
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  47/52 checks passed
 
  🚨 Attention
    JetBrains  IPv4   🇸🇮 SI   different country
@@ -17,18 +17,18 @@
  YouTube       🇸🇪 SE    🇸🇪 SE     Google Search    ✓       ✓
  Twitch        🇸🇪 SE    -         Spotify Signup   ✓       ✓
  ChatGPT       🇸🇪 SE    🇸🇪 SE     Disney+          ✓       ✗
- Netflix       🇸🇪 SE    🇸🇪 SE     Reddit Guest     ✓       -
- Spotify       🇸🇪 SE    🇸🇪 SE
- Reddit        🇸🇪 SE    -         🤖 AI            IPv4    IPv6
- Disney+       🇸🇪 SE    ?         Gemini Web       ✓       ✓
- TikTok        🇸🇪 SE    -         Gemini API       ✓       ✓
- Apple         🇸🇪 SE    🇸🇪 SE     OpenAI API       ✓       ✓
- Steam         🇸🇪 SE    -         Anthropic API    ✓       ✓
- Microsoft     🇸🇪 SE    -         Grok API         ✓       ✓
- Ookla         🇸🇪 SE    -         Qwen API         ✓       -
- JetBrains     🇸🇮 SI    🇸🇪 SE     Qwen CN API      ✓       ✓
- PlayStation   🇸🇪 SE    🇸🇪 SE     Kimi API         ✓       ✓
-                                  Kimi CN API      ✓       -
+ Claude        🇸🇪 SE    🇸🇪 SE     Reddit Guest     ✓       -
+ Netflix       🇸🇪 SE    🇸🇪 SE
+ Spotify       🇸🇪 SE    🇸🇪 SE     🤖 AI            IPv4    IPv6
+ Reddit        🇸🇪 SE    -         Gemini Web       ✓       ✓
+ Disney+       🇸🇪 SE    ?         Gemini API       ✓       ✓
+ TikTok        🇸🇪 SE    -         OpenAI API       ✓       ✓
+ Apple         🇸🇪 SE    🇸🇪 SE     Anthropic API    ✓       ✓
+ Steam         🇸🇪 SE    -         Grok API         ✓       ✓
+ Microsoft     🇸🇪 SE    -         Qwen API         ✓       -
+ Ookla         🇸🇪 SE    -         Qwen CN API      ✓       ✓
+ JetBrains     🇸🇮 SI    🇸🇪 SE     Kimi API         ✓       ✓
+ PlayStation   🇸🇪 SE    🇸🇪 SE     Kimi CN API      ✓       -
                                   GLM API          ✓       ✓
                                   GLM CN API       ✓       ✓
                                   MiniMax API      ✓       ✓

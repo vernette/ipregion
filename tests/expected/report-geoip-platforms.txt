@@ -5,7 +5,7 @@
  ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
  ┃
  ┃  SE   Sweden   seen by most services
- ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  26/30 checks passed
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  27/31 checks passed
 
  Attention
    JetBrains  IPv4   SI   different country
@@ -16,6 +16,7 @@
  YouTube      SE    SE
  Twitch       SE    -
  ChatGPT      SE    SE
+ Claude       SE    SE
  Netflix      SE    SE
  Spotify      SE    SE
  Reddit       SE    -

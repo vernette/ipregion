@@ -4,7 +4,7 @@
  ┃ IPv4  203.0.*.*  AS64496 Example Hosting  registered in NL
  ┃
  ┃  SE   Sweden   seen by most services
- ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  48/51 checks passed
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  49/52 checks passed
 
  Attention
    JetBrains  SI   different country
@@ -14,23 +14,23 @@
  YouTube      SE       Google Search    ✓
  Twitch       SE       Spotify Signup   ✓
  ChatGPT      SE       Disney+          ✓
- Netflix      SE       Reddit Guest     ✓
- Spotify      SE
- Reddit       SE       AI               IPv4
- Disney+      SE       Gemini Web       ✓
- TikTok       SE       Gemini API       ✓
- Apple        SE       OpenAI API       ✓
- Steam        SE       Anthropic API    ✓
- Microsoft    SE       Grok API         ✓
- Ookla        SE       Qwen API         ✓
- JetBrains    SI       Qwen CN API      ✓
- PlayStation  SE       Kimi API         ✓
-                       Kimi CN API      ✓
- GeoIP    SE 13/15     GLM API          ✓
- ━━━━━━━━━━━━━━━━━     GLM CN API       ✓
- RU ifconfig.co,       MiniMax API      ✓
-    ipquery.io         MiniMax CN API   ✓
-                       Doubao API       ✓
+ Claude       SE       Reddit Guest     ✓
+ Netflix      SE
+ Spotify      SE       AI               IPv4
+ Reddit       SE       Gemini Web       ✓
+ Disney+      SE       Gemini API       ✓
+ TikTok       SE       OpenAI API       ✓
+ Apple        SE       Anthropic API    ✓
+ Steam        SE       Grok API         ✓
+ Microsoft    SE       Qwen API         ✓
+ Ookla        SE       Qwen CN API      ✓
+ JetBrains    SI       Kimi API         ✓
+ PlayStation  SE       Kimi CN API      ✓
+                       GLM API          ✓
+ GeoIP    SE 13/15     GLM CN API       ✓
+ ━━━━━━━━━━━━━━━━━     MiniMax API      ✓
+ RU ifconfig.co,       MiniMax CN API   ✓
+    ipquery.io         Doubao API       ✓
                        SiliconFlow API  ✓
                        DeepSeek API     ✓
 
