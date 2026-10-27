@@ -281,7 +281,7 @@ readonly CHATGPT_COUNTRY_PATTERN='"derived_fields":\{[^}]*"country":"([^"]*)"'
 readonly NETFLIX_URL="https://api.fast.com/netflix/speedtest/v2?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=1"
 readonly SPOTIFY_URL="https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=142b583129b2df829de3656f9eb484e6"
 readonly SPOTIFY_CLIENT_ID="9a8d2f0ce77a4e248bb71fefcb557637"
-readonly REDDIT_URL="https://www.reddit.com/api/v1/geo"
+readonly REDDIT_NOT_FOUND_URL="https://www.reddit.com/api/v1/not-found"
 readonly REDDIT_COUNTRY_PATTERN='country code: ([A-Z]{2})'
 readonly DISNEY_PLUS_URL="https://disney.api.edge.bamgrid.com/graph/v1/device/graphql"
 readonly DISNEY_PLUS_API_KEY="ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
@@ -2448,7 +2448,7 @@ check_platforms_spotify() {
 check_platforms_reddit() {
   local ip_version="$1"
 
-  check_platforms_pattern Reddit "$ip_version" "$REDDIT_URL" "$REDDIT_COUNTRY_PATTERN" --user-agent "$USER_AGENT"
+  check_platforms_pattern Reddit "$ip_version" "$REDDIT_NOT_FOUND_URL" "$REDDIT_COUNTRY_PATTERN" --user-agent "$USER_AGENT"
 }
 
 check_platforms_disney_plus() {

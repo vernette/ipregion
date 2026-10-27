@@ -1151,7 +1151,7 @@ ROWS
   )
   run result_rows
   [[ "$output" == "$expected" ]]
-  grep -q -- '--user-agent Mozilla/5.0 .* https://www.reddit.com/api/v1/geo$' "$FAKE_CURL_LOG"
+  grep -q -- '--user-agent Mozilla/5.0 .* https://www.reddit.com/api/v1/not-found$' "$FAKE_CURL_LOG"
   grep -q -- '--head https://store.steampowered.com$' "$FAKE_CURL_LOG"
 }
 
