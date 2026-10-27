@@ -315,8 +315,9 @@ readonly AIRPORT_CODES_REFERER="https://www.air-port-codes.com/"
 
 readonly GOOGLE_SOCS_COOKIE="Cookie: SOCS=CAI"
 readonly ACCEPT_LANGUAGE_ENGLISH="Accept-Language: en-US,en;q=0.9"
-readonly YOUTUBE_PREMIUM_URL="https://www.youtube.com/premium"
-readonly YOUTUBE_PREMIUM_BLOCKED_MARKER="YouTube Premium is not available in your country"
+readonly YOUTUBE_INNERTUBE_BROWSE_URL="https://www.youtube.com/youtubei/v1/browse"
+readonly YOUTUBE_PREMIUM_QUERY='{"context":{"client":{"clientName":"MWEB","clientVersion":"2.20261020.00.00","hl":"en","gl":"US"}},"browseId":"SPunlimited"}'
+readonly YOUTUBE_PREMIUM_PURCHASE_MARKER="premiumPurchaseButtonRenderer"
 readonly SPOTIFY_SIGNUP_BLOCKED_STATUS_PATTERN='^(120|320)$'
 readonly DISNEY_PLUS_FORBIDDEN_MARKER="Forbidden location"
 readonly REDDIT_GUEST_URL="https://www.reddit.com"
@@ -2583,19 +2584,18 @@ youtube_premium_status() {
     return
   fi
 
-  if [[ "$HTTP_BODY" == *"$YOUTUBE_PREMIUM_BLOCKED_MARKER"* ]]; then
-    printf '%s' "$STATUS_NO"
+  if [[ "$HTTP_BODY" == *"$YOUTUBE_PREMIUM_PURCHASE_MARKER"* ]]; then
+    printf '%s' "$STATUS_YES"
     return
   fi
 
-  printf '%s' "$STATUS_YES"
+  printf '%s' "$STATUS_NO"
 }
 
 check_availability_youtube_premium() {
   local ip_version="$1"
 
-  http_request "$ip_version" "$YOUTUBE_PREMIUM_URL" \
-    --user-agent "$USER_AGENT" --header "$GOOGLE_SOCS_COOKIE" --header "$ACCEPT_LANGUAGE_ENGLISH"
+  http_request "$ip_version" "$YOUTUBE_INNERTUBE_BROWSE_URL" --json "$YOUTUBE_PREMIUM_QUERY"
   print_status "$GROUP_AVAILABILITY" "YouTube Premium" "$ip_version" "$(youtube_premium_status)"
 }
 

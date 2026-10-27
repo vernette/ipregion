@@ -1285,7 +1285,7 @@ ROWS
 
 @test "region blocked services are no" {
   use_host_fixtures dual-stack
-  add_fixture 4 www.youtube.com_premium '<p>YouTube Premium is not available in your country</p>'
+  add_fixture 4 www.youtube.com_youtubei_v1_browse '{"contents":{}}'
   add_fixture 4 spclient.wg.spotify.com_signup_public_v1_account__validate_1_key_142b583129b2df829de3656f9eb484e6 \
     '{"status":120,"country":"RU","is_country_launched":false}'
   add_fixture 4 disney.api.edge.bamgrid.com_graph_v1_device_graphql \
@@ -1324,7 +1324,7 @@ ROWS
 @test "unknown availability response is a failure reason" {
   use_host_fixtures dual-stack
   add_fixture 4 www.google.com_search_q_cats '<html>results</html>'
-  set_fixture_field 4 www.youtube.com_premium exit 28
+  set_fixture_field 4 www.youtube.com_youtubei_v1_browse exit 28
   EXTERNAL_IPV4=203.0.113.7
 
   run_availability_checks
