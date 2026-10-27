@@ -63,6 +63,12 @@ chmod +x ipregion.sh
 wget -qO- https://ipregion.vrnt.xyz | bash
 ```
 
+Without `wget`:
+
+```bash
+curl -fsSL https://ipregion.vrnt.xyz | bash
+```
+
 Options go after `bash -s --`:
 
 ```bash
