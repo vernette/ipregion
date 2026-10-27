@@ -1006,8 +1006,37 @@ print_ipv6_default_routes() {
   done <"$IPV6_ROUTE_TABLE"
 }
 
+print_bsd_default_route() {
+  local ip_version="$1"
+  local -a family=()
+  local key value iface=""
+  local flags="$ROUTE_FLAG_UP"
+
+  if [[ "$ip_version" == 6 ]]; then
+    family=(-inet6)
+  fi
+
+  while read -r key value _; do
+    case "$key" in
+      interface:) iface="$value" ;;
+      gateway:) flags=$((ROUTE_FLAG_UP | ROUTE_FLAG_GATEWAY)) ;;
+    esac
+  done < <(route -n get "${family[@]}" default 2>/dev/null)
+
+  if [[ -z "$iface" ]]; then
+    return
+  fi
+
+  printf '%s %x\n' "$iface" "$flags"
+}
+
 print_default_routes() {
   local ip_version="$1"
+
+  if [[ "$OSTYPE" == darwin* ]]; then
+    print_bsd_default_route "$ip_version"
+    return
+  fi
 
   case "$ip_version" in
     4) print_ipv4_default_routes ;;

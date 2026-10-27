@@ -54,6 +54,38 @@ add_ipv6_default_route() {
   printf '%s 00 %s 00 %s 00000400 00000001 00000000 %s %s\n' "$any" "$any" "$any" "$flags" "$iface" >>"$IPV6_ROUTE_TABLE"
 }
 
+use_fake_bsd_route() {
+  local route_dir="$BATS_TEST_TMPDIR/route"
+
+  OSTYPE=darwin25
+  mkdir "$route_dir"
+  cat >"$BATS_TEST_TMPDIR/bin/route" <<EOF
+#!/usr/bin/env bash
+family=inet
+if [[ "\$*" == *-inet6* ]]; then
+  family=inet6
+fi
+if [[ ! -e "$route_dir/\$family" ]]; then
+  printf 'route: writing to routing socket: not in table\\n' >&2
+  exit 0
+fi
+cat "$route_dir/\$family"
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/bin/route"
+}
+
+add_bsd_default_route() {
+  local route_family="$1"
+  local iface="$2"
+  local gateway="$3"
+
+  printf '   route to: default\ndestination: default\n       mask: default\n' >"$BATS_TEST_TMPDIR/route/$route_family"
+  if [[ -n "$gateway" ]]; then
+    printf '    gateway: %s\n' "$gateway" >>"$BATS_TEST_TMPDIR/route/$route_family"
+  fi
+  printf '  interface: %s\n      flags: <UP,GATEWAY,DONE,STATIC,PRCLONING,GLOBAL>\n' "$iface" >>"$BATS_TEST_TMPDIR/route/$route_family"
+}
+
 print_ip_versions_left() {
   detect_main_interface
   limit_ip_versions_to_main_interface 2>/dev/null
@@ -669,6 +701,36 @@ print_yes_color() {
 
   run print_ip_versions_left
   [[ "$output" == "- ipv4_only=false ipv6_only=false" ]]
+}
+
+@test "macos without ipv6 default route quietly checks ipv4 only" {
+  use_fake_bsd_route
+  add_bsd_default_route inet en0 192.168.100.1
+
+  detect_main_interface
+  run limit_ip_versions_to_main_interface
+  [[ -z "$output" ]]
+
+  run print_ip_versions_left
+  [[ "$output" == "en0 ipv4_only=true ipv6_only=false" ]]
+}
+
+@test "macos ipv6 through a vpn tunnel is not checked" {
+  use_fake_bsd_route
+  add_bsd_default_route inet en0 192.168.100.1
+  add_bsd_default_route inet6 utun4 ""
+
+  run print_ip_versions_left
+  [[ "$output" == "en0 ipv4_only=true ipv6_only=false" ]]
+}
+
+@test "macos dual stack on the main interface checks both" {
+  use_fake_bsd_route
+  add_bsd_default_route inet en0 192.168.100.1
+  add_bsd_default_route inet6 en0 fe80::1%en0
+
+  run print_ip_versions_left
+  [[ "$output" == "en0 ipv4_only=false ipv6_only=false" ]]
 }
 
 @test "host without ipv6 keeps ipv4 only" {
