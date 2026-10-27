@@ -5,20 +5,21 @@
  ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
  ┃
  ┃  SE   Sweden   seen by most services
- ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  17/20 checks passed
+ ┃ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  18/21 checks passed
 
  Attention
    Disney+  IPv6   ✗    region blocked
 
- Availability     IPv4 IPv6
- YouTube Premium  ✓    ✓
- Google Search    ✓    ✓
- Spotify Signup   ✓    ✓
- Disney+          ✓    ✗
- Reddit Guest     ✓    -
+ Availability       IPv4 IPv6
+ YouTube Premium    ✓    ✓
+ YouTube No Ads RU  ✓    ✓
+ Google Search      ✓    ✓
+ Spotify Signup     ✓    ✓
+ Disney+            ✓    ✗
+ Reddit Guest       ✓    -
 
- GeoIP             SE 13/15
- ━━━━━━━━━━━━━━━━━━━━━━━━━━
+ GeoIP               SE 13/15
+ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  RU ifconfig.co v4,
     ipquery.io v4
  DE ifconfig.co v6,

@@ -34,6 +34,8 @@ readonly SERVICE_GROUPS=(platforms cdn availability ai geoip)
 readonly ALL_GROUPS="all"
 readonly DEFAULT_TIMEOUT=5
 readonly TIMEOUT_PATTERN='^[1-9][0-9]*$'
+readonly DEFAULT_YOUTUBE_LANG="ru"
+readonly YOUTUBE_LANG_PATTERN='^[a-z]{2,3}(-[A-Za-z0-9]{2,4})?$'
 readonly PROXY_PATTERN='^([^:/[:space:]]+|\[[0-9A-Fa-f:]+\]):[0-9]{1,5}$'
 readonly COUNTRY_CODE_PATTERN='^[A-Z]{2}$'
 readonly REGIONAL_INDICATOR_A=0x1F1E6
@@ -318,6 +320,13 @@ readonly ACCEPT_LANGUAGE_ENGLISH="Accept-Language: en-US,en;q=0.9"
 readonly YOUTUBE_INNERTUBE_BROWSE_URL="https://www.youtube.com/youtubei/v1/browse"
 readonly YOUTUBE_PREMIUM_QUERY='{"context":{"client":{"clientName":"MWEB","clientVersion":"2.20261020.00.00","hl":"en","gl":"US"}},"browseId":"SPunlimited"}'
 readonly YOUTUBE_PREMIUM_PURCHASE_MARKER="premiumPurchaseButtonRenderer"
+readonly YOUTUBE_WATCH_URL="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+readonly YOUTUBE_VIEWER_COOKIE_PREFIX="Cookie: SOCS=CAI; PREF=hl="
+readonly ACCEPT_LANGUAGE_PREFIX="Accept-Language: "
+readonly YOUTUBE_NO_ADS_SERVICE_PREFIX="YouTube No Ads"
+readonly YOUTUBE_PLAYER_RESPONSE_MARKER="ytInitialPlayerResponse"
+readonly YOUTUBE_VIDEO_AD_MARKER="SLOT_TYPE_PLAYER_BYTES"
+readonly YOUTUBE_COOKIE_JAR_PREFIX="youtube-cookies-"
 readonly SPOTIFY_SIGNUP_BLOCKED_STATUS_PATTERN='^(120|320)$'
 readonly DISNEY_PLUS_FORBIDDEN_MARKER="Forbidden location"
 readonly REDDIT_GUEST_URL="https://www.reddit.com"
@@ -386,6 +395,7 @@ readonly REASON_DAILY_LIMIT="daily limit used up"
 readonly REASON_NO_DEMO_TOKEN="no demo token"
 readonly REASON_NO_IPV6="no IPv6"
 readonly REASON_REGION_BLOCKED="region blocked"
+readonly REASON_VIDEO_ADS="video ads"
 
 readonly GROUP_PLATFORMS="platforms"
 readonly PLATFORMS_CHECKS=(
@@ -417,6 +427,7 @@ readonly CDN_CHECKS=(
 readonly GROUP_AVAILABILITY="availability"
 readonly AVAILABILITY_CHECKS=(
   check_availability_youtube_premium
+  check_availability_youtube_no_ads
   check_availability_google_search
   check_availability_spotify_signup
   check_availability_disney_plus
@@ -532,7 +543,7 @@ def severity:
   if .status == "" then 3 elif .country != "" then 0 elif .status == $no then 1 else 2 end;
 to_entries
 | map(.value + {order: .key} | select(needs_attention))
-| map(if .status == $yes then .reason = $different_country elif .status == $no then .reason = $region_blocked else . end)
+| map(if .status == $yes then .reason = $different_country elif .status == $no and .reason != $video_ads then .reason = $region_blocked else . end)
 | group_by([.group, .service, .country, .status, .reason])
 | map(.[0] + {ip_version: (if length == 2 then "both" else .[0].ip_version end)})
 | group_by([.country, .status, .reason, .ip_version])
@@ -649,6 +660,7 @@ SELECTED_GROUPS=("${SERVICE_GROUPS[@]}")
 REQUESTED_SERVICES=()
 SELECTED_CHECKS=()
 CURL_TIMEOUT="$DEFAULT_TIMEOUT"
+YOUTUBE_LANG="$DEFAULT_YOUTUBE_LANG"
 IPV4_ONLY=false
 IPV6_ONLY=false
 PROXY_ADDR=""
@@ -773,6 +785,9 @@ Options:
   -i, --interface IFACE  Send requests through a network interface
       --emoji            Show country flags and group icons
       --geoip-breakdown  Show every GeoIP service instead of the summary
+      --youtube-lang LANG
+                         Viewer's YouTube language for YouTube No Ads
+                         (default: $DEFAULT_YOUTUBE_LANG)
 
 More: $SCRIPT_URL
 EOF
@@ -889,6 +904,11 @@ parse_args() {
         GEOIP_BREAKDOWN=true
         shift
         ;;
+      --youtube-lang)
+        require_option_value "$1" "$#"
+        YOUTUBE_LANG="$2"
+        shift 2
+        ;;
       *)
         die "unknown option $1"
         ;;
@@ -941,6 +961,10 @@ validate_args() {
 
   if [[ -n "$PROXY_ADDR" && ! "$PROXY_ADDR" =~ $PROXY_PATTERN ]]; then
     die "invalid proxy $PROXY_ADDR, expected HOST:PORT"
+  fi
+
+  if [[ ! "$YOUTUBE_LANG" =~ $YOUTUBE_LANG_PATTERN ]]; then
+    die "invalid YouTube language $YOUTUBE_LANG, expected a language code like ru, en or pt-BR"
   fi
 }
 
@@ -2599,6 +2623,41 @@ check_availability_youtube_premium() {
   print_status "$GROUP_AVAILABILITY" "YouTube Premium" "$ip_version" "$(youtube_premium_status)"
 }
 
+youtube_no_ads_status() {
+  if [[ "$HTTP_CODE" != "$HTTP_OK" || "$HTTP_BODY" != *"$YOUTUBE_PLAYER_RESPONSE_MARKER"* ]]; then
+    return
+  fi
+
+  if [[ "$HTTP_BODY" == *"$YOUTUBE_VIDEO_AD_MARKER"* ]]; then
+    printf '%s' "$STATUS_NO"
+    return
+  fi
+
+  printf '%s' "$STATUS_YES"
+}
+
+# YouTube serves ads only to a visitor with cookies, so the first load just collects them.
+check_availability_youtube_no_ads() {
+  local ip_version="$1"
+  local cookie_jar="$WORK_DIR/$YOUTUBE_COOKIE_JAR_PREFIX$ip_version"
+  local service="$YOUTUBE_NO_ADS_SERVICE_PREFIX ${YOUTUBE_LANG^^}"
+  local viewer_cookie="$YOUTUBE_VIEWER_COOKIE_PREFIX$YOUTUBE_LANG"
+  local accept_language="$ACCEPT_LANGUAGE_PREFIX$YOUTUBE_LANG"
+  local status
+
+  http_request "$ip_version" "$YOUTUBE_WATCH_URL" --user-agent "$USER_AGENT" \
+    --header "$viewer_cookie" --header "$accept_language" --cookie-jar "$cookie_jar"
+  http_request "$ip_version" "$YOUTUBE_WATCH_URL" --user-agent "$USER_AGENT" \
+    --header "$viewer_cookie" --header "$accept_language" --cookie "$cookie_jar"
+  status=$(youtube_no_ads_status)
+  if [[ "$status" == "$STATUS_NO" ]]; then
+    print_result "$GROUP_AVAILABILITY" "$service" "$ip_version" "" "$STATUS_NO" "$REASON_VIDEO_ADS"
+    return
+  fi
+
+  print_status "$GROUP_AVAILABILITY" "$service" "$ip_version" "$status"
+}
+
 spotify_signup_status() {
   if [[ "$(json_value '.status')" =~ $SPOTIFY_SIGNUP_BLOCKED_STATUS_PATTERN ]]; then
     printf '%s' "$STATUS_NO"
@@ -2918,6 +2977,7 @@ collect_attention() {
       --arg geoip "$GROUP_GEOIP" \
       --arg different_country "$REASON_DIFFERENT_COUNTRY" \
       --arg region_blocked "$REASON_REGION_BLOCKED" \
+      --arg video_ads "$REASON_VIDEO_ADS" \
       --arg daily_limit "$REASON_DAILY_LIMIT" \
       --argjson collapse_min "$ATTENTION_COLLAPSE_MIN" \
       "$ATTENTION_FILTER" <<<"$RESULTS"

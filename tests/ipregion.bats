@@ -113,7 +113,7 @@ curl_calls() {
 
 @test "long options set every flag" {
   parse_args --verbose --debug --yes --json --group ai --timeout 3 --ipv6 \
-    --proxy '[::1]:1080' --interface wg0 --emoji --geoip-breakdown
+    --proxy '[::1]:1080' --interface wg0 --emoji --geoip-breakdown --youtube-lang pt-BR
   validate_args
 
   [[ "$VERBOSE" == true ]]
@@ -128,6 +128,7 @@ curl_calls() {
   [[ "$INTERFACE_NAME" == wg0 ]]
   [[ "$SHOW_EMOJI" == true ]]
   [[ "$GEOIP_BREAKDOWN" == true ]]
+  [[ "$YOUTUBE_LANG" == pt-BR ]]
 }
 
 @test "every group name is accepted" {
@@ -260,6 +261,16 @@ curl_calls() {
     run bash "$SCRIPT" --timeout "$timeout"
     [[ "$status" -eq 1 ]]
     [[ "$output" == *"invalid timeout"* ]]
+  done
+}
+
+@test "invalid youtube languages are rejected" {
+  local lang
+
+  for lang in RU russian ru_RU "ru;q=1" ""; do
+    run bash "$SCRIPT" --youtube-lang "$lang"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"invalid YouTube language"* ]]
   done
 }
 
@@ -1267,6 +1278,8 @@ availability_row() {
     cat <<'ROWS'
 YouTube Premium 4  yes 
 YouTube Premium 6  yes 
+YouTube No Ads RU 4  yes 
+YouTube No Ads RU 6  yes 
 Google Search 4  yes 
 Google Search 6  yes 
 Spotify Signup 4  yes 
@@ -1297,6 +1310,34 @@ ROWS
   [[ "$(availability_row "YouTube Premium")" == "no " ]]
   [[ "$(availability_row "Spotify Signup")" == "no " ]]
   [[ "$(availability_row Disney+)" == "no " ]]
+}
+
+@test "youtube video ad slot is no with the video ads reason, a page without the player is a failure" {
+  use_host_fixtures dual-stack
+  add_fixture 4 www.youtube.com_watch_v_dQw4w9WgXcQ \
+    '<script>var ytInitialPlayerResponse = {"adSlots":[{"adSlotRenderer":{"adSlotMetadata":{"slotType":"SLOT_TYPE_PLAYER_BYTES"}}}]};</script>'
+  add_fixture 6 www.youtube.com_watch_v_dQw4w9WgXcQ '<html>consent</html>'
+  set_dual_stack_ips
+
+  run_availability_checks
+
+  [[ "$(availability_row "YouTube No Ads RU")" == $'no video ads\n unexpected response' ]]
+  run grep -c -- '--cookie-jar .*youtube-cookies-4' "$FAKE_CURL_LOG"
+  [[ "$output" -eq 1 ]]
+  run grep -c -- '--cookie .*youtube-cookies-4' "$FAKE_CURL_LOG"
+  [[ "$output" -eq 1 ]]
+}
+
+@test "youtube no ads row names the chosen language and sends it to youtube" {
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+  YOUTUBE_LANG=en
+
+  run_availability_checks
+
+  [[ "$(availability_row "YouTube No Ads EN")" == $'yes \nyes ' ]]
+  run grep -c -- 'PREF=hl=en.*Accept-Language: en' "$FAKE_CURL_LOG"
+  [[ "$output" -eq 4 ]]
 }
 
 @test "reddit guest 403 is an ip block with the reason" {
@@ -1516,6 +1557,7 @@ attention_rows() {
     print_result availability "Reddit Guest" 6 "" ipblock "access denied (403)"
     print_result availability Disney+ 4 "" yes ""
     print_result ai "Gemini Web" 4 "" no ""
+    print_result availability "YouTube No Ads RU" 4 "" no "video ads"
     print_result geoip RIPE 6 NL yes ""
     print_result geoip ipquery.io 6 "" "" timeout
     print_result geoip MaxMind 4 "" "" "daily limit used up"
@@ -1527,6 +1569,7 @@ attention_rows() {
     cat <<'ROWS'
 ChatGPT 6 NL yes different country
 Gemini Web 4  no region blocked
+YouTube No Ads RU 4  no video ads
 Reddit Guest 6  ipblock access denied (403)
 Disney+ 6   timeout
 ipquery.io 6   timeout
