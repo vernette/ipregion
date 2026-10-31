@@ -484,8 +484,8 @@ print_yes_color() {
 }
 
 @test "bar fills its width by parts" {
-  [[ "$(print_bar "" 1 2 10)" == "━━━━━━━━━━" ]]
-  [[ "$(print_bar "" 0 5 4)" == "━━━━" ]]
+  [[ "$(print_bar "" 1 2 10)" == "━━━━━─────" ]]
+  [[ "$(print_bar "" 0 5 4)" == "────" ]]
   [[ "$(visible_length "$(print_bar "" 3 7 44)")" -eq 44 ]]
 }
 
@@ -554,14 +554,14 @@ print_yes_color() {
   [[ "$count" -eq 4 ]]
 }
 
-@test "bar block marks every line and indents the content" {
-  local block
+@test "bar block marks every line, indents the content and ends with an empty line" {
+  local -a block=()
 
-  block=$(printf 'IPv4  203.0.*.*  \n\n' | print_bar_block)
+  mapfile -t block < <(printf 'IPv4  203.0.*.*  \n\n' | print_bar_block)
 
-  [[ "$(sed -n '1p' <<<"$block")" == "┃ IPv4  203.0.*.*" ]]
-  [[ "$(sed -n '2p' <<<"$block")" == "┃" ]]
-  [[ -z "$(sed -n '3p' <<<"$block")" ]]
+  [[ "${block[0]}" == "┃ IPv4  203.0.*.*" ]]
+  [[ "${block[1]}" == "┃" ]]
+  [[ "${#block[@]}" -eq 3 && -z "${block[2]}" ]]
 }
 
 @test "request keeps code, body and redirect apart" {
@@ -1824,10 +1824,10 @@ run_report() {
 
 @test "interface report names the interface and its protocols" {
   run run_report --interface wg0 --group geoip
-  [[ "$output" == *"Interface wg0 exits over IPv4 and IPv6"* ]]
+  [[ "$output" == *"wg0 interface"*"exits over IPv4 and IPv6"* ]]
 
   run run_report --interface wg0 --group geoip --ipv6
-  [[ "$output" == *"Interface wg0 exits over IPv6 only"* ]]
+  [[ "$output" == *"wg0 interface"*"exits over IPv6 only"* ]]
 }
 
 @test "dual-stack proxy report checks each service once in one column" {
@@ -1885,14 +1885,20 @@ run_report() {
 }
 
 @test "tie names every tied country instead of a verdict" {
+  local -a verdict_lines=()
+
   use_host_fixtures dual-stack
-  EXTERNAL_IPV4=203.0.113.7
+  set_dual_stack_ips
   VERDICT=""
   VERDICT_TIED_COUNTRIES=(DE SE)
 
-  run print_verdict_line
+  build_header_columns
+  run print_verdict_lines
+  mapfile -t verdict_lines <<<"$output"
 
-  [[ "$output" == " ┃  DE   SE   Germany or Sweden   services split evenly" ]]
+  [[ -z "${verdict_lines[0]}" ]]
+  [[ "${verdict_lines[1]}" == "  DE   Germany"*"services split evenly" ]]
+  [[ "${verdict_lines[2]}" == "  SE   Sweden"* && "${verdict_lines[2]}" != *evenly* ]]
 }
 
 @test "failed maxmind is noted once in the header" {
@@ -1900,6 +1906,7 @@ run_report() {
   REGISTRATION_MAXMIND_FAILURE[4]="no demo token: timeout"
   REGISTRATION_MAXMIND_FAILURE[6]="no demo token: timeout"
 
+  build_header_columns
   run print_ip_lines
 
   [[ "$(grep -c "MaxMind unavailable · ASN from RIPE" <<<"$output")" -eq 1 ]]
@@ -1909,6 +1916,7 @@ run_report() {
 @test "header has no maxmind note when maxmind answered" {
   set_dual_stack_ips
 
+  build_header_columns
   run print_ip_lines
 
   [[ "$output" != *"MaxMind"* ]]
@@ -1927,6 +1935,7 @@ run_report() {
     print_result geoip RIPE 6 SE yes ""
   )")
 
+  build_header_columns
   run print_ip_lines
   [[ "$(grep -c "MaxMind daily limit used up" <<<"$output")" -eq 1 ]]
 

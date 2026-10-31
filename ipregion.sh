@@ -79,8 +79,10 @@ readonly SUMMARY_DEFAULT_WIDTH=25
 readonly COLUMN_GAP="     "
 readonly SCOPE_WIDTH=5
 readonly ATTENTION_NOTE_WIDTH=13
-readonly VERDICT_BAR_WIDTH=44
+readonly HEADER_LABEL_WIDTH=6
+readonly CHECKS_BAR_WIDTH=46
 readonly SUMMARY_BAR_CHAR="━"
+readonly SUMMARY_BAR_REST_CHAR="─"
 readonly ATTENTION_LIST_LINES=2
 readonly GROUP_ROW_FIELDS=3
 readonly CDN_ROW_FIELDS=9
@@ -702,6 +704,12 @@ DEBUG_TRACE_FILE=""
 DEBUG_TRACE_DIR=""
 DEBUG_LOG_FILE=""
 DEBUG_MASKS=()
+HEADER_IP_VERSIONS=()
+HEADER_IP_VALUES=()
+HEADER_NETWORKS=()
+HEADER_EXIT_LABEL=""
+HEADER_VALUE_WIDTH=0
+HEADER_NETWORK_WIDTH=0
 declare -gA REGISTRATION_ASN=()
 declare -gA REGISTRATION_ORG=()
 declare -gA REGISTRATION_COUNTRY=()
@@ -1573,9 +1581,11 @@ print_titled_card_pair() {
 }
 
 print_bar_block() {
+  local -a block_lines=()
   local line
 
-  while IFS= read -r line; do
+  mapfile -t block_lines
+  for line in "${block_lines[@]}"; do
     line="${line%%+( )}"
     if [[ -z "$line" ]]; then
       printf '%s%s%s\n' "$C_BAR" "$HEADER_MARK" "$C_RESET"
@@ -3219,7 +3229,7 @@ print_bar() {
 
   filled_width=$((width * filled_parts / total_parts))
   printf '%s%s%s%s%s' "$color" "$(repeat_char "$SUMMARY_BAR_CHAR" "$filled_width")" "$C_DIM" \
-    "$(repeat_char "$SUMMARY_BAR_CHAR" "$((width - filled_width))")" "$C_RESET"
+    "$(repeat_char "$SUMMARY_BAR_REST_CHAR" "$((width - filled_width))")" "$C_RESET"
 }
 
 has_protocol_columns() {
@@ -3317,12 +3327,6 @@ geoip_majority() {
   jq -r --arg geoip "$GROUP_GEOIP" --arg yes "$STATUS_YES" "$GEOIP_MAJORITY_FILTER" <<<"$RESULTS"
 }
 
-print_header_line() {
-  local text="$1"
-
-  printf ' %s%s\n' "$(paint "$C_TITLE" "$HEADER_MARK")" "${text:+ $text}"
-}
-
 format_network() {
   local ip_version="$1"
   local asn="${REGISTRATION_ASN[$ip_version]:-}"
@@ -3336,14 +3340,45 @@ format_network() {
   printf 'AS%s%s' "$asn" "${organization:+ $organization}"
 }
 
+build_header_columns() {
+  HEADER_IP_VERSIONS=()
+  HEADER_IP_VALUES=()
+  HEADER_NETWORKS=()
+  HEADER_EXIT_LABEL=""
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    HEADER_IP_VERSIONS+=(4)
+    HEADER_IP_VALUES+=("$(mask_ipv4 "$EXTERNAL_IPV4")")
+    HEADER_NETWORKS+=("$(format_network 4)")
+  fi
+
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    HEADER_IP_VERSIONS+=(6)
+    HEADER_IP_VALUES+=("$(mask_ipv6 "$EXTERNAL_IPV6")")
+    HEADER_NETWORKS+=("$(format_network 6)")
+  fi
+
+  if [[ -n "$PROXY_ADDR" ]]; then
+    HEADER_EXIT_LABEL="proxy"
+  elif [[ -n "$INTERFACE_NAME" ]]; then
+    HEADER_EXIT_LABEL="$INTERFACE_NAME interface"
+  fi
+
+  HEADER_VALUE_WIDTH=$(($(max_length "${HEADER_IP_VALUES[@]}" "$HEADER_EXIT_LABEL") + NAME_GAP))
+  HEADER_NETWORK_WIDTH=$(($(max_length "${HEADER_NETWORKS[@]}") + NAME_GAP))
+}
+
 print_ip_line() {
   local ip_version="$1"
   local masked_ip="$2"
-  local ip_width="$3"
-  local network_width="$4"
+  local network="$3"
   local country="${REGISTRATION_COUNTRY[$ip_version]:-$SYMBOL_UNKNOWN}"
 
-  print_header_line "$(paint "$C_TITLE" "IPv$ip_version")  $(paint "$C_VALUE" "$(pad "$masked_ip" "$ip_width")")$(pad "$(format_network "$ip_version")" "$network_width")$(paint "$C_DIM" "$REGISTERED_NOTE") $(paint "$C_VALUE" "$(label_country "$country")")"
+  printf ' '
+  pad_cell "" "IPv$ip_version" "$HEADER_LABEL_WIDTH"
+  pad_cell "$C_VALUE" "$masked_ip" "$HEADER_VALUE_WIDTH"
+  pad_cell "" "$network" "$HEADER_NETWORK_WIDTH"
+  printf '%s %s\n' "$(paint "$C_DIM" "$REGISTERED_NOTE")" "$(paint "$C_VALUE" "$(label_country "$country")")"
 }
 
 is_maxmind_limit_used_up() {
@@ -3382,39 +3417,34 @@ maxmind_header_note() {
 }
 
 print_ip_lines() {
-  local -a ip_versions=() masked_ips=() networks=()
-  local ip_width network_width i note
+  local i note
 
-  if [[ -n "$EXTERNAL_IPV4" ]]; then
-    ip_versions+=(4)
-    masked_ips+=("$(mask_ipv4 "$EXTERNAL_IPV4")")
-    networks+=("$(format_network 4)")
-  fi
-
-  if [[ -n "$EXTERNAL_IPV6" ]]; then
-    ip_versions+=(6)
-    masked_ips+=("$(mask_ipv6 "$EXTERNAL_IPV6")")
-    networks+=("$(format_network 6)")
-  fi
-
-  ip_width=$(($(max_length "${masked_ips[@]}") + NAME_GAP))
-  network_width=$(($(max_length "${networks[@]}") + NAME_GAP))
-  for i in "${!ip_versions[@]}"; do
-    print_ip_line "${ip_versions[i]}" "${masked_ips[i]}" "$ip_width" "$network_width"
+  for i in "${!HEADER_IP_VERSIONS[@]}"; do
+    print_ip_line "${HEADER_IP_VERSIONS[i]}" "${HEADER_IP_VALUES[i]}" "${HEADER_NETWORKS[i]}"
   done
 
   note=$(maxmind_header_note)
   if [[ -n "$note" ]]; then
-    print_header_line "      $(paint "$C_DIM" "$note")"
+    printf ' %s%s\n' "$(pad "" "$HEADER_LABEL_WIDTH")" "$(paint "$C_DIM" "$note")"
   fi
 }
 
 print_verdict_line() {
+  local country="$1"
+  local note="$2"
+  local name
+
+  name=$(country_name "$country")
+  printf ' '
+  pad_cell "" "$(format_badge "$country")" "$HEADER_LABEL_WIDTH"
+  pad_cell "$C_VALUE" "${name:-$country}" "$HEADER_VALUE_WIDTH"
+  printf '%s\n' "${note:+$(paint "$C_DIM" "$note")}"
+}
+
+print_verdict_lines() {
   local -a countries=("${VERDICT_TIED_COUNTRIES[@]}")
   local note="$TIE_NOTE"
-  local badges=""
-  local names=""
-  local country name
+  local country
 
   if [[ -n "$VERDICT" ]]; then
     countries=("$VERDICT")
@@ -3425,13 +3455,11 @@ print_verdict_line() {
     return
   fi
 
+  printf '\n'
   for country in "${countries[@]}"; do
-    name=$(country_name "$country")
-    badges+="${badges:+ }$(format_badge "$country")"
-    names+="${names:+ or }${name:-$country}"
+    print_verdict_line "$country" "$note"
+    note=""
   done
-
-  print_header_line "$badges  $(paint "$C_VALUE" "$names")   $(paint "$C_DIM" "$note")"
 }
 
 print_checks_bar() {
@@ -3439,7 +3467,8 @@ print_checks_bar() {
     return
   fi
 
-  print_header_line "$(print_bar "$(checks_bar_color)" "$CHECKS_NORMAL" "$CHECKS_TOTAL" "$VERDICT_BAR_WIDTH")  $(paint "$C_DIM" "$CHECKS_NORMAL/$CHECKS_TOTAL $CHECKS_PASSED_NOTE")"
+  printf ' %s  %s\n' "$(print_bar "$(checks_bar_color)" "$CHECKS_NORMAL" "$CHECKS_TOTAL" "$CHECKS_BAR_WIDTH")" \
+    "$(paint "$C_DIM" "$CHECKS_NORMAL/$CHECKS_TOTAL $CHECKS_PASSED_NOTE")"
 }
 
 format_exits() {
@@ -3451,37 +3480,31 @@ format_exits() {
   printf 'IPv%s only' "$(first_ip_version)"
 }
 
-print_proxy_line() {
-  if [[ -z "$PROXY_ADDR" ]]; then
+print_exits_line() {
+  if [[ -z "$HEADER_EXIT_LABEL" ]]; then
     return
   fi
 
-  print_header_line "$(paint "$C_TITLE" Proxy) $(paint "$C_DIM" "$EXITS_NOTE") $(paint "$C_VALUE" "$(format_exits)")"
+  printf ' '
+  pad_cell "" "" "$HEADER_LABEL_WIDTH"
+  pad_cell "$C_VALUE" "$HEADER_EXIT_LABEL" "$HEADER_VALUE_WIDTH"
+  printf '%s %s\n' "$(paint "$C_DIM" "$EXITS_NOTE")" "$(paint "$C_VALUE" "$(format_exits)")"
 }
 
-print_interface_line() {
-  if [[ -z "$INTERFACE_NAME" || -n "$PROXY_ADDR" ]]; then
-    return
-  fi
-
-  print_header_line "$(paint "$C_TITLE" Interface) $(paint "$C_VALUE" "$INTERFACE_NAME") $(paint "$C_DIM" "$EXITS_NOTE") $(paint "$C_VALUE" "$(format_exits)")"
-}
-
-print_host_header() {
+print_host_lines() {
+  printf ' %s\n' "$(paint "$C_DIM" "Made with $(paint "$C_NO" "<3")${C_DIM} by $AUTHOR ·") ${SCRIPT_URL#https://}"
   printf '\n'
-  print_header_line "$(paint "$C_DIM" "Made with $(paint "$C_NO" "<3")${C_DIM} by $AUTHOR ·") ${SCRIPT_URL#https://}"
-  print_header_line ""
   print_ip_lines
-  print_proxy_line
-  print_interface_line
+  print_exits_line
 }
 
 print_header() {
-  print_host_header
-  print_header_line ""
-  print_verdict_line
-  print_checks_bar
-  printf '\n'
+  build_header_columns
+  {
+    print_host_lines
+    print_verdict_lines
+    print_checks_bar
+  } | print_bar_block
 }
 
 format_scope() {
@@ -4014,8 +4037,8 @@ is_service_report() {
 print_service_report() {
   local -a tables=()
 
-  print_host_header
-  printf '\n'
+  build_header_columns
+  print_host_lines | print_bar_block
   append_separated_group_lines tables "$GROUP_PLATFORMS" Platforms $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA))
   append_separated_group_lines tables "$GROUP_GEOIP" GeoIP $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA))
   append_separated_group_lines tables "$GROUP_AVAILABILITY" Availability $((STATUS_CELL_WIDTH + COUNTRY_EXTRA))

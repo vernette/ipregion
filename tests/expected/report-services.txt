@@ -1,8 +1,7 @@
-
- ┃ Made with <3 by vernette · github.com/vernette/ipregion
- ┃
- ┃ IPv4  203.0.*.*        AS64496 Example Hosting  registered in NL
- ┃ IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
+┃  Made with <3 by vernette · github.com/vernette/ipregion
+┃
+┃  IPv4  203.0.*.*        AS64496 Example Hosting  registered in NL
+┃  IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
 
  Platforms  IPv4  IPv6
  Spotify    SE    SE
