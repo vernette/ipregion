@@ -54,6 +54,20 @@ readonly -A GROUP_EMOJI=(
 )
 
 readonly OUTPUT_WIDTH=72
+readonly ANSI_SEQUENCE=$'\033\[+([0-9;])m'
+readonly CARD_GAP=1
+readonly LEFT_CARD_WIDTH=34
+readonly RIGHT_CARD_WIDTH=37
+readonly CARD_CONTENT_INDENT=1
+readonly CARD_SIDES_WIDTH=2
+readonly CARD_TRAILING_GAP=1
+readonly CARD_TITLE_OFFSET=1
+readonly CARD_TOP_LEFT="╭"
+readonly CARD_TOP_RIGHT="╮"
+readonly CARD_BOTTOM_LEFT="╰"
+readonly CARD_BOTTOM_RIGHT="╯"
+readonly CARD_SIDE="│"
+readonly CARD_HORIZONTAL="─"
 readonly NAME_GAP=2
 readonly EDGE_GAP=3
 readonly COUNTRY_CELL_WIDTH=6
@@ -1333,10 +1347,23 @@ resolve_selected_checks() {
 
 visible_length() {
   local text="$1"
-  local plain="${text//$'\033'\[+([0-9;])m/}"
+  local plain="${text//$ANSI_SEQUENCE/}"
   local narrow="${plain//$WIDE_EMOJI_PATTERN/}"
 
   printf '%d' $((2 * ${#plain} - ${#narrow}))
+}
+
+repeat_char() {
+  local char="$1"
+  local count="$2"
+  local line
+
+  if ((count <= 0)); then
+    return
+  fi
+
+  printf -v line '%*s' "$count" ''
+  printf '%s' "${line// /$char}"
 }
 
 pad() {
@@ -1350,6 +1377,20 @@ pad() {
   fi
 
   printf '%s%*s' "$text" "$fill" ''
+}
+
+pad_cell() {
+  local color="$1"
+  local text="$2"
+  local width="$3"
+  local fill
+
+  fill=$((width - $(visible_length "$text")))
+  if ((fill < 1)); then
+    fill=1
+  fi
+
+  printf '%s%s%s%*s' "$color" "$text" "$C_RESET" "$fill" ''
 }
 
 max_length() {
@@ -1450,6 +1491,99 @@ format_cell() {
   fi
 
   format_status "$value" "$width"
+}
+
+print_card_top() {
+  local title_color="$1"
+  local title="$2"
+  local width="$3"
+  local label
+
+  label=" $(label_group "$title") "
+  printf '%s%s%s%s%s%s%s%s\n' "$C_DIM" "$CARD_TOP_LEFT" "$(repeat_char "$CARD_HORIZONTAL" "$CARD_TITLE_OFFSET")" \
+    "$(paint "$title_color" "$label")" "$C_DIM" \
+    "$(repeat_char "$CARD_HORIZONTAL" $((width - CARD_SIDES_WIDTH - CARD_TITLE_OFFSET - $(visible_length "$label"))))" \
+    "$CARD_TOP_RIGHT" "$C_RESET"
+}
+
+print_card_line() {
+  local line="$1"
+  local width="$2"
+  local fill
+
+  line="${line%%+( )}"
+  fill=$((width - CARD_SIDES_WIDTH - CARD_CONTENT_INDENT - CARD_TRAILING_GAP - $(visible_length "$line")))
+  if ((fill < 0)); then
+    fill=0
+  fi
+
+  printf '%s%s%s%*s%s%*s%s%s%s\n' "$C_DIM" "$CARD_SIDE" "$C_RESET" "$CARD_CONTENT_INDENT" '' "$line" \
+    $((fill + CARD_TRAILING_GAP)) '' "$C_DIM" "$CARD_SIDE" "$C_RESET"
+}
+
+print_card_bottom() {
+  local width="$1"
+
+  printf '%s%s%s%s%s\n' "$C_DIM" "$CARD_BOTTOM_LEFT" "$(repeat_char "$CARD_HORIZONTAL" $((width - CARD_SIDES_WIDTH)))" "$CARD_BOTTOM_RIGHT" "$C_RESET"
+}
+
+print_titled_card() {
+  local title_color="$1"
+  local title="$2"
+  local width="$3"
+  local height="$4"
+  local -a content_lines=()
+  local index
+
+  mapfile -t content_lines
+  while ((${#content_lines[@]} > 0)) && [[ -z "${content_lines[-1]}" ]]; do
+    unset 'content_lines[-1]'
+  done
+  if ((${#content_lines[@]} > height)); then
+    height="${#content_lines[@]}"
+  fi
+
+  print_card_top "$title_color" "$title" "$width"
+  for ((index = 0; index < height; index++)); do
+    print_card_line "${content_lines[index]:-}" "$width"
+  done
+  print_card_bottom "$width"
+}
+
+print_titled_card_pair() {
+  local left_title="$1"
+  local right_title="$2"
+  local left_text="$3"
+  local right_text="$4"
+  local -a left_card=() right_card=()
+  local height index
+
+  mapfile -t left_card <<<"$left_text"
+  mapfile -t right_card <<<"$right_text"
+  height="${#left_card[@]}"
+  if ((${#right_card[@]} > height)); then
+    height="${#right_card[@]}"
+  fi
+
+  mapfile -t left_card < <(printf '%s\n' "${left_card[@]}" | print_titled_card "$C_TITLE" "$left_title" "$LEFT_CARD_WIDTH" "$height")
+  mapfile -t right_card < <(printf '%s\n' "${right_card[@]}" | print_titled_card "$C_TITLE" "$right_title" "$RIGHT_CARD_WIDTH" "$height")
+  for ((index = 0; index < ${#left_card[@]}; index++)); do
+    printf '%s%*s%s\n' "${left_card[index]}" "$CARD_GAP" '' "${right_card[index]:-}"
+  done
+}
+
+print_bar_block() {
+  local line
+
+  while IFS= read -r line; do
+    line="${line%%+( )}"
+    if [[ -z "$line" ]]; then
+      printf '%s%s%s\n' "$C_BAR" "$HEADER_MARK" "$C_RESET"
+      continue
+    fi
+    printf '%s%s%s%*s%s\n' "$C_BAR" "$HEADER_MARK" "$C_RESET" "$CARD_CONTENT_INDENT" '' "$line"
+  done
+  printf '\n'
 }
 
 stop_jobs() {
@@ -3072,17 +3206,20 @@ checks_badge_color() {
   esac
 }
 
-format_summary_bar() {
+print_bar() {
   local color="$1"
-  local done_count="$2"
-  local total="$3"
+  local filled_parts="$2"
+  local total_parts="$3"
   local width="$4"
-  local done_width=$((width * done_count / total))
-  local done_part left_part
+  local filled_width
 
-  printf -v done_part '%*s' "$done_width" ''
-  printf -v left_part '%*s' "$((width - done_width))" ''
-  printf '%s%s%s%s%s' "$color" "${done_part// /$SUMMARY_BAR_CHAR}" "$C_DIM" "${left_part// /$SUMMARY_BAR_CHAR}" "$C_RESET"
+  if ((total_parts == 0)); then
+    return
+  fi
+
+  filled_width=$((width * filled_parts / total_parts))
+  printf '%s%s%s%s%s' "$color" "$(repeat_char "$SUMMARY_BAR_CHAR" "$filled_width")" "$C_DIM" \
+    "$(repeat_char "$SUMMARY_BAR_CHAR" "$((width - filled_width))")" "$C_RESET"
 }
 
 has_protocol_columns() {
@@ -3302,7 +3439,7 @@ print_checks_bar() {
     return
   fi
 
-  print_header_line "$(format_summary_bar "$(checks_bar_color)" "$CHECKS_NORMAL" "$CHECKS_TOTAL" "$VERDICT_BAR_WIDTH")  $(paint "$C_DIM" "$CHECKS_NORMAL/$CHECKS_TOTAL $CHECKS_PASSED_NOTE")"
+  print_header_line "$(print_bar "$(checks_bar_color)" "$CHECKS_NORMAL" "$CHECKS_TOTAL" "$VERDICT_BAR_WIDTH")  $(paint "$C_DIM" "$CHECKS_NORMAL/$CHECKS_TOTAL $CHECKS_PASSED_NOTE")"
 }
 
 format_exits() {
@@ -3661,7 +3798,7 @@ append_geoip_summary() {
   summary_lines+=(
     "${separator[@]}"
     "$(paint "$C_TITLE" "$(pad "$(label_group GeoIP)" $((column_width - $(visible_length "$counts"))))")$counts"
-    "$(format_summary_bar "$C_BAR" "$agree" "$total" "$column_width")"
+    "$(print_bar "$C_BAR" "$agree" "$total" "$column_width")"
   )
   append_geoip_difference_lines summary_lines "$column_width" "${differences[@]}"
 

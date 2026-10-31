@@ -471,6 +471,99 @@ print_yes_color() {
   [[ "$(format_status timeout 5)" == "?    " ]]
 }
 
+@test "pad_cell keeps at least one space after its text" {
+  [[ "$(pad_cell "" DE 6)" == "DE    " ]]
+  [[ "$(pad_cell "" PlayStation 6)" == "PlayStation " ]]
+  [[ "$(pad_cell "" "" 3)" == "   " ]]
+}
+
+@test "repeat_char draws nothing when the count is not positive" {
+  [[ "$(repeat_char "-" 3)" == "---" ]]
+  [[ -z "$(repeat_char "-" 0)" ]]
+  [[ -z "$(repeat_char "-" -4)" ]]
+}
+
+@test "bar fills its width by parts" {
+  [[ "$(print_bar "" 1 2 10)" == "━━━━━━━━━━" ]]
+  [[ "$(print_bar "" 0 5 4)" == "━━━━" ]]
+  [[ "$(visible_length "$(print_bar "" 3 7 44)")" -eq 44 ]]
+}
+
+@test "bar of no parts is empty instead of a division by zero" {
+  [[ -z "$(print_bar "" 1 0 10)" ]]
+}
+
+@test "card frames close at their width with the title on the left" {
+  local top bottom
+
+  top=$(print_card_top "" Platforms 34)
+  bottom=$(print_card_bottom 34)
+
+  [[ "$top" == "╭─ Platforms "*"╮" ]]
+  [[ "$(visible_length "$top")" -eq 34 ]]
+  [[ "$bottom" == "╰"*"╯" ]]
+  [[ "$(visible_length "$bottom")" -eq 34 ]]
+  [[ "$(print_card_bottom 2)" == "╰╯" ]]
+}
+
+@test "card top with a title wider than the card adds no phantom border" {
+  [[ "$(print_card_top "" Availability 12)" == "╭─ Availability ╮" ]]
+}
+
+@test "card title width counts group icons as two columns" {
+  SHOW_EMOJI=true
+
+  [[ "$(print_card_top "" Platforms 34)" == "╭─ 📱 Platforms "*"╮" ]]
+  [[ "$(visible_length "$(print_card_top "" Platforms 34)")" -eq 34 ]]
+  [[ "$(visible_length "$(print_card_top "" GeoIP 72)")" -eq 72 ]]
+}
+
+@test "card line indents its content and has no trailing spaces under the frame" {
+  local line
+
+  line=$(print_card_line " Service" 34)
+
+  [[ "$line" == "│  Service"*" │" ]]
+  [[ "$(visible_length "$line")" -eq 34 ]]
+  [[ "$(print_card_line " Service   " 34)" == "$line" ]]
+}
+
+@test "card line wider than the card adds no phantom padding" {
+  [[ "$(print_card_line " 01234567890123456789012345678901234" 34)" == "│  01234567890123456789012345678901234 │" ]]
+}
+
+@test "titled card keeps its height and drops the empty lines below the content" {
+  local card
+
+  card=$(printf 'one\ntwo\n\n\n' | print_titled_card "" Title 34 4)
+
+  [[ "$(wc -l <<<"$card")" -eq 6 ]]
+  [[ "$(sed -n '5p' <<<"$card")" == "│"*"│" ]]
+  [[ "$(sed -n '6p' <<<"$card")" == "╰"*"╯" ]]
+}
+
+@test "card pair joins two cards of the same height with one column between" {
+  local pair line count=0
+
+  pair=$(print_titled_card_pair Platforms AI $'a\nb' 'c')
+  while IFS= read -r line; do
+    [[ "$(visible_length "$line")" -eq 72 ]]
+    count=$((count + 1))
+  done <<<"$pair"
+
+  [[ "$count" -eq 4 ]]
+}
+
+@test "bar block marks every line and indents the content" {
+  local block
+
+  block=$(printf 'IPv4  203.0.*.*  \n\n' | print_bar_block)
+
+  [[ "$(sed -n '1p' <<<"$block")" == "┃ IPv4  203.0.*.*" ]]
+  [[ "$(sed -n '2p' <<<"$block")" == "┃" ]]
+  [[ -z "$(sed -n '3p' <<<"$block")" ]]
+}
+
 @test "request keeps code, body and redirect apart" {
   add_fixture 4 example.com_old "moved"
   set_fixture_field 4 example.com_old code 301
