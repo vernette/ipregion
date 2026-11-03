@@ -55,22 +55,17 @@ readonly -A GROUP_EMOJI=(
 
 readonly ANSI_SEQUENCE=$'\033\[+([0-9;])m'
 readonly CARD_GAP=1
-readonly LEFT_CARD_WIDTH=40
-readonly RIGHT_CARD_WIDTH=39
+readonly WIDE_LEFT_CARD_WIDTH=40
+readonly WIDE_RIGHT_CARD_WIDTH=39
 readonly CARD_CONTENT_INDENT=1
 readonly LEGEND_INDENT=3
 readonly CARD_SIDES_WIDTH=2
 readonly CARD_TRAILING_GAP=1
 readonly CARD_TITLE_OFFSET=1
-readonly FULL_CARD_WIDTH=$((LEFT_CARD_WIDTH + CARD_GAP + RIGHT_CARD_WIDTH))
-# The Issue / Node column of a full-width card starts where the paired right card's content starts
-readonly RIGHT_COLUMN_START=$((LEFT_CARD_WIDTH + CARD_GAP + 1))
-readonly RIGHT_COLUMN_WIDTH=$((FULL_CARD_WIDTH - CARD_SIDES_WIDTH - CARD_CONTENT_INDENT - CARD_TRAILING_GAP - RIGHT_COLUMN_START))
 readonly LEFT_GRID_NAME=19
 readonly LEFT_GRID_CELL=8
 readonly RIGHT_GRID_NAME=18
 readonly RIGHT_GRID_CELL=8
-readonly GEOIP_LINE_WIDTH=$((FULL_CARD_WIDTH - CARD_SIDES_WIDTH - 2 * CARD_CONTENT_INDENT - 2 * CARD_TRAILING_GAP))
 readonly CARD_TOP_LEFT="╭"
 readonly CARD_TOP_RIGHT="╮"
 readonly CARD_BOTTOM_LEFT="╰"
@@ -82,7 +77,7 @@ readonly COUNTRY_CELL_WIDTH=6
 readonly STATUS_CELL_WIDTH=5
 readonly GEOIP_COUNTRY_WIDTH=4
 readonly HEADER_LABEL_WIDTH=6
-readonly CHECKS_BAR_WIDTH=54
+readonly CHECKS_BAR_MARGIN=26
 readonly SUMMARY_BAR_CHAR="━"
 readonly SUMMARY_BAR_REST_CHAR="─"
 readonly ATTENTION_LIST_LINES=2
@@ -731,6 +726,13 @@ HEADER_NETWORKS=()
 HEADER_EXIT_LABEL=""
 HEADER_VALUE_WIDTH=0
 HEADER_NETWORK_WIDTH=0
+LEFT_CARD_WIDTH=0
+RIGHT_CARD_WIDTH=0
+FULL_CARD_WIDTH=0
+RIGHT_COLUMN_START=0
+RIGHT_COLUMN_WIDTH=0
+GEOIP_LINE_WIDTH=0
+CHECKS_BAR_WIDTH=0
 declare -gA REGISTRATION_ASN=()
 declare -gA REGISTRATION_ORG=()
 declare -gA REGISTRATION_COUNTRY=()
@@ -3533,6 +3535,30 @@ print_header() {
   } | print_bar_block
 }
 
+set_card_widths() {
+  LEFT_CARD_WIDTH="$1"
+  RIGHT_CARD_WIDTH="$2"
+  FULL_CARD_WIDTH=$((LEFT_CARD_WIDTH + CARD_GAP + RIGHT_CARD_WIDTH))
+  # The Issue / Node column of a full-width card starts where the paired right card's content starts
+  RIGHT_COLUMN_START=$((LEFT_CARD_WIDTH + CARD_GAP + 1))
+  RIGHT_COLUMN_WIDTH=$((FULL_CARD_WIDTH - CARD_SIDES_WIDTH - CARD_CONTENT_INDENT - CARD_TRAILING_GAP - RIGHT_COLUMN_START))
+  GEOIP_LINE_WIDTH=$((FULL_CARD_WIDTH - CARD_SIDES_WIDTH - 2 * CARD_CONTENT_INDENT - 2 * CARD_TRAILING_GAP))
+  CHECKS_BAR_WIDTH=$((FULL_CARD_WIDTH - CHECKS_BAR_MARGIN))
+}
+
+is_geoip_list_split_by_protocol() {
+  is_group_selected "$GROUP_GEOIP" && has_protocol_columns "$GROUP_GEOIP" && ! is_geoip_summary_shown
+}
+
+set_report_widths() {
+  if has_protocol_columns "$GROUP_PLATFORMS" || is_geoip_list_split_by_protocol; then
+    set_card_widths "$WIDE_LEFT_CARD_WIDTH" "$WIDE_RIGHT_CARD_WIDTH"
+    return
+  fi
+
+  set_card_widths $((WIDE_LEFT_CARD_WIDTH - LEFT_GRID_CELL)) $((WIDE_RIGHT_CARD_WIDTH - RIGHT_GRID_CELL))
+}
+
 report_columns() {
   local group="$1"
 
@@ -4085,6 +4111,7 @@ fetch_verdict_country_names() {
 }
 
 print_report() {
+  set_report_widths
   fetch_verdict_country_names
   print_header
   print_cards
@@ -4099,6 +4126,7 @@ is_service_report() {
 print_service_report() {
   local -a tables=()
 
+  set_report_widths
   build_header_columns
   print_host_lines | print_bar_block
   append_separated_group_lines tables "$GROUP_PLATFORMS" Platforms $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA))

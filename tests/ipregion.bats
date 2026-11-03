@@ -7,6 +7,7 @@ setup() {
   mkdir "$IPREGION_PROC_NET_DIR"
   # shellcheck source=../ipregion.sh
   source "$SCRIPT"
+  set_card_widths "$WIDE_LEFT_CARD_WIDTH" "$WIDE_RIGHT_CARD_WIDTH"
 
   mkdir "$BATS_TEST_TMPDIR/bin"
   ln -s "$BATS_TEST_DIRNAME/fake-curl.sh" "$BATS_TEST_TMPDIR/bin/curl"
@@ -1833,6 +1834,14 @@ run_report() {
 @test "dual-stack proxy report checks each service once in one column" {
   run_report --proxy 127.0.0.1:1080 --geoip-breakdown >"$BATS_TEST_TMPDIR/report.txt"
   diff -u "$BATS_TEST_DIRNAME/expected/report-proxy.txt" "$BATS_TEST_TMPDIR/report.txt"
+}
+
+@test "proxy report narrows by a column unless the geoip list is split by protocol" {
+  run run_report --proxy 127.0.0.1:1080
+  [[ "$output" == *$'\n╰'"$(repeat_char "$CARD_HORIZONTAL" 62)"$'╯\n'* ]]
+
+  run run_report --proxy 127.0.0.1:1080 --geoip-breakdown
+  [[ "$output" != *$'\n╰'"$(repeat_char "$CARD_HORIZONTAL" 62)"$'╯\n'* ]]
 }
 
 @test "ip version with a proxy is dropped with a warning" {

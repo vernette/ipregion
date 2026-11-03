@@ -3,47 +3,47 @@
 ┃  IPv4  203.0.*.*  AS64496 Example Hosting  registered in NL
 ┃
 ┃   SE   Sweden     seen by most services
-┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━────  50/53 checks passed
+┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━───  50/53 checks passed
 
-╭─ Attention ──────────────────────────────────────────────────────────────────╮
-│  Service            IPv4                  Issue                              │
-│  JetBrains          SI                    different country                  │
-╰──────────────────────────────────────────────────────────────────────────────╯
-╭─ Platforms ──────────────────────────╮ ╭─ AI ────────────────────────────────╮
-│  Service            IPv4             │ │  Service           IPv4             │
-│  Google             SE               │ │  Gemini Web        ✓                │
-│  YouTube            SE               │ │  Gemini API        ✓                │
-│  Twitch             SE               │ │  OpenAI API        ✓                │
-│  ChatGPT            SE               │ │  Anthropic API     ✓                │
-│  Claude             SE               │ │  Grok API          ✓                │
-│  Netflix            SE               │ │  Qwen API          ✓                │
-│  Spotify            SE               │ │  Qwen CN API       ✓                │
-│  Reddit             SE               │ │  Kimi API          ✓                │
-│  Disney+            SE               │ │  Kimi CN API       ✓                │
-│  TikTok             SE               │ │  GLM API           ✓                │
-│  Apple              SE               │ │  GLM CN API        ✓                │
-│  Steam              SE               │ │  MiniMax API       ✓                │
-│  Microsoft          SE               │ │  MiniMax CN API    ✓                │
-│  Ookla              SE               │ │  Doubao API        ✓                │
-│  JetBrains          SI               │ │  SiliconFlow API   ✓                │
-│  PlayStation        SE               │ │  DeepSeek API      ✓                │
-╰──────────────────────────────────────╯ ╰─────────────────────────────────────╯
-╭─ Availability ───────────────────────────────────────────────────────────────╮
-│  Service            IPv4                  Service           IPv4             │
-│  YouTube Premium    ✓                     Spotify Signup    ✓                │
-│  YouTube No Ads RU  ✓                     Disney+           ✓                │
-│  Google Search      ✓                     Reddit Guest      ✓                │
-╰──────────────────────────────────────────────────────────────────────────────╯
-╭─ GeoIP · SE 13/15 ───────────────────────────────────────────────────────────╮
-│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────────  │
-│  RU  ifconfig.co, ipquery.io                                                 │
-╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Attention ──────────────────────────────────────────────────╮
+│  Service            IPv4          Issue                      │
+│  JetBrains          SI            different country          │
+╰──────────────────────────────────────────────────────────────╯
+╭─ Platforms ──────────────────╮ ╭─ AI ────────────────────────╮
+│  Service            IPv4     │ │  Service           IPv4     │
+│  Google             SE       │ │  Gemini Web        ✓        │
+│  YouTube            SE       │ │  Gemini API        ✓        │
+│  Twitch             SE       │ │  OpenAI API        ✓        │
+│  ChatGPT            SE       │ │  Anthropic API     ✓        │
+│  Claude             SE       │ │  Grok API          ✓        │
+│  Netflix            SE       │ │  Qwen API          ✓        │
+│  Spotify            SE       │ │  Qwen CN API       ✓        │
+│  Reddit             SE       │ │  Kimi API          ✓        │
+│  Disney+            SE       │ │  Kimi CN API       ✓        │
+│  TikTok             SE       │ │  GLM API           ✓        │
+│  Apple              SE       │ │  GLM CN API        ✓        │
+│  Steam              SE       │ │  MiniMax API       ✓        │
+│  Microsoft          SE       │ │  MiniMax CN API    ✓        │
+│  Ookla              SE       │ │  Doubao API        ✓        │
+│  JetBrains          SI       │ │  SiliconFlow API   ✓        │
+│  PlayStation        SE       │ │  DeepSeek API      ✓        │
+╰──────────────────────────────╯ ╰─────────────────────────────╯
+╭─ Availability ───────────────────────────────────────────────╮
+│  Service            IPv4          Service           IPv4     │
+│  YouTube Premium    ✓             Spotify Signup    ✓        │
+│  YouTube No Ads RU  ✓             Disney+           ✓        │
+│  Google Search      ✓             Reddit Guest      ✓        │
+╰──────────────────────────────────────────────────────────────╯
+╭─ GeoIP · SE 13/15 ───────────────────────────────────────────╮
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━────────  │
+│  RU  ifconfig.co, ipquery.io                                 │
+╰──────────────────────────────────────────────────────────────╯
 
 ┃  CDN
-┃  Service            IPv4                  Node
-┃  Cloudflare         SE                    ARN
-┃  YouTube            DE                    muc11s18
-┃  Netflix            DE                    c002-fra001-ix
+┃  Service            IPv4          Node
+┃  Cloudflare         SE            ARN
+┃  YouTube            DE            muc11s18
+┃  Netflix            DE            c002-fra001-ix
 
    ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown
 
