@@ -1850,6 +1850,54 @@ run_report() {
   [[ "$output" == *$'\n╰'"$(repeat_char "$CARD_HORIZONTAL" 62)"$'╯\n'* ]]
 }
 
+assert_report_lines_fit_cards() {
+  local report="$1"
+  local line
+  local width
+  local card_width=""
+
+  while IFS= read -r line; do
+    width="$(visible_length "$line")"
+    if [[ "$line" == "$CARD_TOP_LEFT"* || "$line" == "$CARD_SIDE"* || "$line" == "$CARD_BOTTOM_LEFT"* ]]; then
+      card_width="${card_width:-$width}"
+      [[ "$width" -eq "$card_width" ]]
+    fi
+  done <<<"$report"
+
+  [[ "$card_width" -eq 80 || "$card_width" -eq 64 ]]
+
+  while IFS= read -r line; do
+    if [[ "$line" == *"registered in"* ]]; then
+      continue
+    fi
+    [[ "$(visible_length "$line")" -le "$card_width" ]]
+  done <<<"$report"
+}
+
+@test "every report line fits the card width and every card frame closes at it" {
+  local report_args=(
+    ""
+    "--emoji"
+    "--emoji --geoip-breakdown"
+    "-4"
+    "-4 --emoji"
+    "-g ai -6"
+    "-g geoip"
+    "-g platforms --emoji"
+    "-g availability"
+    "-g geoip,availability"
+    "-s spotify,geoip/cloudflare,youtube_premium,openai,ipinfo"
+    "--proxy 127.0.0.1:1080"
+    "--proxy 127.0.0.1:1080 --geoip-breakdown --emoji"
+  )
+  local args
+
+  for args in "${report_args[@]}"; do
+    # shellcheck disable=SC2086 # each entry is a list of options
+    assert_report_lines_fit_cards "$(run_report $args)"
+  done
+}
+
 @test "ip version with a proxy is dropped with a warning" {
   PROXY_ADDR=127.0.0.1:1080
   IPV4_ONLY=true
