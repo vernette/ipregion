@@ -2043,6 +2043,27 @@ run_report() {
   [[ "${table[2]}" == "Disney+          ✓    ✗" ]]
 }
 
+@test "availability card puts the larger half on the left and the right half on the right grid" {
+  set_dual_stack_ips
+  RESULTS=$(results_of "$(
+    print_result availability "YouTube Premium" 4 "" yes ""
+    print_result availability "YouTube Premium" 6 "" yes ""
+    print_result availability "Google Search" 4 "" yes ""
+    print_result availability "Google Search" 6 "" no ""
+    print_result availability Disney+ 4 "" yes ""
+    print_result availability Disney+ 6 "" yes ""
+  )")
+
+  run print_availability
+
+  ((${#lines[@]} == 5))
+  [[ "${lines[0]}" == "╭─ Availability ────"*"╮" ]]
+  [[ "${lines[1]}" == "│  Service            IPv4    IPv6          Service           IPv4    IPv6     │" ]]
+  [[ "${lines[2]}" == "│  YouTube Premium    ✓       ✓             Disney+           ✓       ✓        │" ]]
+  [[ "${lines[3]}" == "│  Google Search      ✓       ✗                                                │" ]]
+  [[ "${lines[4]}" == "╰"*"╯" ]]
+}
+
 @test "debug log upload falls back to litterbox and says why x0.at failed" {
   set_fixture_field 4 x0.at exit 28
   add_fixture 4 litterbox.catbox.moe_resources_internals_api.php https://litter.catbox.moe/abc123.log

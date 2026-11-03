@@ -3694,27 +3694,75 @@ print_attention() {
   printf '%s\n' "${rows[@]}" | print_titled_card "$C_WARN" Attention "$FULL_CARD_WIDTH" 0
 }
 
+print_card_rows() {
+  local group="$1"
+  local name_width="$2"
+  local cell_width="$3"
+  shift 3
+  local -a rows=("$@") card_lines=()
+  local i line
+
+  append_card_titles card_lines "$name_width" "$cell_width"
+  for ((i = 0; i < ${#rows[@]}; i += GROUP_ROW_FIELDS)); do
+    line=" $(pad_cell "" "${rows[i]}" "$name_width")$(format_cell "${rows[i + 1]}" "$cell_width")"
+    if has_protocol_columns "$group"; then
+      line+="$(format_cell "${rows[i + 2]}" "$cell_width")"
+    fi
+    card_lines+=("$line")
+  done
+  printf '%s\n' "${card_lines[@]}"
+}
+
 print_group_card_lines() {
   local group="$1"
   local name_width="$2"
   local cell_width="$3"
-  local -a fields card_lines=()
-  local i line
+  local -a fields
 
   mapfile -t fields < <(group_rows "$group")
   if ((${#fields[@]} == 0)); then
     return
   fi
 
-  append_card_titles card_lines "$name_width" "$cell_width"
-  for ((i = 0; i < ${#fields[@]}; i += GROUP_ROW_FIELDS)); do
-    line=" $(pad_cell "" "${fields[i]}" "$name_width")$(format_cell "${fields[i + 1]}" "$cell_width")"
-    if has_protocol_columns "$group"; then
-      line+="$(format_cell "${fields[i + 2]}" "$cell_width")"
+  print_card_rows "$group" "$name_width" "$cell_width" "${fields[@]}"
+}
+
+print_halves() {
+  local group="$1"
+  local -a fields left_half=() right_half=()
+  local half i
+
+  mapfile -t fields < <(group_rows "$group")
+  if ((${#fields[@]} == 0)); then
+    return
+  fi
+
+  half=$((${#fields[@]} / GROUP_ROW_FIELDS))
+  half=$(((half + 1) / 2))
+  half=$((half * GROUP_ROW_FIELDS))
+  mapfile -t left_half < <(print_card_rows "$group" "$LEFT_GRID_NAME" "$LEFT_GRID_CELL" "${fields[@]:0:half}")
+  if ((${#fields[@]} > half)); then
+    mapfile -t right_half < <(print_card_rows "$group" "$RIGHT_GRID_NAME" "$RIGHT_GRID_CELL" "${fields[@]:half}")
+  fi
+
+  for i in "${!left_half[@]}"; do
+    if [[ -z "${right_half[i]:-}" ]]; then
+      printf '%s\n' "${left_half[i]}"
+      continue
     fi
-    card_lines+=("$line")
+    printf '%s%s\n' "$(pad "${left_half[i]}" "$RIGHT_COLUMN_START")" "${right_half[i]# }"
   done
-  printf '%s\n' "${card_lines[@]}"
+}
+
+print_availability() {
+  local halves
+
+  halves=$(print_halves "$GROUP_AVAILABILITY")
+  if [[ -z "$halves" ]]; then
+    return
+  fi
+
+  printf '%s\n' "$halves" | print_titled_card "$C_TITLE" Availability "$FULL_CARD_WIDTH" 0
 }
 
 print_platforms_and_ai() {
@@ -3743,6 +3791,7 @@ print_cards() {
   cards=$(
     print_attention
     print_platforms_and_ai
+    print_availability
   )
   if [[ -z "$cards" ]]; then
     return
@@ -3983,15 +4032,11 @@ print_two_columns() {
 print_service_tables() {
   local -a tables=()
 
-  append_group_lines tables "$GROUP_AVAILABILITY" Availability $((STATUS_CELL_WIDTH + COUNTRY_EXTRA))
-  if is_geoip_summary_shown; then
-    append_geoip_summary tables
-  fi
-
-  if ((${#tables[@]} == 0)); then
+  if ! is_geoip_summary_shown; then
     return
   fi
 
+  append_geoip_summary tables
   print_lines "${tables[@]}"
 }
 

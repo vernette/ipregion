@@ -31,14 +31,12 @@
 │  JetBrains          🇸🇮 SI   🇸🇪 SE    │ │  SiliconFlow API   ✓       ✓        │
 │  PlayStation        🇸🇪 SE   🇸🇪 SE    │ │  DeepSeek API      ✓       -        │
 ╰──────────────────────────────────────╯ ╰─────────────────────────────────────╯
-
- 🔓 Availability    IPv4    IPv6
- YouTube Premium    ✓       ✓
- YouTube No Ads RU  ✓       ✓
- Google Search      ✓       ✓
- Spotify Signup     ✓       ✓
- Disney+            ✓       ✗
- Reddit Guest       ✓       -
+╭─ 🔓 Availability ────────────────────────────────────────────────────────────╮
+│  Service            IPv4    IPv6          Service           IPv4    IPv6     │
+│  YouTube Premium    ✓       ✓             Spotify Signup    ✓       ✓        │
+│  YouTube No Ads RU  ✓       ✓             Disney+           ✓       ✗        │
+│  Google Search      ✓       ✓             Reddit Guest      ✓       -        │
+╰──────────────────────────────────────────────────────────────────────────────╯
 
  📡 CDN      IPv4                           IPv6
  Cloudflare  🇸🇪 SE · ARN                    🇸🇪 SE · ARN

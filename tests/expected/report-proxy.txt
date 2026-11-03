@@ -31,14 +31,12 @@
 │  JetBrains          SE               │ │  SiliconFlow API   ✓                │
 │  PlayStation        SE               │ │  DeepSeek API      ✓                │
 ╰──────────────────────────────────────╯ ╰─────────────────────────────────────╯
-
- Availability
- YouTube Premium    ✓
- YouTube No Ads RU  ✓
- Google Search      ✓
- Spotify Signup     ✓
- Disney+            ✗
- Reddit Guest       ✓
+╭─ Availability ───────────────────────────────────────────────────────────────╮
+│  Service            Proxy                 Service           Proxy            │
+│  YouTube Premium    ✓                     Spotify Signup    ✓                │
+│  YouTube No Ads RU  ✓                     Disney+           ✗                │
+│  Google Search      ✓                     Reddit Guest      ✓                │
+╰──────────────────────────────────────────────────────────────────────────────╯
 
  CDN
  Cloudflare  SE · ARN
