@@ -5,39 +5,40 @@
 ┃        proxy            exits over IPv4 and IPv6
 ┃
 ┃   SE   Sweden           seen by most services
-┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━────  49/53 checks passed
+┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─────  49/53 checks passed
 
-╭─ Attention ──────────────────────────────────────────────────────────╮
-│  Service           Proxy            Issue                            │
-│  Disney+           ✗                region blocked                   │
-│  Disney+           ?                unexpected response              │
-╰──────────────────────────────────────────────────────────────────────╯
+╭─ Attention ──────────────────────────────────────────────────────────────────╮
+│  Service            Proxy                 Issue                              │
+│  Disney+            ✗                     region blocked                     │
+│  Disney+            ?                     unexpected response                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Platforms ──────────────────────────╮ ╭─ AI ────────────────────────────────╮
+│  Service            Proxy            │ │  Service           Proxy            │
+│  Google             SE               │ │  Gemini Web        ✓                │
+│  YouTube            SE               │ │  Gemini API        ✓                │
+│  Twitch             SE               │ │  OpenAI API        ✓                │
+│  ChatGPT            SE               │ │  Anthropic API     ✓                │
+│  Claude             SE               │ │  Grok API          ✓                │
+│  Netflix            SE               │ │  Qwen API          ✓                │
+│  Spotify            SE               │ │  Qwen CN API       ✓                │
+│  Reddit             SE               │ │  Kimi API          ✓                │
+│  Disney+            ?                │ │  Kimi CN API       ✓                │
+│  TikTok             SE               │ │  GLM API           ✓                │
+│  Apple              SE               │ │  GLM CN API        ✓                │
+│  Steam              SE               │ │  MiniMax API       ✓                │
+│  Microsoft          SE               │ │  MiniMax CN API    ✓                │
+│  Ookla              SE               │ │  Doubao API        ✓                │
+│  JetBrains          SE               │ │  SiliconFlow API   ✓                │
+│  PlayStation        SE               │ │  DeepSeek API      ✓                │
+╰──────────────────────────────────────╯ ╰─────────────────────────────────────╯
 
- Platforms           Availability
- Google       SE     YouTube Premium    ✓
- YouTube      SE     YouTube No Ads RU  ✓
- Twitch       SE     Google Search      ✓
- ChatGPT      SE     Spotify Signup     ✓
- Claude       SE     Disney+            ✗
- Netflix      SE     Reddit Guest       ✓
- Spotify      SE
- Reddit       SE     AI
- Disney+      ?      Gemini Web       ✓
- TikTok       SE     Gemini API       ✓
- Apple        SE     OpenAI API       ✓
- Steam        SE     Anthropic API    ✓
- Microsoft    SE     Grok API         ✓
- Ookla        SE     Qwen API         ✓
- JetBrains    SE     Qwen CN API      ✓
- PlayStation  SE     Kimi API         ✓
-                     Kimi CN API      ✓
-                     GLM API          ✓
-                     GLM CN API       ✓
-                     MiniMax API      ✓
-                     MiniMax CN API   ✓
-                     Doubao API       ✓
-                     SiliconFlow API  ✓
-                     DeepSeek API     ✓
+ Availability
+ YouTube Premium    ✓
+ YouTube No Ads RU  ✓
+ Google Search      ✓
+ Spotify Signup     ✓
+ Disney+            ✗
+ Reddit Guest       ✓
 
  CDN
  Cloudflare  SE · ARN

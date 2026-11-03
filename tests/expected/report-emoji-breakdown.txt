@@ -4,40 +4,41 @@
 ┃  IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in 🇩🇪 DE
 ┃
 ┃  🇸🇪  SE  Sweden           seen by most services
-┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─────  48/53 checks passed
+┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────  48/53 checks passed
 
-╭─ 🚨 Attention ───────────────────────────────────────────────────────╮
-│  Service           IPv4   IPv6      Issue                            │
-│  JetBrains         🇸🇮 SI  ·         different country                │
-│  Disney+           ·      ✗         region blocked                   │
-│  Disney+           ·      ?         unexpected response              │
-╰──────────────────────────────────────────────────────────────────────╯
+╭─ 🚨 Attention ───────────────────────────────────────────────────────────────╮
+│  Service            IPv4    IPv6          Issue                              │
+│  JetBrains          🇸🇮 SI   ·             different country                  │
+│  Disney+            ·       ✗             region blocked                     │
+│  Disney+            ·       ?             unexpected response                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ 📱 Platforms ───────────────────────╮ ╭─ 🤖 AI ─────────────────────────────╮
+│  Service            IPv4    IPv6     │ │  Service           IPv4    IPv6     │
+│  Google             🇸🇪 SE   🇸🇪 SE    │ │  Gemini Web        ✓       ✓        │
+│  YouTube            🇸🇪 SE   🇸🇪 SE    │ │  Gemini API        ✓       ✓        │
+│  Twitch             🇸🇪 SE   -        │ │  OpenAI API        ✓       ✓        │
+│  ChatGPT            🇸🇪 SE   🇸🇪 SE    │ │  Anthropic API     ✓       ✓        │
+│  Claude             🇸🇪 SE   🇸🇪 SE    │ │  Grok API          ✓       ✓        │
+│  Netflix            🇸🇪 SE   🇸🇪 SE    │ │  Qwen API          ✓       -        │
+│  Spotify            🇸🇪 SE   🇸🇪 SE    │ │  Qwen CN API       ✓       ✓        │
+│  Reddit             🇸🇪 SE   -        │ │  Kimi API          ✓       ✓        │
+│  Disney+            🇸🇪 SE   ?        │ │  Kimi CN API       ✓       -        │
+│  TikTok             🇸🇪 SE   -        │ │  GLM API           ✓       ✓        │
+│  Apple              🇸🇪 SE   🇸🇪 SE    │ │  GLM CN API        ✓       ✓        │
+│  Steam              🇸🇪 SE   -        │ │  MiniMax API       ✓       ✓        │
+│  Microsoft          🇸🇪 SE   -        │ │  MiniMax CN API    ✓       -        │
+│  Ookla              🇸🇪 SE   -        │ │  Doubao API        ✓       ✓        │
+│  JetBrains          🇸🇮 SI   🇸🇪 SE    │ │  SiliconFlow API   ✓       ✓        │
+│  PlayStation        🇸🇪 SE   🇸🇪 SE    │ │  DeepSeek API      ✓       -        │
+╰──────────────────────────────────────╯ ╰─────────────────────────────────────╯
 
- 📱 Platforms  IPv4     IPv6      🔓 Availability    IPv4    IPv6
- Google        🇸🇪 SE    🇸🇪 SE     YouTube Premium    ✓       ✓
- YouTube       🇸🇪 SE    🇸🇪 SE     YouTube No Ads RU  ✓       ✓
- Twitch        🇸🇪 SE    -         Google Search      ✓       ✓
- ChatGPT       🇸🇪 SE    🇸🇪 SE     Spotify Signup     ✓       ✓
- Claude        🇸🇪 SE    🇸🇪 SE     Disney+            ✓       ✗
- Netflix       🇸🇪 SE    🇸🇪 SE     Reddit Guest       ✓       -
- Spotify       🇸🇪 SE    🇸🇪 SE
- Reddit        🇸🇪 SE    -         🤖 AI            IPv4    IPv6
- Disney+       🇸🇪 SE    ?         Gemini Web       ✓       ✓
- TikTok        🇸🇪 SE    -         Gemini API       ✓       ✓
- Apple         🇸🇪 SE    🇸🇪 SE     OpenAI API       ✓       ✓
- Steam         🇸🇪 SE    -         Anthropic API    ✓       ✓
- Microsoft     🇸🇪 SE    -         Grok API         ✓       ✓
- Ookla         🇸🇪 SE    -         Qwen API         ✓       -
- JetBrains     🇸🇮 SI    🇸🇪 SE     Qwen CN API      ✓       ✓
- PlayStation   🇸🇪 SE    🇸🇪 SE     Kimi API         ✓       ✓
-                                  Kimi CN API      ✓       -
-                                  GLM API          ✓       ✓
-                                  GLM CN API       ✓       ✓
-                                  MiniMax API      ✓       ✓
-                                  MiniMax CN API   ✓       -
-                                  Doubao API       ✓       ✓
-                                  SiliconFlow API  ✓       ✓
-                                  DeepSeek API     ✓       -
+ 🔓 Availability    IPv4    IPv6
+ YouTube Premium    ✓       ✓
+ YouTube No Ads RU  ✓       ✓
+ Google Search      ✓       ✓
+ Spotify Signup     ✓       ✓
+ Disney+            ✓       ✗
+ Reddit Guest       ✓       -
 
  📡 CDN      IPv4                           IPv6
  Cloudflare  🇸🇪 SE · ARN                    🇸🇪 SE · ARN

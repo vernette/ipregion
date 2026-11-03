@@ -55,8 +55,8 @@ readonly -A GROUP_EMOJI=(
 
 readonly ANSI_SEQUENCE=$'\033\[+([0-9;])m'
 readonly CARD_GAP=1
-readonly LEFT_CARD_WIDTH=34
-readonly RIGHT_CARD_WIDTH=37
+readonly LEFT_CARD_WIDTH=40
+readonly RIGHT_CARD_WIDTH=39
 readonly CARD_CONTENT_INDENT=1
 readonly CARD_SIDES_WIDTH=2
 readonly CARD_TRAILING_GAP=1
@@ -65,8 +65,10 @@ readonly FULL_CARD_WIDTH=$((LEFT_CARD_WIDTH + CARD_GAP + RIGHT_CARD_WIDTH))
 # The Issue / Node column of a full-width card starts where the paired right card's content starts
 readonly RIGHT_COLUMN_START=$((LEFT_CARD_WIDTH + CARD_GAP + 1))
 readonly RIGHT_COLUMN_WIDTH=$((FULL_CARD_WIDTH - CARD_SIDES_WIDTH - CARD_CONTENT_INDENT - CARD_TRAILING_GAP - RIGHT_COLUMN_START))
+readonly LEFT_GRID_NAME=19
+readonly LEFT_GRID_CELL=8
 readonly RIGHT_GRID_NAME=18
-readonly RIGHT_GRID_CELL=7
+readonly RIGHT_GRID_CELL=8
 readonly CARD_TOP_LEFT="╭"
 readonly CARD_TOP_RIGHT="╮"
 readonly CARD_BOTTOM_LEFT="╰"
@@ -81,7 +83,7 @@ readonly SUMMARY_COUNTRY_WIDTH=2
 readonly SUMMARY_DEFAULT_WIDTH=25
 readonly COLUMN_GAP="     "
 readonly HEADER_LABEL_WIDTH=6
-readonly CHECKS_BAR_WIDTH=46
+readonly CHECKS_BAR_WIDTH=54
 readonly SUMMARY_BAR_CHAR="━"
 readonly SUMMARY_BAR_REST_CHAR="─"
 readonly ATTENTION_LIST_LINES=2
@@ -3548,11 +3550,11 @@ attention_cell() {
   local value="$1"
 
   if [[ -z "$value" ]]; then
-    paint "$C_DIM" "$(pad "$ATTENTION_EMPTY_CELL" "$RIGHT_GRID_CELL")"
+    paint "$C_DIM" "$(pad "$ATTENTION_EMPTY_CELL" "$LEFT_GRID_CELL")"
     return
   fi
 
-  format_cell "$value" "$RIGHT_GRID_CELL"
+  format_cell "$value" "$LEFT_GRID_CELL"
 }
 
 wrap_words() {
@@ -3610,17 +3612,26 @@ wrap_services() {
   fi
 }
 
-append_attention_titles() {
-  local -n titles=$1
+append_card_titles() {
+  local -n card_titles=$1
+  local name_width="$2"
+  local cell_width="$3"
   local -a columns=()
   local line column
 
   mapfile -t columns < <(report_columns)
-  line=" $(pad_cell "$C_DIM" Service "$RIGHT_GRID_NAME")"
+  line=" $(pad_cell "$C_DIM" Service "$name_width")"
   for column in "${columns[@]}"; do
-    line+="$(pad_cell "$C_DIM" "$(column_title "$column")" "$RIGHT_GRID_CELL")"
+    line+="$(pad_cell "$C_DIM" "$(column_title "$column")" "$cell_width")"
   done
-  titles+=("$(pad "$line" "$RIGHT_COLUMN_START")$(paint "$C_DIM" Issue)")
+  card_titles+=("$line")
+}
+
+append_attention_titles() {
+  local -n titles=$1
+
+  append_card_titles titles "$LEFT_GRID_NAME" "$LEFT_GRID_CELL"
+  titles[-1]="$(pad "${titles[-1]}" "$RIGHT_COLUMN_START")$(paint "$C_DIM" Issue)"
 }
 
 append_attention_row() {
@@ -3630,7 +3641,7 @@ append_attention_row() {
   local line column issue
 
   mapfile -t columns < <(report_columns)
-  line=" $(pad_cell "$C_VALUE" "$name" "$RIGHT_GRID_NAME")"
+  line=" $(pad_cell "$C_VALUE" "$name" "$LEFT_GRID_NAME")"
   for column in "${columns[@]}"; do
     if ((${#columns[@]} == 1)) || [[ "$ip_version" == "$column" || "$ip_version" == "$BOTH_IP_VERSION" ]]; then
       line+="$(attention_cell "$value")"
@@ -3681,7 +3692,63 @@ print_attention() {
   done
 
   printf '%s\n' "${rows[@]}" | print_titled_card "$C_WARN" Attention "$FULL_CARD_WIDTH" 0
-  printf '\n'
+}
+
+print_group_card_lines() {
+  local group="$1"
+  local name_width="$2"
+  local cell_width="$3"
+  local -a fields card_lines=()
+  local i line
+
+  mapfile -t fields < <(group_rows "$group")
+  if ((${#fields[@]} == 0)); then
+    return
+  fi
+
+  append_card_titles card_lines "$name_width" "$cell_width"
+  for ((i = 0; i < ${#fields[@]}; i += GROUP_ROW_FIELDS)); do
+    line=" $(pad_cell "" "${fields[i]}" "$name_width")$(format_cell "${fields[i + 1]}" "$cell_width")"
+    if has_protocol_columns "$group"; then
+      line+="$(format_cell "${fields[i + 2]}" "$cell_width")"
+    fi
+    card_lines+=("$line")
+  done
+  printf '%s\n' "${card_lines[@]}"
+}
+
+print_platforms_and_ai() {
+  local platforms ai
+
+  platforms=$(print_group_card_lines "$GROUP_PLATFORMS" "$LEFT_GRID_NAME" "$LEFT_GRID_CELL")
+  ai=$(print_group_card_lines "$GROUP_AI" "$RIGHT_GRID_NAME" "$RIGHT_GRID_CELL")
+  if [[ -n "$platforms" && -n "$ai" ]]; then
+    print_titled_card_pair Platforms AI "$platforms" "$ai"
+    return
+  fi
+
+  if [[ -n "$platforms" ]]; then
+    printf '%s\n' "$platforms" | print_titled_card "$C_TITLE" Platforms "$LEFT_CARD_WIDTH" 0
+    return
+  fi
+
+  if [[ -n "$ai" ]]; then
+    printf '%s\n' "$ai" | print_titled_card "$C_TITLE" AI "$RIGHT_CARD_WIDTH" 0
+  fi
+}
+
+print_cards() {
+  local cards
+
+  cards=$(
+    print_attention
+    print_platforms_and_ai
+  )
+  if [[ -z "$cards" ]]; then
+    return
+  fi
+
+  printf '%s\n\n' "$cards"
 }
 
 table_name_width() {
@@ -3914,27 +3981,18 @@ print_two_columns() {
 }
 
 print_service_tables() {
-  local -a left=() right=()
+  local -a tables=()
 
-  append_group_lines left "$GROUP_PLATFORMS" Platforms $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA))
-  append_separated_group_lines right "$GROUP_AVAILABILITY" Availability $((STATUS_CELL_WIDTH + COUNTRY_EXTRA))
-  append_separated_group_lines right "$GROUP_AI" AI $((STATUS_CELL_WIDTH + COUNTRY_EXTRA))
-  if is_geoip_summary_shown && ((${#left[@]} == 0)); then
-    append_geoip_summary right
-  elif is_geoip_summary_shown; then
-    append_geoip_summary left
+  append_group_lines tables "$GROUP_AVAILABILITY" Availability $((STATUS_CELL_WIDTH + COUNTRY_EXTRA))
+  if is_geoip_summary_shown; then
+    append_geoip_summary tables
   fi
 
-  if ((${#left[@]} + ${#right[@]} == 0)); then
+  if ((${#tables[@]} == 0)); then
     return
   fi
 
-  if ((${#left[@]} == 0 || ${#right[@]} == 0)); then
-    print_lines "${left[@]}" "${right[@]}"
-    return
-  fi
-
-  print_two_columns left right
+  print_lines "${tables[@]}"
 }
 
 format_edge() {
@@ -4066,7 +4124,7 @@ fetch_verdict_country_names() {
 print_report() {
   fetch_verdict_country_names
   print_header
-  print_attention
+  print_cards
   print_service_tables
   print_cdn_table
   print_geoip_breakdown

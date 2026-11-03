@@ -547,7 +547,7 @@ print_yes_color() {
 
   pair=$(print_titled_card_pair Platforms AI $'a\nb' 'c')
   while IFS= read -r line; do
-    [[ "$(visible_length "$line")" -eq 72 ]]
+    [[ "$(visible_length "$line")" -eq "$FULL_CARD_WIDTH" ]]
     count=$((count + 1))
   done <<<"$pair"
 
@@ -1990,7 +1990,7 @@ run_report() {
   [[ "${issue[2]}" == "unknown authority" ]]
 }
 
-@test "attention card puts the issue in the right card's column and dots the empty cell" {
+@test "attention card keeps the platforms grid, puts the issue in the right card's column and dots the empty cell" {
   set_dual_stack_ips
   VERDICT=SE
   ATTENTION='[{"services":["JetBrains"],"ip_version":"4","country":"SI","status":"yes","reason":"different country"},{"services":["Disney+"],"ip_version":"6","country":"","status":"","reason":"unexpected response"}]'
@@ -1998,9 +1998,9 @@ run_report() {
   run print_attention
 
   [[ "${lines[0]}" == "╭─ Attention ────"* ]]
-  [[ "${lines[1]}" == "│  Service           IPv4   IPv6      Issue"* ]]
-  [[ "${lines[2]}" == "│  JetBrains         SI     ·         different country"* ]]
-  [[ "${lines[3]}" == "│  Disney+           ·      ?         unexpected response"* ]]
+  [[ "${lines[1]}" == "│  Service            IPv4    IPv6          Issue"* ]]
+  [[ "${lines[2]}" == "│  JetBrains          SI      ·             different country"* ]]
+  [[ "${lines[3]}" == "│  Disney+            ·       ?             unexpected response"* ]]
 }
 
 @test "collapsed attention row names the country the services see" {
