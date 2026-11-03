@@ -34,11 +34,10 @@
 │  YouTube No Ads RU  ✓                     Disney+           ✓                │
 │  Google Search      ✓                     Reddit Guest      ✓                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-
- GeoIP            SE 13/15
- ━━━━━━━━━━━━━━━━━━━━━────
- RU ifconfig.co,
-    ipquery.io
+╭─ GeoIP · SE 13/15 ───────────────────────────────────────────────────────────╮
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────────  │
+│  RU  ifconfig.co, ipquery.io                                                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
 
  CDN         IPv4
  Cloudflare  SE · ARN
@@ -46,6 +45,4 @@
  Netflix     DE · FRA · c002-fra001-ix
 
  ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown
-
- Full GeoIP breakdown: ipregion --geoip-breakdown
 

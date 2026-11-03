@@ -37,21 +37,23 @@
 │  YouTube No Ads RU  ✓                     Disney+           ✗                │
 │  Google Search      ✓                     Reddit Guest      ✓                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ GeoIP · SE 13/15 ───────────────────────────────────────────────────────────╮
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────────  │
+│  Service            IPv4    IPv6          Service           IPv4    IPv6     │
+│  MaxMind            SE      SE            country.is        SE      SE       │
+│  RIPE               SE      SE            geoapify.com      SE      SE       │
+│  ipinfo.io          SE      SE            geojs.io          SE      SE       │
+│  Cloudflare         -       SE            ipbase.com        SE      SE       │
+│  ipregistry.co      SE      SE            ipquery.io        RU      DE       │
+│  ipapi.co           SE      SE            ipwho.is          SE      SE       │
+│  ifconfig.co        RU      DE            ip-api.com        SE      SE       │
+│  ip2location.io     SE      SE                                               │
+╰──────────────────────────────────────────────────────────────────────────────╯
 
  CDN
  Cloudflare  SE · ARN
  YouTube     DE · FRA · tzfraa-cd
  Netflix     DE · FRA · c002-fra001-ix
-
- GeoIP           IPv4  IPv6                   IPv4  IPv6
- MaxMind         SE    SE       country.is    SE    SE
- RIPE            SE    SE       geoapify.com  SE    SE
- ipinfo.io       SE    SE       geojs.io      SE    SE
- Cloudflare      -     SE       ipbase.com    SE    SE
- ipregistry.co   SE    SE       ipquery.io    RU    DE
- ipapi.co        SE    SE       ipwho.is      SE    SE
- ifconfig.co     RU    DE       ip-api.com    SE    SE
- ip2location.io  SE    SE
 
  ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - other protocol
 

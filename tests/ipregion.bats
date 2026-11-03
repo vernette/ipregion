@@ -1923,7 +1923,7 @@ run_report() {
 }
 
 @test "used up maxmind limit is noted once in the header and leaves the geoip summary" {
-  local -a summary=() table=()
+  local -a table=()
 
   set_dual_stack_ips
   REGISTRATION_MAXMIND_FAILURE[4]="$REASON_DAILY_LIMIT"
@@ -1939,17 +1939,15 @@ run_report() {
   run print_ip_lines
   [[ "$(grep -c "MaxMind daily limit used up" <<<"$output")" -eq 1 ]]
 
-  append_geoip_summary summary
-  [[ "${summary[0]}" == "GeoIP              SE 1/1" ]]
-  [[ "${summary[-1]}" == "MaxMind limit used up" ]]
+  run print_geoip
+  [[ "${lines[0]}" == "╭─ GeoIP · SE 1/1 "* ]]
+  [[ "${lines[-2]}" == "│  MaxMind limit used up "*"│" ]]
 
   append_table_lines table "$GROUP_GEOIP" GeoIP "$(table_name_width GeoIP MaxMind limit limit)" "$COUNTRY_CELL_WIDTH" MaxMind limit limit
   [[ "${table[1]}" == "MaxMind  limit used" ]]
 }
 
 @test "geoip summary lists services that see another country per protocol" {
-  local -a summary=()
-
   set_dual_stack_ips
   VERDICT=SE
   RESULTS=$(results_of "$(
@@ -1963,10 +1961,31 @@ run_report() {
     print_result geoip ipquery.io 6 "" "" timeout
   )")
 
-  append_geoip_summary summary
+  run print_geoip
 
-  [[ "${summary[0]}" == "GeoIP              SE 1/4" ]]
-  [[ "${summary[2]}" == "NL ipinfo.io, ipwho.is v6" ]]
+  [[ "${lines[0]}" == "╭─ GeoIP · SE 1/4 "* ]]
+  [[ "${lines[2]}" == "│  NL  ipinfo.io"*"v4  │" ]]
+  [[ "${lines[3]}" == "│  NL  ipinfo.io, ipwho.is"*"v6  │" ]]
+  [[ "${#lines[@]}" -eq 5 ]]
+}
+
+@test "geoip summary says every service agrees when nothing deviates" {
+  set_dual_stack_ips
+  VERDICT=SE
+  RESULTS=$(results_of "$(
+    print_result geoip RIPE 4 SE yes ""
+    print_result geoip RIPE 6 SE yes ""
+    print_result geoip ipinfo.io 4 SE yes ""
+  )")
+
+  run print_geoip
+  [[ "${lines[0]}" == "╭─ GeoIP · SE 2/2 "* ]]
+  [[ "${lines[2]}" == "│  $GEOIP_AGREEMENT_NOTE "*"│" ]]
+
+  SHOW_EMOJI=true
+  run print_geoip
+  [[ "${lines[2]}" == "│  $GEOIP_AGREEMENT_EMOJI $GEOIP_AGREEMENT_NOTE "*"│" ]]
+  [[ "$(visible_length "${lines[2]}")" -eq "$FULL_CARD_WIDTH" ]]
 }
 
 @test "collapsed attention row wraps its services into two lines and counts the rest" {

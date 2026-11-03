@@ -42,7 +42,7 @@ readonly REGIONAL_INDICATOR_A=0x1F1E6
 readonly ASCII_A=65
 readonly UTF8_LOCALE="C.UTF-8"
 # A bracket range like [🌀-🫿] follows the locale collation and misses emoji under en_US.UTF-8 on glibc 2.36
-readonly WIDE_EMOJI_PATTERN='[🚨📱🌍🔓🤖📡]'
+readonly WIDE_EMOJI_PATTERN='[🚨📱🌍🔓🤖📡✅]'
 readonly FLAG_WIDTH=3
 readonly -A GROUP_EMOJI=(
   ["Attention"]=🚨
@@ -69,6 +69,7 @@ readonly LEFT_GRID_NAME=19
 readonly LEFT_GRID_CELL=8
 readonly RIGHT_GRID_NAME=18
 readonly RIGHT_GRID_CELL=8
+readonly GEOIP_LINE_WIDTH=$((FULL_CARD_WIDTH - CARD_SIDES_WIDTH - 2 * CARD_CONTENT_INDENT - 2 * CARD_TRAILING_GAP))
 readonly CARD_TOP_LEFT="╭"
 readonly CARD_TOP_RIGHT="╮"
 readonly CARD_BOTTOM_LEFT="╰"
@@ -79,9 +80,7 @@ readonly NAME_GAP=2
 readonly EDGE_GAP=3
 readonly COUNTRY_CELL_WIDTH=6
 readonly STATUS_CELL_WIDTH=5
-readonly SUMMARY_COUNTRY_WIDTH=2
-readonly SUMMARY_DEFAULT_WIDTH=25
-readonly COLUMN_GAP="     "
+readonly GEOIP_COUNTRY_WIDTH=4
 readonly HEADER_LABEL_WIDTH=6
 readonly CHECKS_BAR_WIDTH=54
 readonly SUMMARY_BAR_CHAR="━"
@@ -91,7 +90,7 @@ readonly ATTENTION_EMPTY_CELL="·"
 readonly GROUP_ROW_FIELDS=3
 readonly CDN_ROW_FIELDS=9
 readonly ATTENTION_ENTRY_FIELDS=5
-readonly GEOIP_DIFFERENCE_FIELDS=2
+readonly GEOIP_DEVIATION_FIELDS=3
 readonly HEADER_MARK="┃"
 readonly AUTHOR="vernette"
 readonly VERDICT_NOTE="seen by most services"
@@ -106,9 +105,10 @@ readonly REGISTERED_NOTE="registered in"
 readonly MAXMIND_LIMIT_HEADER_NOTE="MaxMind daily limit used up · ASN from RIPE"
 readonly MAXMIND_FAILURE_HEADER_NOTE="MaxMind unavailable · ASN from RIPE"
 readonly MAXMIND_LIMIT_SUMMARY_NOTE="MaxMind limit used up"
+readonly GEOIP_AGREEMENT_NOTE="every service agrees"
+readonly GEOIP_AGREEMENT_EMOJI="✅"
 readonly MAXMIND_LIMIT_CELL="limit"
 readonly MAXMIND_LIMIT_CELLS="limit used"
-readonly GEOIP_BREAKDOWN_HINT="Full GeoIP breakdown: ipregion --geoip-breakdown"
 readonly EXITS_NOTE="exits over"
 readonly DUAL_STACK_EXITS="IPv4 and IPv6"
 readonly PROXY_CHECKED_ONCE_NOTE="Through a proxy each service is checked once: the proxy picks IPv4 or IPv6"
@@ -545,6 +545,23 @@ map(select(.group == $geoip and .status == $yes and .country != ""))
 | group_by(.country)
 | max_by(length)
 | .[0].country // empty'
+# shellcheck disable=SC2016 # $geoip, $reference and the other names are jq variables, not shell expansions
+readonly GEOIP_AGREEMENT_FILTER='
+map(select(.group == $geoip))
+| group_by(.service)
+| map(select(all(.[]; .reason == $daily_limit) | not)) as $counted
+| ($counted | map(map(select(.status == $yes and .country != "") | .country) | select(length > 0 and all(. == $reference))) | length),
+  ($counted | length),
+  (length > ($counted | length))'
+# shellcheck disable=SC2016 # $geoip, $reference and $yes are jq variables, not shell expansions
+readonly GEOIP_DEVIATIONS_FILTER='
+map(select(.group == $geoip and .status == $yes and .country != "" and .country != $reference))
+| reduce .[] as $result ([];
+    (map(.country == $result.country and .ip_version == $result.ip_version) | index(true)) as $index
+    | if $index == null then . + [{country: $result.country, ip_version: $result.ip_version, services: [$result.service]}]
+      else .[$index].services += [$result.service] end)
+| .[]
+| .country, .ip_version, (.services | length), .services[]'
 # shellcheck disable=SC2016 # $verdict, $geoip and the other names are jq variables, not shell expansions
 readonly NEEDS_ATTENTION_DEFINITION='
 def needs_attention:
@@ -1510,11 +1527,15 @@ print_card_top() {
   local title_color="$1"
   local title="$2"
   local width="$3"
+  local summary="${4:-}"
   local label
 
-  label=" $(label_group "$title") "
+  label="$(paint "$title_color" " $(label_group "$title") ")"
+  if [[ -n "$summary" ]]; then
+    label="$(paint "$title_color" " $(label_group "$title")") $(paint "$C_DIM" "·") $summary "
+  fi
   printf '%s%s%s%s%s%s%s%s\n' "$C_DIM" "$CARD_TOP_LEFT" "$(repeat_char "$CARD_HORIZONTAL" "$CARD_TITLE_OFFSET")" \
-    "$(paint "$title_color" "$label")" "$C_DIM" \
+    "$label" "$C_DIM" \
     "$(repeat_char "$CARD_HORIZONTAL" $((width - CARD_SIDES_WIDTH - CARD_TITLE_OFFSET - $(visible_length "$label"))))" \
     "$CARD_TOP_RIGHT" "$C_RESET"
 }
@@ -1545,6 +1566,7 @@ print_titled_card() {
   local title="$2"
   local width="$3"
   local height="$4"
+  local summary="${5:-}"
   local -a content_lines=()
   local index
 
@@ -1556,7 +1578,7 @@ print_titled_card() {
     height="${#content_lines[@]}"
   fi
 
-  print_card_top "$title_color" "$title" "$width"
+  print_card_top "$title_color" "$title" "$width" "$summary"
   for ((index = 0; index < height; index++)); do
     print_card_line "${content_lines[index]:-}" "$width"
   done
@@ -3513,7 +3535,9 @@ print_header() {
 }
 
 report_columns() {
-  if is_checked_once "$GROUP_PLATFORMS"; then
+  local group="$1"
+
+  if is_checked_once "$group"; then
     printf '%s\n' "$PROXY_IP_VERSION"
     return
   fi
@@ -3614,12 +3638,13 @@ wrap_services() {
 
 append_card_titles() {
   local -n card_titles=$1
-  local name_width="$2"
-  local cell_width="$3"
+  local group="$2"
+  local name_width="$3"
+  local cell_width="$4"
   local -a columns=()
   local line column
 
-  mapfile -t columns < <(report_columns)
+  mapfile -t columns < <(report_columns "$group")
   line=" $(pad_cell "$C_DIM" Service "$name_width")"
   for column in "${columns[@]}"; do
     line+="$(pad_cell "$C_DIM" "$(column_title "$column")" "$cell_width")"
@@ -3630,7 +3655,7 @@ append_card_titles() {
 append_attention_titles() {
   local -n titles=$1
 
-  append_card_titles titles "$LEFT_GRID_NAME" "$LEFT_GRID_CELL"
+  append_card_titles titles "$GROUP_PLATFORMS" "$LEFT_GRID_NAME" "$LEFT_GRID_CELL"
   titles[-1]="$(pad "${titles[-1]}" "$RIGHT_COLUMN_START")$(paint "$C_DIM" Issue)"
 }
 
@@ -3640,7 +3665,7 @@ append_attention_row() {
   local -a columns=() issue_lines=()
   local line column issue
 
-  mapfile -t columns < <(report_columns)
+  mapfile -t columns < <(report_columns "$GROUP_PLATFORMS")
   line=" $(pad_cell "$C_VALUE" "$name" "$LEFT_GRID_NAME")"
   for column in "${columns[@]}"; do
     if ((${#columns[@]} == 1)) || [[ "$ip_version" == "$column" || "$ip_version" == "$BOTH_IP_VERSION" ]]; then
@@ -3702,7 +3727,7 @@ print_card_rows() {
   local -a rows=("$@") card_lines=()
   local i line
 
-  append_card_titles card_lines "$name_width" "$cell_width"
+  append_card_titles card_lines "$group" "$name_width" "$cell_width"
   for ((i = 0; i < ${#rows[@]}; i += GROUP_ROW_FIELDS)); do
     line=" $(pad_cell "" "${rows[i]}" "$name_width")$(format_cell "${rows[i + 1]}" "$cell_width")"
     if has_protocol_columns "$group"; then
@@ -3785,6 +3810,94 @@ print_platforms_and_ai() {
   fi
 }
 
+append_geoip_deviation() {
+  local -n deviation_lines=$1
+  local country="$2"
+  local ip_version="$3"
+  shift 3
+  local country_width=$((GEOIP_COUNTRY_WIDTH + COUNTRY_EXTRA))
+  local protocol=""
+  local service_list=""
+  local -a service_lines=()
+  local service line
+
+  if has_protocol_columns "$GROUP_GEOIP"; then
+    protocol="v$ip_version"
+  fi
+
+  for service in "$@"; do
+    service_list+="${service_list:+, }$service"
+  done
+  wrap_words service_lines $((GEOIP_LINE_WIDTH - country_width - ${#protocol} - 1)) "$service_list"
+  line="$(format_country "$country" "$country_width")$(pad "${service_lines[0]}" $((GEOIP_LINE_WIDTH - country_width - ${#protocol})))"
+  deviation_lines+=(" $line$(paint "$C_DIM" "$protocol")")
+  for line in "${service_lines[@]:1}"; do
+    deviation_lines+=(" $(printf '%*s' "$country_width" '')$line")
+  done
+}
+
+print_geoip_deviations() {
+  local reference="$1"
+  local -a fields lines=()
+  local i count
+
+  mapfile -t fields < <(jq -r --arg geoip "$GROUP_GEOIP" --arg yes "$STATUS_YES" --arg reference "$reference" "$GEOIP_DEVIATIONS_FILTER" <<<"$RESULTS")
+  for ((i = 0; i < ${#fields[@]}; i += GEOIP_DEVIATION_FIELDS + count)); do
+    count="${fields[i + 2]}"
+    append_geoip_deviation lines "${fields[i]}" "${fields[i + 1]}" "${fields[@]:i+GEOIP_DEVIATION_FIELDS:count}"
+  done
+
+  if ((${#lines[@]} > 0)); then
+    printf '%s\n' "${lines[@]}"
+  fi
+}
+
+print_geoip_agreement() {
+  local emoji=""
+
+  if [[ "$SHOW_EMOJI" == true ]]; then
+    emoji="$GEOIP_AGREEMENT_EMOJI "
+  fi
+
+  printf ' %s%s\n' "$emoji" "$(paint "$C_YES" "$GEOIP_AGREEMENT_NOTE")"
+}
+
+print_geoip_lines() {
+  local reference="$1"
+  local agree="$2"
+  local total="$3"
+  local limited="$4"
+
+  printf ' %s\n' "$(print_bar "$C_BAR" "$agree" "$total" "$GEOIP_LINE_WIDTH")"
+  if ! is_geoip_summary_shown; then
+    print_halves "$GROUP_GEOIP"
+    return
+  fi
+
+  print_geoip_deviations "$reference"
+  if ((agree == total)); then
+    print_geoip_agreement
+  fi
+  if [[ "$limited" == true ]]; then
+    printf ' %s\n' "$(paint "$C_DIM" "$MAXMIND_LIMIT_SUMMARY_NOTE")"
+  fi
+}
+
+print_geoip() {
+  local reference summary
+  local -a agreement
+
+  reference="${VERDICT:-$(geoip_majority)}"
+  mapfile -t agreement < <(jq -r --arg geoip "$GROUP_GEOIP" --arg yes "$STATUS_YES" --arg reference "$reference" \
+    --arg daily_limit "$REASON_DAILY_LIMIT" "$GEOIP_AGREEMENT_FILTER" <<<"$RESULTS")
+  if ((agreement[1] == 0)) && [[ "${agreement[2]}" != true ]]; then
+    return
+  fi
+
+  summary="$(paint "$C_VALUE" "$(label_country "${reference:-$SYMBOL_UNKNOWN}")") $(paint "$C_DIM" "${agreement[0]}/${agreement[1]}")"
+  print_geoip_lines "$reference" "${agreement[@]}" | print_titled_card "$C_TITLE" GeoIP "$FULL_CARD_WIDTH" 0 "$summary"
+}
+
 print_cards() {
   local cards
 
@@ -3792,6 +3905,7 @@ print_cards() {
     print_attention
     print_platforms_and_ai
     print_availability
+    print_geoip
   )
   if [[ -z "$cards" ]]; then
     return
@@ -3863,134 +3977,6 @@ append_separated_group_lines() {
   separated_lines+=("${group_lines[@]}")
 }
 
-country_of_cell() {
-  local value="$1"
-
-  if [[ "$value" =~ $COUNTRY_CODE_PATTERN ]]; then
-    printf '%s' "$value"
-  fi
-}
-
-print_geoip_differences() {
-  local reference="$1"
-  local service="$2"
-  local v4="$3"
-  local v6="$4"
-
-  if [[ "$v4" == "$v6" ]]; then
-    printf '%s\n%s\n' "$v4" "$service"
-    return
-  fi
-
-  if [[ -n "$v4" && "$v4" != "$reference" ]]; then
-    printf '%s\n%s v4\n' "$v4" "$service"
-  fi
-
-  if [[ -n "$v6" && "$v6" != "$reference" ]]; then
-    printf '%s\n%s v6\n' "$v6" "$service"
-  fi
-}
-
-append_geoip_country_lines() {
-  local -n country_lines=$1
-  local column_width="$2"
-  local country="$3"
-  shift 3
-  local prefix_width=$((SUMMARY_COUNTRY_WIDTH + 1 + COUNTRY_EXTRA))
-  local prefix line label
-
-  prefix="$(format_country "$country" $((SUMMARY_COUNTRY_WIDTH + COUNTRY_EXTRA))) "
-  line=""
-  for label in "$@"; do
-    if [[ -n "$line" ]] && ((prefix_width + ${#line} + ${#label} + 2 > column_width)); then
-      country_lines+=("$prefix$(paint "$C_DIM" "$line,")")
-      prefix=$(pad '' "$prefix_width")
-      line=""
-    fi
-    line+="${line:+, }$label"
-  done
-  country_lines+=("$prefix$(paint "$C_DIM" "$line")")
-}
-
-append_geoip_difference_lines() {
-  local lines_name="$1"
-  local column_width="$2"
-  shift 2
-  local -a differences=("$@")
-  local -a countries=() labels
-  local country i
-
-  for ((i = 0; i < ${#differences[@]}; i += GEOIP_DIFFERENCE_FIELDS)); do
-    if ! is_in_list "${differences[i]}" "${countries[@]}"; then
-      countries+=("${differences[i]}")
-    fi
-  done
-
-  for country in "${countries[@]}"; do
-    labels=()
-    for ((i = 0; i < ${#differences[@]}; i += GEOIP_DIFFERENCE_FIELDS)); do
-      if [[ "${differences[i]}" == "$country" ]]; then
-        labels+=("${differences[i + 1]}")
-      fi
-    done
-    append_geoip_country_lines "$lines_name" "$column_width" "$country" "${labels[@]}"
-  done
-}
-
-append_geoip_summary() {
-  local -n summary_lines=$1
-  local reference="${VERDICT:-$(geoip_majority)}"
-  local agree=0
-  local total=0
-  local maxmind_skipped=false
-  local column_width="$SUMMARY_DEFAULT_WIDTH"
-  local -a fields
-  local -a differences=()
-  local -a separator=()
-  local i service v4 v6 counts
-
-  if ((${#summary_lines[@]} > 0)); then
-    column_width=$(max_length "${summary_lines[@]}")
-    separator=("")
-  fi
-
-  mapfile -t fields < <(group_rows "$GROUP_GEOIP")
-  if ((${#fields[@]} == 0)); then
-    return
-  fi
-
-  for ((i = 0; i < ${#fields[@]}; i += GROUP_ROW_FIELDS)); do
-    service="${fields[i]}"
-    if [[ "${fields[i + 1]}" == "$MAXMIND_LIMIT_CELL" && "${fields[i + 2]}" == "$MAXMIND_LIMIT_CELL" ]]; then
-      maxmind_skipped=true
-      continue
-    fi
-    total=$((total + 1))
-    v4=$(country_of_cell "${fields[i + 1]}")
-    v6=$(country_of_cell "${fields[i + 2]}")
-    if [[ -z "$v4$v6" ]]; then
-      continue
-    fi
-    if [[ "${v4:-$reference}" == "$reference" && "${v6:-$reference}" == "$reference" ]]; then
-      agree=$((agree + 1))
-      continue
-    fi
-    mapfile -t -O "${#differences[@]}" differences < <(print_geoip_differences "$reference" "$service" "$v4" "$v6")
-  done
-
-  counts="$(format_country "$reference" $((SUMMARY_COUNTRY_WIDTH + COUNTRY_EXTRA))) $(paint "$C_DIM" "$agree/$total")"
-  summary_lines+=(
-    "${separator[@]}"
-    "$(paint "$C_TITLE" "$(pad "$(label_group GeoIP)" $((column_width - $(visible_length "$counts"))))")$counts"
-    "$(print_bar "$C_BAR" "$agree" "$total" "$column_width")"
-  )
-  append_geoip_difference_lines summary_lines "$column_width" "${differences[@]}"
-
-  if [[ "$maxmind_skipped" == true ]]; then
-    summary_lines+=("$(paint "$C_DIM" "$MAXMIND_LIMIT_SUMMARY_NOTE")")
-  fi
-}
-
 is_geoip_summary_shown() {
   [[ "$GEOIP_BREAKDOWN" != true ]] && is_group_selected "$GROUP_GEOIP" && ((${#SELECTED_GROUPS[@]} > 1))
 }
@@ -4006,38 +3992,6 @@ print_lines() {
     printf ' %s\n' "$line"
   done
   printf '\n'
-}
-
-print_two_columns() {
-  local -n left_lines=$1
-  local -n right_lines=$2
-  local count=${#left_lines[@]}
-  local left_width i
-
-  if ((${#right_lines[@]} > count)); then
-    count=${#right_lines[@]}
-  fi
-
-  left_width=$(max_length "${left_lines[@]}")
-  for ((i = 0; i < count; i++)); do
-    if [[ -z "${right_lines[i]:-}" ]]; then
-      printf ' %s\n' "${left_lines[i]:-}"
-      continue
-    fi
-    printf ' %s%s%s\n' "$(pad "${left_lines[i]:-}" "$left_width")" "$COLUMN_GAP" "${right_lines[i]}"
-  done
-  printf '\n'
-}
-
-print_service_tables() {
-  local -a tables=()
-
-  if ! is_geoip_summary_shown; then
-    return
-  fi
-
-  append_geoip_summary tables
-  print_lines "${tables[@]}"
 }
 
 format_edge() {
@@ -4091,29 +4045,6 @@ print_cdn_table() {
   printf '\n'
 }
 
-print_geoip_breakdown() {
-  local -a fields first=() second=()
-  local half
-
-  if is_geoip_summary_shown; then
-    return
-  fi
-
-  mapfile -t fields < <(group_rows "$GROUP_GEOIP")
-  if ((${#fields[@]} == 0)); then
-    return
-  fi
-
-  half=$((${#fields[@]} / GROUP_ROW_FIELDS))
-  half=$(((half + 1) / 2))
-  half=$((half * GROUP_ROW_FIELDS))
-  append_table_lines first "$GROUP_GEOIP" GeoIP "$(table_name_width GeoIP "${fields[@]:0:half}")" $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA)) "${fields[@]:0:half}"
-  if ((${#fields[@]} > half)); then
-    append_table_lines second "$GROUP_GEOIP" "" "$(table_name_width "" "${fields[@]:half}")" $((COUNTRY_CELL_WIDTH + COUNTRY_EXTRA)) "${fields[@]:half}"
-  fi
-  print_two_columns first second
-}
-
 none_legend() {
   if [[ -n "$PROXY_ADDR" ]]; then
     printf '%s' "$OTHER_PROTOCOL_LEGEND"
@@ -4150,14 +4081,6 @@ print_proxy_note() {
   printf ' %s\n\n' "$(paint "$C_DIM" "$PROXY_CHECKED_ONCE_NOTE")"
 }
 
-print_breakdown_hint() {
-  if ! is_geoip_summary_shown; then
-    return
-  fi
-
-  printf ' %s\n\n' "$(paint "$C_DIM" "$GEOIP_BREAKDOWN_HINT")"
-}
-
 fetch_verdict_country_names() {
   if [[ -z "$VERDICT" ]] && ((${#VERDICT_TIED_COUNTRIES[@]} == 0)); then
     return
@@ -4170,12 +4093,9 @@ print_report() {
   fetch_verdict_country_names
   print_header
   print_cards
-  print_service_tables
   print_cdn_table
-  print_geoip_breakdown
   print_legend
   print_proxy_note
-  print_breakdown_hint
 }
 
 is_service_report() {
