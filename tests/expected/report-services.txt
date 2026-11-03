@@ -17,8 +17,9 @@
  AI          IPv4 IPv6
  OpenAI API  ✓    ✓
 
- CDN         IPv4       IPv6
- Cloudflare  SE · ARN   SE · ARN
+┃  CDN
+┃  Service            IPv4    IPv6          Node
+┃  Cloudflare         SE      SE            ARN · ARN
 
  ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - no IPv6
 

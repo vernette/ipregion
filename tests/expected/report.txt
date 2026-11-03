@@ -43,10 +43,11 @@
 │  DE  ifconfig.co, ipquery.io                                             v6  │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
- CDN         IPv4                        IPv6
- Cloudflare  SE · ARN                    SE · ARN
- YouTube     DE · MUC · muc11s18         DE · FRA · tzfraa-cd
- Netflix     DE · FRA · c002-fra001-ix   DE · FRA · c002-fra001-ix
+┃  CDN
+┃  Service            IPv4    IPv6          Node
+┃  Cloudflare         SE      SE            ARN · ARN
+┃  YouTube            DE      DE            muc11s18 · tzfraa-cd
+┃  Netflix            DE      DE            c002-fra001-ix · c002-fra001-ix
 
  ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - no IPv6
 

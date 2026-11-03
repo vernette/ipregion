@@ -77,7 +77,6 @@ readonly CARD_BOTTOM_RIGHT="╯"
 readonly CARD_SIDE="│"
 readonly CARD_HORIZONTAL="─"
 readonly NAME_GAP=2
-readonly EDGE_GAP=3
 readonly COUNTRY_CELL_WIDTH=6
 readonly STATUS_CELL_WIDTH=5
 readonly GEOIP_COUNTRY_WIDTH=4
@@ -3994,55 +3993,64 @@ print_lines() {
   printf '\n'
 }
 
-format_edge() {
+cdn_cell() {
   local status="$1"
   local country="$2"
-  local iata="$3"
-  local node="$4"
-  local edge
 
   if [[ "$status" != "$STATUS_YES" ]]; then
-    format_status "$status" 1
+    format_status "$status" "$LEFT_GRID_CELL"
     return
   fi
 
-  edge="$(paint "$C_VALUE" "$(label_country "$country")")"
-  if [[ -n "$iata" ]]; then
-    edge+=" $(paint "$C_DIM" "·") $(paint "$C_VALUE" "$iata")"
-  fi
-  if [[ -n "$node" ]]; then
-    edge+=" $(paint "$C_DIM" "· $node")"
-  fi
-
-  printf '%s' "$edge"
+  paint "$C_VALUE" "$(pad "$(label_country "$country")" "$LEFT_GRID_CELL")"
 }
 
-print_cdn_table() {
-  local -a fields names=("$(label_group CDN)") v4_edges=() v6_edges=()
-  local i name_width edge_width line
+cdn_node() {
+  local status="$1"
+  local iata="$3"
+  local node="$4"
+
+  if [[ "$status" != "$STATUS_YES" ]]; then
+    paint "$C_DIM" "$SYMBOL_UNKNOWN"
+    return
+  fi
+
+  paint "$C_VALUE" "${node:-$iata}"
+}
+
+append_cdn_row() {
+  local -n cdn_rows=$1
+  local name="$2"
+  local -a v4_edge=("${@:3:4}") v6_edge=("${@:7:4}")
+  local cells nodes
+
+  cells="$(cdn_cell "${v4_edge[@]:0:2}")"
+  nodes="$(cdn_node "${v4_edge[@]}")"
+  if has_protocol_columns "$GROUP_CDN"; then
+    cells+="$(cdn_cell "${v6_edge[@]:0:2}")"
+    nodes+=" $(paint "$C_DIM" "·") $(cdn_node "${v6_edge[@]}")"
+  fi
+
+  cdn_rows+=("$(pad " $(pad_cell "" "$name" "$LEFT_GRID_NAME")$cells" "$RIGHT_COLUMN_START")$nodes")
+}
+
+print_cdn() {
+  local -a fields rows=()
+  local i
 
   mapfile -t fields < <(cdn_edge_rows)
   if ((${#fields[@]} == 0)); then
     return
   fi
 
+  rows+=(" $(paint "$C_TITLE" "$(label_group CDN)")")
+  append_card_titles rows "$GROUP_CDN" "$LEFT_GRID_NAME" "$LEFT_GRID_CELL"
+  rows[-1]="$(pad "${rows[-1]}" "$RIGHT_COLUMN_START")$(paint "$C_DIM" Node)"
   for ((i = 0; i < ${#fields[@]}; i += CDN_ROW_FIELDS)); do
-    names+=("${fields[i]}")
-    v4_edges+=("$(format_edge "${fields[@]:i+1:4}")")
-    v6_edges+=("$(format_edge "${fields[@]:i+5:4}")")
+    append_cdn_row rows "${fields[@]:i:CDN_ROW_FIELDS}"
   done
-  name_width=$(($(max_length "${names[@]}") + NAME_GAP))
-  edge_width=$(($(max_length "${v4_edges[@]}" IPv4) + EDGE_GAP))
 
-  printf ' %s\n' "$(format_group_header "$GROUP_CDN" CDN "$name_width" "$edge_width")"
-  for i in "${!v4_edges[@]}"; do
-    line="$(pad "${names[i + 1]}" "$name_width")${v4_edges[i]}"
-    if has_protocol_columns "$GROUP_CDN"; then
-      line="$(pad "${names[i + 1]}" "$name_width")$(pad "${v4_edges[i]}" "$edge_width")${v6_edges[i]}"
-    fi
-    printf ' %s\n' "$line"
-  done
-  printf '\n'
+  printf '%s\n' "${rows[@]}" | print_bar_block
 }
 
 none_legend() {
@@ -4093,7 +4101,7 @@ print_report() {
   fetch_verdict_country_names
   print_header
   print_cards
-  print_cdn_table
+  print_cdn
   print_legend
   print_proxy_note
 }
@@ -4114,7 +4122,7 @@ print_service_report() {
   if ((${#tables[@]} > 0)); then
     print_lines "${tables[@]}"
   fi
-  print_cdn_table
+  print_cdn
   print_legend
   print_proxy_note
 }

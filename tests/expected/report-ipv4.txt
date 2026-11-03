@@ -39,10 +39,11 @@
 │  RU  ifconfig.co, ipquery.io                                                 │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
- CDN         IPv4
- Cloudflare  SE · ARN
- YouTube     DE · MUC · muc11s18
- Netflix     DE · FRA · c002-fra001-ix
+┃  CDN
+┃  Service            IPv4                  Node
+┃  Cloudflare         SE                    ARN
+┃  YouTube            DE                    muc11s18
+┃  Netflix            DE                    c002-fra001-ix
 
  ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown
 

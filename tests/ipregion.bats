@@ -2083,6 +2083,19 @@ run_report() {
   [[ "${lines[4]}" == "╰"*"╯" ]]
 }
 
+@test "cdn block puts the node after the protocol cells and marks a failed edge unknown" {
+  set_dual_stack_ips
+  RESULTS=$(results_of "$(
+    print_result cdn Cloudflare 4 SE yes "" | jq -c '. + {iata: "ARN", node: ""}'
+    print_result cdn Cloudflare 6 "" "" timeout | jq -c '. + {iata: "", node: ""}'
+  )")
+
+  run print_cdn
+
+  [[ "${lines[1]}" == "┃  Service            IPv4    IPv6          Node" ]]
+  [[ "${lines[2]}" == "┃  Cloudflare         SE      ?             ARN · ?" ]]
+}
+
 @test "debug log upload falls back to litterbox and says why x0.at failed" {
   set_fixture_field 4 x0.at exit 28
   add_fixture 4 litterbox.catbox.moe_resources_internals_api.php https://litter.catbox.moe/abc123.log

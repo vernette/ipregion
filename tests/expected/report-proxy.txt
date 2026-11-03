@@ -50,10 +50,11 @@
 │  ip2location.io     SE      SE                                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
- CDN
- Cloudflare  SE · ARN
- YouTube     DE · FRA · tzfraa-cd
- Netflix     DE · FRA · c002-fra001-ix
+┃  CDN
+┃  Service            Proxy                 Node
+┃  Cloudflare         SE                    ARN
+┃  YouTube            DE                    tzfraa-cd
+┃  Netflix            DE                    c002-fra001-ix
 
  ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - other protocol
 
