@@ -7,9 +7,11 @@
 ┃   SE   Sweden           seen by most services
 ┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━────  49/53 checks passed
 
- Attention
-   Disney+         ✗    region blocked
-   Disney+         ?    unexpected response
+╭─ Attention ──────────────────────────────────────────────────────────╮
+│  Service           Proxy            Issue                            │
+│  Disney+           ✗                region blocked                   │
+│  Disney+           ?                unexpected response              │
+╰──────────────────────────────────────────────────────────────────────╯
 
  Platforms           Availability
  Google       SE     YouTube Premium    ✓

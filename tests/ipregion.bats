@@ -1972,11 +1972,35 @@ run_report() {
 @test "collapsed attention row wraps its services into two lines and counts the rest" {
   local -a wrapped
 
-  wrap_service_list wrapped 27 Google YouTube Twitch Netflix Spotify Reddit TikTok Apple Steam Microsoft Ookla JetBrains PlayStation
+  wrap_services wrapped 32 Google YouTube Twitch Netflix Spotify Reddit TikTok Apple Steam Microsoft Ookla JetBrains PlayStation
 
   [[ "${#wrapped[@]}" -eq 2 ]]
-  [[ "${wrapped[0]}" == "Google, YouTube, Twitch, Netflix, Spotify," ]]
-  [[ "${wrapped[1]}" == "Reddit, TikTok, Apple, Steam, Microsoft, +3" ]]
+  [[ "${wrapped[0]}" == "Google, YouTube, Twitch," ]]
+  [[ "${wrapped[1]}" == "Netflix, Spotify, Reddit, +7" ]]
+}
+
+@test "long attention reason wraps by words inside the issue column" {
+  local -a issue
+
+  wrap_words issue 32 "TLS handshake failed: the certificate is issued by an unknown authority"
+
+  [[ "${#issue[@]}" -eq 3 ]]
+  [[ "${issue[0]}" == "TLS handshake failed: the" ]]
+  [[ "${issue[1]}" == "certificate is issued by an" ]]
+  [[ "${issue[2]}" == "unknown authority" ]]
+}
+
+@test "attention card puts the issue in the right card's column and dots the empty cell" {
+  set_dual_stack_ips
+  VERDICT=SE
+  ATTENTION='[{"services":["JetBrains"],"ip_version":"4","country":"SI","status":"yes","reason":"different country"},{"services":["Disney+"],"ip_version":"6","country":"","status":"","reason":"unexpected response"}]'
+
+  run print_attention
+
+  [[ "${lines[0]}" == "╭─ Attention ────"* ]]
+  [[ "${lines[1]}" == "│  Service           IPv4   IPv6      Issue"* ]]
+  [[ "${lines[2]}" == "│  JetBrains         SI     ·         different country"* ]]
+  [[ "${lines[3]}" == "│  Disney+           ·      ?         unexpected response"* ]]
 }
 
 @test "collapsed attention row names the country the services see" {
@@ -1986,7 +2010,10 @@ run_report() {
 
   run print_attention
 
-  [[ "$output" == *"FI different country"*"Twitch, Spotify, TikTok, Steam"* ]]
+  [[ "$output" == *"4 services"* ]]
+  [[ "$output" == *"FI"* ]]
+  [[ "$output" == *"different country:"* ]]
+  [[ "$output" == *"Twitch, Spotify, TikTok, Steam"* ]]
   [[ "$output" != *"✓"* ]]
 }
 

@@ -6,10 +6,12 @@
 ┃   SE   Sweden           seen by most services
 ┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─────  48/53 checks passed
 
- Attention
-   JetBrains  IPv4   SI   different country
-   Disney+    IPv6   ✗    region blocked
-   Disney+    IPv6   ?    unexpected response
+╭─ Attention ──────────────────────────────────────────────────────────╮
+│  Service           IPv4   IPv6      Issue                            │
+│  JetBrains         SI     ·         different country                │
+│  Disney+           ·      ✗         region blocked                   │
+│  Disney+           ·      ?         unexpected response              │
+╰──────────────────────────────────────────────────────────────────────╯
 
  Platforms    IPv4  IPv6     Availability       IPv4 IPv6
  Google       SE    SE       YouTube Premium    ✓    ✓

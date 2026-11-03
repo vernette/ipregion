@@ -5,8 +5,10 @@
 ┃   SE   Sweden     seen by most services
 ┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━───  50/53 checks passed
 
- Attention
-   JetBrains  SI   different country
+╭─ Attention ──────────────────────────────────────────────────────────╮
+│  Service           IPv4             Issue                            │
+│  JetBrains         SI               different country                │
+╰──────────────────────────────────────────────────────────────────────╯
 
  Platforms    IPv4     Availability       IPv4
  Google       SE       YouTube Premium    ✓

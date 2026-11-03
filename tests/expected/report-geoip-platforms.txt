@@ -6,9 +6,11 @@
 ┃   SE   Sweden           seen by most services
 ┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────  27/31 checks passed
 
- Attention
-   JetBrains  IPv4   SI   different country
-   Disney+    IPv6   ?    unexpected response
+╭─ Attention ──────────────────────────────────────────────────────────╮
+│  Service           IPv4   IPv6      Issue                            │
+│  JetBrains         SI     ·         different country                │
+│  Disney+           ·      ?         unexpected response              │
+╰──────────────────────────────────────────────────────────────────────╯
 
  Platforms    IPv4  IPv6
  Google       SE    SE

@@ -53,7 +53,6 @@ readonly -A GROUP_EMOJI=(
   ["CDN"]=📡
 )
 
-readonly OUTPUT_WIDTH=72
 readonly ANSI_SEQUENCE=$'\033\[+([0-9;])m'
 readonly CARD_GAP=1
 readonly LEFT_CARD_WIDTH=34
@@ -62,6 +61,12 @@ readonly CARD_CONTENT_INDENT=1
 readonly CARD_SIDES_WIDTH=2
 readonly CARD_TRAILING_GAP=1
 readonly CARD_TITLE_OFFSET=1
+readonly FULL_CARD_WIDTH=$((LEFT_CARD_WIDTH + CARD_GAP + RIGHT_CARD_WIDTH))
+# The Issue / Node column of a full-width card starts where the paired right card's content starts
+readonly RIGHT_COLUMN_START=$((LEFT_CARD_WIDTH + CARD_GAP + 1))
+readonly RIGHT_COLUMN_WIDTH=$((FULL_CARD_WIDTH - CARD_SIDES_WIDTH - CARD_CONTENT_INDENT - CARD_TRAILING_GAP - RIGHT_COLUMN_START))
+readonly RIGHT_GRID_NAME=18
+readonly RIGHT_GRID_CELL=7
 readonly CARD_TOP_LEFT="╭"
 readonly CARD_TOP_RIGHT="╮"
 readonly CARD_BOTTOM_LEFT="╰"
@@ -72,18 +77,15 @@ readonly NAME_GAP=2
 readonly EDGE_GAP=3
 readonly COUNTRY_CELL_WIDTH=6
 readonly STATUS_CELL_WIDTH=5
-readonly ATTENTION_CELL_WIDTH=3
 readonly SUMMARY_COUNTRY_WIDTH=2
-readonly COUNTRY_CODE_WIDTH=2
 readonly SUMMARY_DEFAULT_WIDTH=25
 readonly COLUMN_GAP="     "
-readonly SCOPE_WIDTH=5
-readonly ATTENTION_NOTE_WIDTH=13
 readonly HEADER_LABEL_WIDTH=6
 readonly CHECKS_BAR_WIDTH=46
 readonly SUMMARY_BAR_CHAR="━"
 readonly SUMMARY_BAR_REST_CHAR="─"
 readonly ATTENTION_LIST_LINES=2
+readonly ATTENTION_EMPTY_CELL="·"
 readonly GROUP_ROW_FIELDS=3
 readonly CDN_ROW_FIELDS=9
 readonly ATTENTION_ENTRY_FIELDS=5
@@ -110,6 +112,7 @@ readonly DUAL_STACK_EXITS="IPv4 and IPv6"
 readonly PROXY_CHECKED_ONCE_NOTE="Through a proxy each service is checked once: the proxy picks IPv4 or IPv6"
 readonly PROXY_IGNORES_IP_VERSION_WARNING="--ipv4 and --ipv6 are ignored with --proxy, the proxy picks the protocol"
 readonly PROXY_IP_VERSION="proxy"
+readonly BOTH_IP_VERSION="both"
 readonly OTHER_PROTOCOL_LEGEND="other protocol"
 
 readonly STATUS_YES="yes"
@@ -3507,60 +3510,90 @@ print_header() {
   } | print_bar_block
 }
 
-format_scope() {
-  local ip_version="$1"
-  local label="IPv$ip_version"
-
-  if ! is_dual_stack; then
+report_columns() {
+  if is_checked_once "$GROUP_PLATFORMS"; then
+    printf '%s\n' "$PROXY_IP_VERSION"
     return
   fi
 
-  case "$ip_version" in
-    both) label="$ip_version" ;;
-    "$PROXY_IP_VERSION") label="" ;;
-  esac
+  if is_dual_stack; then
+    printf '4\n6\n'
+    return
+  fi
 
-  printf '%s  ' "$(paint "$C_DIM" "$(pad "$label" "$SCOPE_WIDTH")")"
+  printf '%s\n' "$(first_ip_version)"
 }
 
-format_attention_value() {
+column_title() {
+  case "$1" in
+    4) printf 'IPv4' ;;
+    6) printf 'IPv6' ;;
+    "$PROXY_IP_VERSION") printf 'Proxy' ;;
+  esac
+}
+
+attention_value() {
   local country="$1"
   local status="$2"
 
   if [[ -n "$country" ]]; then
-    format_country "$country" $((ATTENTION_CELL_WIDTH + COUNTRY_EXTRA))
+    printf '%s' "$country"
     return
   fi
 
-  format_status "${status:-$STATUS_UNKNOWN}" $((ATTENTION_CELL_WIDTH + COUNTRY_EXTRA))
+  printf '%s' "${status:-$STATUS_UNKNOWN}"
 }
 
-print_attention_row() {
-  local name_width="$1"
-  local service="$2"
-  local ip_version="$3"
-  local country="$4"
-  local status="$5"
-  local reason="$6"
+attention_cell() {
+  local value="$1"
 
-  printf '   %s%s%s  %s\n' "$(pad "$service" "$name_width")" "$(format_scope "$ip_version")" \
-    "$(format_attention_value "$country" "$status")" "$(paint "$C_DIM" "$reason")"
+  if [[ -z "$value" ]]; then
+    paint "$C_DIM" "$(pad "$ATTENTION_EMPTY_CELL" "$RIGHT_GRID_CELL")"
+    return
+  fi
+
+  format_cell "$value" "$RIGHT_GRID_CELL"
 }
 
-wrap_service_list() {
-  local -n wrapped_lines=$1
-  local indent="$2"
+wrap_words() {
+  local -n wrapped_words=$1
+  local width="$2"
+  local text="$3"
+  local -a parts=()
+  local part line=""
+
+  read -ra parts <<<"$text"
+  wrapped_words=()
+  for part in "${parts[@]}"; do
+    if [[ -n "$line" ]] && ((${#line} + 1 + ${#part} > width)); then
+      wrapped_words+=("$line")
+      line=""
+    fi
+    line+="${line:+ }$part"
+  done
+  wrapped_words+=("$line")
+}
+
+wrap_services() {
+  local -n wrapped_services=$1
+  local width="$2"
   shift 2
+  local total=$#
+  local reserved=$((3 + ${#total}))
   local line=""
   local shown=0
-  local service
+  local service budget
 
-  wrapped_lines=()
+  wrapped_services=()
   for service in "$@"; do
-    if [[ -n "$line" ]] && ((indent + ${#line} + ${#service} + 2 > OUTPUT_WIDTH)); then
-      wrapped_lines+=("$line,")
+    budget="$width"
+    if ((${#wrapped_services[@]} == ATTENTION_LIST_LINES - 1)); then
+      budget=$((width - reserved))
+    fi
+    if [[ -n "$line" ]] && ((${#line} + 3 + ${#service} > budget)); then
+      wrapped_services+=("$line,")
       line=""
-      if ((${#wrapped_lines[@]} == ATTENTION_LIST_LINES)); then
+      if ((${#wrapped_services[@]} == ATTENTION_LIST_LINES)); then
         break
       fi
     fi
@@ -3568,74 +3601,86 @@ wrap_service_list() {
     shown=$((shown + 1))
   done
 
-  if [[ -n "$line" ]] && ((${#wrapped_lines[@]} < ATTENTION_LIST_LINES)); then
-    wrapped_lines+=("$line")
+  if [[ -n "$line" ]] && ((${#wrapped_services[@]} < ATTENTION_LIST_LINES)); then
+    wrapped_services+=("$line")
   fi
 
-  if ((shown < $#)); then
-    wrapped_lines[-1]="${wrapped_lines[-1]%,}, +$(($# - shown))"
+  if ((shown < total)); then
+    wrapped_services[-1]="${wrapped_services[-1]%,}, +$((total - shown))"
   fi
 }
 
-format_attention_group_value() {
-  local country="$1"
-  local status="$2"
+append_attention_titles() {
+  local -n titles=$1
+  local -a columns=()
+  local line column
 
-  if [[ -n "$country" ]]; then
-    format_country "$country" $((COUNTRY_CODE_WIDTH + COUNTRY_EXTRA))
-    return
-  fi
-
-  format_status "${status:-$STATUS_UNKNOWN}" 1
+  mapfile -t columns < <(report_columns)
+  line=" $(pad_cell "$C_DIM" Service "$RIGHT_GRID_NAME")"
+  for column in "${columns[@]}"; do
+    line+="$(pad_cell "$C_DIM" "$(column_title "$column")" "$RIGHT_GRID_CELL")"
+  done
+  titles+=("$(pad "$line" "$RIGHT_COLUMN_START")$(paint "$C_DIM" Issue)")
 }
 
-print_attention_group() {
-  local ip_version="$1"
-  local country="$2"
-  local status="$3"
-  local reason="$4"
-  shift 4
-  local prefix indent line
-  local -a service_lines
+append_attention_row() {
+  local -n attention_rows=$1
+  local name="$2" ip_version="$3" value="$4" reason="$5"
+  local -a columns=() issue_lines=()
+  local line column issue
 
-  prefix="   $(format_attention_group_value "$country" "$status") $(paint "$C_DIM" "$(pad "$reason" "$ATTENTION_NOTE_WIDTH")")  $(format_scope "$ip_version")"
-  indent=$(visible_length "$prefix")
-  wrap_service_list service_lines "$indent" "$@"
+  mapfile -t columns < <(report_columns)
+  line=" $(pad_cell "$C_VALUE" "$name" "$RIGHT_GRID_NAME")"
+  for column in "${columns[@]}"; do
+    if ((${#columns[@]} == 1)) || [[ "$ip_version" == "$column" || "$ip_version" == "$BOTH_IP_VERSION" ]]; then
+      line+="$(attention_cell "$value")"
+    else
+      line+="$(attention_cell "")"
+    fi
+  done
 
-  printf '%s%s\n' "$prefix" "${service_lines[0]}"
-  for line in "${service_lines[@]:1}"; do
-    printf '%*s%s\n' "$indent" '' "$line"
+  wrap_words issue_lines "$RIGHT_COLUMN_WIDTH" "$reason"
+  attention_rows+=("$(pad "$line" "$RIGHT_COLUMN_START")${issue_lines[0]}")
+  for issue in "${issue_lines[@]:1}"; do
+    attention_rows+=("$(printf '%*s' "$RIGHT_COLUMN_START" '')$issue")
+  done
+}
+
+append_attention_services() {
+  local -n attention_lines=$1
+  shift
+  local -a service_lines=()
+  local line
+
+  wrap_services service_lines "$RIGHT_COLUMN_WIDTH" "$@"
+  for line in "${service_lines[@]}"; do
+    attention_lines+=("$(printf '%*s' "$RIGHT_COLUMN_START" '')$(paint "$C_DIM" "$line")")
   done
 }
 
 print_attention() {
-  local -a fields services single_services=()
-  local i name_width
-  local count=0
+  local -a fields rows=() services=()
+  local i count value
 
   mapfile -t fields < <(jq -r '.[] | .ip_version, .country, .status, .reason, (.services | length), .services[]' <<<"$ATTENTION")
   if ((${#fields[@]} == 0)); then
     return
   fi
 
-  for ((i = 0; i < ${#fields[@]}; i += ATTENTION_ENTRY_FIELDS + count)); do
-    count="${fields[i + 4]}"
-    if ((count == 1)); then
-      single_services+=("${fields[i + ATTENTION_ENTRY_FIELDS]}")
-    fi
-  done
-  name_width=$(($(max_length "${single_services[@]}") + NAME_GAP))
-
-  printf ' %s\n' "$(paint "$C_WARN" "$(label_group Attention)")"
+  append_attention_titles rows
   for ((i = 0; i < ${#fields[@]}; i += ATTENTION_ENTRY_FIELDS + count)); do
     count="${fields[i + 4]}"
     services=("${fields[@]:i+ATTENTION_ENTRY_FIELDS:count}")
+    value=$(attention_value "${fields[i + 1]}" "${fields[i + 2]}")
     if ((count == 1)); then
-      print_attention_row "$name_width" "${services[0]}" "${fields[i]}" "${fields[i + 1]}" "${fields[i + 2]}" "${fields[i + 3]}"
+      append_attention_row rows "${services[0]}" "${fields[i]}" "$value" "${fields[i + 3]}"
       continue
     fi
-    print_attention_group "${fields[i]}" "${fields[i + 1]}" "${fields[i + 2]}" "${fields[i + 3]}" "${services[@]}"
+    append_attention_row rows "$count services" "${fields[i]}" "$value" "${fields[i + 3]}:"
+    append_attention_services rows "${services[@]}"
   done
+
+  printf '%s\n' "${rows[@]}" | print_titled_card "$C_WARN" Attention "$FULL_CARD_WIDTH" 0
   printf '\n'
 }
 
