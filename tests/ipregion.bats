@@ -1842,6 +1842,12 @@ run_report() {
 
   run run_report --proxy 127.0.0.1:1080 --geoip-breakdown
   [[ "$output" != *$'\n╰'"$(repeat_char "$CARD_HORIZONTAL" 62)"$'╯\n'* ]]
+
+  run run_report --proxy 127.0.0.1:1080 --service spotify,ipinfo
+  [[ "$output" == *$'\n╰'"$(repeat_char "$CARD_HORIZONTAL" 78)"$'╯\n'* ]]
+
+  run run_report --proxy 127.0.0.1:1080 --service spotify
+  [[ "$output" == *$'\n╰'"$(repeat_char "$CARD_HORIZONTAL" 62)"$'╯\n'* ]]
 }
 
 @test "ip version with a proxy is dropped with a warning" {
@@ -1932,8 +1938,6 @@ run_report() {
 }
 
 @test "used up maxmind limit is noted once in the header and leaves the geoip summary" {
-  local -a table=()
-
   set_dual_stack_ips
   REGISTRATION_MAXMIND_FAILURE[4]="$REASON_DAILY_LIMIT"
   REGISTRATION_MAXMIND_FAILURE[6]="$REASON_DAILY_LIMIT"
@@ -1951,9 +1955,6 @@ run_report() {
   run print_geoip
   [[ "${lines[0]}" == "╭─ GeoIP · SE 1/1 "* ]]
   [[ "${lines[-2]}" == "│  MaxMind limit used up "*"│" ]]
-
-  append_table_lines table "$GROUP_GEOIP" GeoIP "$(table_name_width GeoIP MaxMind limit limit)" "$COUNTRY_CELL_WIDTH" MaxMind limit limit
-  [[ "${table[1]}" == "MaxMind  limit used" ]]
 }
 
 @test "geoip summary lists services that see another country per protocol" {
@@ -2057,18 +2058,6 @@ run_report() {
   [[ "$(checks_health)" == "$CHECKS_POOR" ]]
   CHECKS_TOTAL=0
   [[ "$(checks_health)" == "$CHECKS_GOOD" ]]
-}
-
-@test "table names get the same gap before the first cell" {
-  local -a table=()
-  local -a rows=("YouTube Premium" yes yes Disney+ yes no)
-
-  set_dual_stack_ips
-  append_table_lines table "$GROUP_AVAILABILITY" Availability "$(table_name_width Availability "${rows[@]}")" "$STATUS_CELL_WIDTH" "${rows[@]}"
-
-  [[ "${table[0]}" == "Availability     IPv4 IPv6" ]]
-  [[ "${table[1]}" == "YouTube Premium  ✓    ✓" ]]
-  [[ "${table[2]}" == "Disney+          ✓    ✗" ]]
 }
 
 @test "availability card puts the larger half on the left and the right half on the right grid" {

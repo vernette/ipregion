@@ -3,25 +3,17 @@
 ┃  IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in DE
 ┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  16/16 checks passed
 
-╭─ AI ────────────────────────╮
-│  Service           IPv6     │
-│  Gemini Web        ✓        │
-│  Gemini API        ✓        │
-│  OpenAI API        ✓        │
-│  Anthropic API     ✓        │
-│  Grok API          ✓        │
-│  Qwen API          -        │
-│  Qwen CN API       ✓        │
-│  Kimi API          ✓        │
-│  Kimi CN API       -        │
-│  GLM API           ✓        │
-│  GLM CN API        ✓        │
-│  MiniMax API       ✓        │
-│  MiniMax CN API    -        │
-│  Doubao API        ✓        │
-│  SiliconFlow API   ✓        │
-│  DeepSeek API      -        │
-╰─────────────────────────────╯
+╭─ AI ─────────────────────────────────────────────────────────╮
+│  Service            IPv6          Service           IPv6     │
+│  Gemini Web         ✓             Kimi CN API       -        │
+│  Gemini API         ✓             GLM API           ✓        │
+│  OpenAI API         ✓             GLM CN API        ✓        │
+│  Anthropic API      ✓             MiniMax API       ✓        │
+│  Grok API           ✓             MiniMax CN API    -        │
+│  Qwen API           -             Doubao API        ✓        │
+│  Qwen CN API        ✓             SiliconFlow API   ✓        │
+│  Kimi API           ✓             DeepSeek API      -        │
+╰──────────────────────────────────────────────────────────────╯
 
    ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown
 

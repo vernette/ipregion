@@ -11,25 +11,17 @@
 │  JetBrains          SI      ·             different country                  │
 │  Disney+            ·       ?             unexpected response                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-╭─ Platforms ──────────────────────────╮
-│  Service            IPv4    IPv6     │
-│  Google             SE      SE       │
-│  YouTube            SE      SE       │
-│  Twitch             SE      -        │
-│  ChatGPT            SE      SE       │
-│  Claude             SE      SE       │
-│  Netflix            SE      SE       │
-│  Spotify            SE      SE       │
-│  Reddit             SE      -        │
-│  Disney+            SE      ?        │
-│  TikTok             SE      -        │
-│  Apple              SE      SE       │
-│  Steam              SE      -        │
-│  Microsoft          SE      -        │
-│  Ookla              SE      -        │
-│  JetBrains          SI      SE       │
-│  PlayStation        SE      SE       │
-╰──────────────────────────────────────╯
+╭─ Platforms ──────────────────────────────────────────────────────────────────╮
+│  Service            IPv4    IPv6          Service           IPv4    IPv6     │
+│  Google             SE      SE            Disney+           SE      ?        │
+│  YouTube            SE      SE            TikTok            SE      -        │
+│  Twitch             SE      -             Apple             SE      SE       │
+│  ChatGPT            SE      SE            Steam             SE      -        │
+│  Claude             SE      SE            Microsoft         SE      -        │
+│  Netflix            SE      SE            Ookla             SE      -        │
+│  Spotify            SE      SE            JetBrains         SI      SE       │
+│  Reddit             SE      -             PlayStation       SE      SE       │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ GeoIP · SE 13/15 ───────────────────────────────────────────────────────────╮
 │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────────  │
 │  RU  ifconfig.co, ipquery.io                                             v4  │
