@@ -119,7 +119,7 @@ readonly SYMBOL_UNKNOWN="?"
 readonly SYMBOL_NONE="-"
 readonly STATUS_UNKNOWN="unknown"
 
-readonly CURL_BASE_ARGS=(--disable --silent --compressed)
+readonly CURL_BASE_ARGS=(--disable --silent --compressed --retry 1 --retry-connrefused)
 readonly CURL_WRITE_OUT='%{http_code}\n%{redirect_url}\n'
 readonly CACHE_POLL_INTERVAL=0.1
 
@@ -1821,7 +1821,7 @@ request_cache_entry() {
 build_curl_args() {
   local ip_version="$1"
 
-  CURL_ARGS=("${CURL_BASE_ARGS[@]}" --max-time "$CURL_TIMEOUT")
+  CURL_ARGS=("${CURL_BASE_ARGS[@]}" --max-time "$CURL_TIMEOUT" --retry-max-time "$CURL_TIMEOUT")
 
   if [[ -n "$PROXY_ADDR" ]]; then
     CURL_ARGS+=(--proxy "socks5h://$PROXY_ADDR")
