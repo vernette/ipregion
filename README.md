@@ -136,6 +136,7 @@ docker run --rm --network=host vernette/ipregion:latest --interface eth1
 ./ipregion.sh --timeout 10                  # Request timeout in seconds
 ./ipregion.sh --emoji                       # Country flags and group icons
 ./ipregion.sh --geoip-breakdown             # Every GeoIP service instead of the summary
+./ipregion.sh --no-attention                # Hide the Attention card
 ./ipregion.sh --youtube-lang en             # YouTube interface language for YouTube No Ads (default: ru)
 ./ipregion.sh --json                        # JSON output
 ./ipregion.sh --verbose                     # Log every request to stderr

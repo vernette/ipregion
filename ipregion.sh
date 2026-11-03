@@ -698,6 +698,7 @@ MAIN_INTERFACE=""
 SHOW_EMOJI=false
 COUNTRY_EXTRA=0
 GEOIP_BREAKDOWN=false
+SHOW_ATTENTION=true
 VERDICT=""
 VERDICT_TIED_COUNTRIES=()
 ATTENTION="[]"
@@ -827,6 +828,7 @@ Options:
   -i, --interface IFACE  Send requests through a network interface
       --emoji            Show country flags and group icons
       --geoip-breakdown  Show every GeoIP service instead of the summary
+      --no-attention     Hide the Attention card
       --youtube-lang LANG
                          Viewer's YouTube language for YouTube No Ads
                          (default: $DEFAULT_YOUTUBE_LANG)
@@ -944,6 +946,10 @@ parse_args() {
         ;;
       --geoip-breakdown)
         GEOIP_BREAKDOWN=true
+        shift
+        ;;
+      --no-attention)
+        SHOW_ATTENTION=false
         shift
         ;;
       --youtube-lang)
@@ -3672,7 +3678,7 @@ print_attention() {
   local -a fields rows=() services=()
   local i count value
 
-  if is_service_report; then
+  if [[ "$SHOW_ATTENTION" == false ]] || is_service_report; then
     return
   fi
 

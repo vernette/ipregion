@@ -146,7 +146,7 @@ curl_calls() {
 
 @test "long options set every flag" {
   parse_args --verbose --debug --yes --json --group ai --timeout 3 --ipv6 \
-    --proxy '[::1]:1080' --interface wg0 --emoji --geoip-breakdown --youtube-lang pt-BR
+    --proxy '[::1]:1080' --interface wg0 --emoji --geoip-breakdown --no-attention --youtube-lang pt-BR
   validate_args
 
   [[ "$VERBOSE" == true ]]
@@ -161,6 +161,7 @@ curl_calls() {
   [[ "$INTERFACE_NAME" == wg0 ]]
   [[ "$SHOW_EMOJI" == true ]]
   [[ "$GEOIP_BREAKDOWN" == true ]]
+  [[ "$SHOW_ATTENTION" == false ]]
   [[ "$YOUTUBE_LANG" == pt-BR ]]
 }
 
@@ -1787,6 +1788,14 @@ run_report() {
   diff -u "$BATS_TEST_DIRNAME/expected/report.txt" "$BATS_TEST_TMPDIR/report.txt"
 }
 
+@test "report without attention drops only the attention card" {
+  run_report --no-attention >"$BATS_TEST_TMPDIR/report.txt"
+  run diff "$BATS_TEST_DIRNAME/expected/report.txt" "$BATS_TEST_TMPDIR/report.txt"
+
+  [[ "$output" == *"Attention"* ]]
+  [[ "$output" != *"> "* ]]
+}
+
 @test "report with emoji and geoip breakdown matches the expected output" {
   run_report --emoji --geoip-breakdown >"$BATS_TEST_TMPDIR/report.txt"
   diff -u "$BATS_TEST_DIRNAME/expected/report-emoji-breakdown.txt" "$BATS_TEST_TMPDIR/report.txt"
@@ -2078,6 +2087,17 @@ assert_report_lines_fit_cards() {
   [[ "${lines[1]}" == "│  Service            IPv4    IPv6          Issue"* ]]
   [[ "${lines[2]}" == "│  JetBrains          SI      ·             different country"* ]]
   [[ "${lines[3]}" == "│  Disney+            ·       ?             unexpected response"* ]]
+}
+
+@test "attention card is hidden by --no-attention" {
+  set_dual_stack_ips
+  VERDICT=SE
+  ATTENTION='[{"services":["JetBrains"],"ip_version":"4","country":"SI","status":"yes","reason":"different country"}]'
+  SHOW_ATTENTION=false
+
+  run print_attention
+
+  [[ -z "$output" ]]
 }
 
 @test "collapsed attention row names the country the services see" {
