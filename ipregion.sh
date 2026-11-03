@@ -2688,6 +2688,12 @@ check_platforms_spotify() {
 check_platforms_reddit() {
   local ip_version="$1"
 
+  http_request "$ip_version" "$REDDIT_NOT_FOUND_URL" --user-agent "$USER_AGENT"
+  if [[ "$HTTP_CODE" == "$HTTP_FORBIDDEN" ]]; then
+    print_result "$GROUP_PLATFORMS" Reddit "$ip_version" "" "$STATUS_IPBLOCK" "$(http_failure_reason)"
+    return
+  fi
+
   check_platforms_pattern Reddit "$ip_version" "$REDDIT_NOT_FOUND_URL" "$REDDIT_COUNTRY_PATTERN" --user-agent "$USER_AGENT"
 }
 

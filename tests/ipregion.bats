@@ -1325,6 +1325,16 @@ ROWS
   grep -q -- '--head https://store.steampowered.com$' "$FAKE_CURL_LOG"
 }
 
+@test "reddit 403 is an ip block with the reason" {
+  use_host_fixtures dual-stack
+  set_fixture_field 4 www.reddit.com_api_v1_not-found code 403
+  EXTERNAL_IPV4=203.0.113.7
+
+  run_platforms_checks
+
+  [[ "$(jq -r '.[] | select(.service == "Reddit") | [.status, .reason] | join(" ")' <<<"$RESULTS")" == "ipblock access denied (403)" ]]
+}
+
 @test "ipv6 connection failure means the service has no ipv6" {
   set_fixture_field 6 gql.twitch.tv_gql exit 7
   EXTERNAL_IPV6=2001:db8:85a3::8a2e:370:7334
