@@ -1712,7 +1712,7 @@ attention_rows() {
   [[ -z "$(verdict_of_results)" ]]
 }
 
-@test "attention lists differences and failures, not geoip countries, cdn or the maxmind limit" {
+@test "attention lists other countries and failures, not blocks, video ads, geoip countries, cdn or the maxmind limit" {
   VERDICT=DE
   RESULTS=$(results_of "$(
     print_result platforms Google 4 DE yes ""
@@ -1735,15 +1735,24 @@ attention_rows() {
   expected=$(
     cat <<'ROWS'
 ChatGPT 6 NL yes different country
-Gemini Web 4  no region blocked
-YouTube No Ads RU 4  no video ads
-Reddit Guest 6  ipblock access denied (403)
 Disney+ 6   timeout
 ipquery.io 6   timeout
 ROWS
   )
   run attention_rows
   [[ "$output" == "$expected" ]]
+}
+
+@test "checks bar counts blocks as failed but not video ads" {
+  VERDICT=DE
+  RESULTS=$(results_of "$(
+    print_result platforms Google 4 DE yes ""
+    print_result availability "Reddit Guest" 6 "" ipblock "access denied (403)"
+    print_result ai "Gemini Web" 4 "" no ""
+    print_result availability "YouTube No Ads RU" 4 "" no "video ads"
+  )")
+
+  [[ "$(count_abnormal_checks)" -eq 2 ]]
 }
 
 @test "attention without a verdict lists only failures" {

@@ -9,7 +9,6 @@
 ╭─ Attention ──────────────────────────────────────────────────────────────────╮
 │  Service            IPv4    IPv6          Issue                              │
 │  JetBrains          SI      ·             different country                  │
-│  Disney+            ·       ✗             region blocked                     │
 │  Disney+            ·       ?             unexpected response                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Platforms ──────────────────────────╮ ╭─ AI ────────────────────────────────╮

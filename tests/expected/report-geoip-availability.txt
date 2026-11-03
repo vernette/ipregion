@@ -6,10 +6,6 @@
 ┃   SE   Sweden           seen by most services
 ┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━────────  18/21 checks passed
 
-╭─ Attention ──────────────────────────────────────────────────────────────────╮
-│  Service            IPv4    IPv6          Issue                              │
-│  Disney+            ·       ✗             region blocked                     │
-╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Availability ───────────────────────────────────────────────────────────────╮
 │  Service            IPv4    IPv6          Service           IPv4    IPv6     │
 │  YouTube Premium    ✓       ✓             Spotify Signup    ✓       ✓        │

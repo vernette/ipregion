@@ -406,7 +406,6 @@ readonly REASON_UNEXPECTED_RESPONSE="unexpected response"
 readonly REASON_DAILY_LIMIT="daily limit used up"
 readonly REASON_NO_DEMO_TOKEN="no demo token"
 readonly REASON_NO_IPV6="no IPv6"
-readonly REASON_REGION_BLOCKED="region blocked"
 readonly REASON_VIDEO_ADS="video ads"
 
 readonly GROUP_PLATFORMS="platforms"
@@ -555,24 +554,26 @@ map(select(.group == $geoip and .status == $yes and .country != "" and .country 
 | .country, .ip_version, (.services | length), .services[]'
 # shellcheck disable=SC2016 # $verdict, $geoip and the other names are jq variables, not shell expansions
 readonly NEEDS_ATTENTION_DEFINITION='
-def needs_attention:
-  if .group == $cdn or .status == $none or .reason == $daily_limit then false
+def is_failed:
+  if .group == $cdn or .status == $none or .reason == $daily_limit or .reason == $video_ads then false
   elif .status == "" then true
   elif .group == $geoip then false
   elif .country != "" then $verdict != "" and .country != $verdict
-  else .status != $yes end;'
+  else .status != $yes end;
+def needs_attention:
+  is_failed and (.status == "" or .country != "");'
 # shellcheck disable=SC2016 # $verdict and $geoip are jq variables, not shell expansions
 readonly ABNORMAL_CHECKS_FILTER="$NEEDS_ATTENTION_DEFINITION"'
 def differs_from_verdict:
   .group == $geoip and .country != "" and $verdict != "" and .country != $verdict;
-[.[] | select(needs_attention or differs_from_verdict) | [.group, .service]] | unique | length'
+[.[] | select(is_failed or differs_from_verdict) | [.group, .service]] | unique | length'
 # shellcheck disable=SC2016 # $collapse_min, $different_country and the other names are jq variables, not shell expansions
 readonly ATTENTION_FILTER="$NEEDS_ATTENTION_DEFINITION"'
 def severity:
-  if .status == "" then 3 elif .country != "" then 0 elif .status == $no then 1 else 2 end;
+  if .country != "" then 0 else 1 end;
 to_entries
 | map(.value + {order: .key} | select(needs_attention))
-| map(if .status == $yes then .reason = $different_country elif .status == $no and .reason != $video_ads then .reason = $region_blocked else . end)
+| map(if .status == $yes then .reason = $different_country else . end)
 | group_by([.group, .service, .country, .status, .reason])
 | map(.[0] + {ip_version: (if length == 2 then "both" else .[0].ip_version end)})
 | group_by([.country, .status, .reason, .ip_version])
@@ -3181,12 +3182,10 @@ collect_attention() {
     jq -c \
       --arg verdict "$VERDICT" \
       --arg yes "$STATUS_YES" \
-      --arg no "$STATUS_NO" \
       --arg none "$STATUS_NONE" \
       --arg cdn "$GROUP_CDN" \
       --arg geoip "$GROUP_GEOIP" \
       --arg different_country "$REASON_DIFFERENT_COUNTRY" \
-      --arg region_blocked "$REASON_REGION_BLOCKED" \
       --arg video_ads "$REASON_VIDEO_ADS" \
       --arg daily_limit "$REASON_DAILY_LIMIT" \
       --argjson collapse_min "$ATTENTION_COLLAPSE_MIN" \
@@ -3210,6 +3209,7 @@ count_abnormal_checks() {
     --arg none "$STATUS_NONE" \
     --arg cdn "$GROUP_CDN" \
     --arg geoip "$GROUP_GEOIP" \
+    --arg video_ads "$REASON_VIDEO_ADS" \
     --arg daily_limit "$REASON_DAILY_LIMIT" \
     "$ABNORMAL_CHECKS_FILTER" <<<"$RESULTS"
 }

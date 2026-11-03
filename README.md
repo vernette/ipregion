@@ -26,7 +26,7 @@
 ## Features
 
 - Shows how GeoIP databases, popular platforms, CDNs and AI services see the host, side by side for IPv4 and IPv6
-- Verdict - the country most services agree on - and an Attention list of everything that disagrees or is blocked
+- Verdict - the country most services agree on - and an Attention list of services that see another country or failed to answer
 - Groups: Platforms (YouTube, Netflix, ChatGPT, ...), Availability (YouTube Premium, Google Search, ...), AI (Gemini, OpenAI, Anthropic, Chinese providers), CDN edge nodes, GeoIP databases
 - SOCKS5 proxy, custom network interface, JSON output
 - Installs missing dependencies automatically on Debian, Ubuntu, Fedora, RHEL, Rocky, Alma, Arch, openSUSE, Alpine, Void and Termux
@@ -44,7 +44,7 @@
 > [!NOTE]
 > Country flags and group icons are shown with `--emoji`. Emoji rendering differs between terminals: some show flags as two letters or shift the columns
 
-- Attention lists services that see another country or are blocked
+- Attention lists services that see another country or failed to answer; blocks stay in their cards
 - GeoIP shows a summary; `--geoip-breakdown` lists every service
 - Colors are used only on a terminal and are disabled by `NO_COLOR`
 
