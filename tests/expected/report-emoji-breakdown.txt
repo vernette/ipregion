@@ -3,7 +3,7 @@
 ┃  IPv4  203.0.*.*        AS64496 Example Hosting  registered in 🇳🇱 NL
 ┃  IPv6  2001:db8:85a3::  AS64496 Example Hosting  registered in 🇩🇪 DE
 ┃
-┃  🇸🇪  SE  Sweden           seen by most services
+┃   SE   Sweden           seen by most services
 ┃  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────  48/53 checks passed
 
 ╭─ 🚨 Attention ───────────────────────────────────────────────────────────────╮

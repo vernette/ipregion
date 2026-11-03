@@ -3263,17 +3263,6 @@ has_protocol_columns() {
   is_dual_stack && ! is_checked_once "$group"
 }
 
-format_badge() {
-  local country="$1"
-  local flag=""
-
-  if [[ "$SHOW_EMOJI" == true ]]; then
-    flag="$(format_flag "$country") "
-  fi
-
-  printf '%s%s' "$flag" "$(paint "$(checks_badge_color)" " $country ")"
-}
-
 country_name() {
   local country="$1"
 
@@ -3410,7 +3399,7 @@ print_verdict_line() {
 
   name=$(country_name "$country")
   printf ' '
-  pad_cell "" "$(format_badge "$country")" "$HEADER_LABEL_WIDTH"
+  pad_cell "" "$(paint "$(checks_badge_color)" " $country ")" "$HEADER_LABEL_WIDTH"
   pad_cell "$C_VALUE" "${name:-$country}" "$HEADER_VALUE_WIDTH"
   printf '%s\n' "${note:+$(paint "$C_DIM" "$note")}"
 }
