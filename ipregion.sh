@@ -58,6 +58,7 @@ readonly CARD_GAP=1
 readonly LEFT_CARD_WIDTH=40
 readonly RIGHT_CARD_WIDTH=39
 readonly CARD_CONTENT_INDENT=1
+readonly LEGEND_INDENT=3
 readonly CARD_SIDES_WIDTH=2
 readonly CARD_TRAILING_GAP=1
 readonly CARD_TITLE_OFFSET=1
@@ -110,11 +111,10 @@ readonly MAXMIND_LIMIT_CELL="limit"
 readonly MAXMIND_LIMIT_CELLS="limit used"
 readonly EXITS_NOTE="exits over"
 readonly DUAL_STACK_EXITS="IPv4 and IPv6"
-readonly PROXY_CHECKED_ONCE_NOTE="Through a proxy each service is checked once: the proxy picks IPv4 or IPv6"
+readonly PROXY_CHECKED_ONCE_NOTE="Each service is checked once, the proxy picks the protocol"
 readonly PROXY_IGNORES_IP_VERSION_WARNING="--ipv4 and --ipv6 are ignored with --proxy, the proxy picks the protocol"
 readonly PROXY_IP_VERSION="proxy"
 readonly BOTH_IP_VERSION="both"
-readonly OTHER_PROTOCOL_LEGEND="other protocol"
 
 readonly STATUS_YES="yes"
 readonly STATUS_NO="no"
@@ -4053,15 +4053,6 @@ print_cdn() {
   printf '%s\n' "${rows[@]}" | print_bar_block
 }
 
-none_legend() {
-  if [[ -n "$PROXY_ADDR" ]]; then
-    printf '%s' "$OTHER_PROTOCOL_LEGEND"
-    return
-  fi
-
-  printf 'no IPv6'
-}
-
 print_legend() {
   local separator legend
 
@@ -4074,19 +4065,15 @@ print_legend() {
   legend+="$(paint "$C_NO" "$SYMBOL_NO") $(paint "$C_DIM" "region blocked")$separator"
   legend+="$(paint "$C_NO" "$SYMBOL_IPBLOCK") $(paint "$C_DIM" "IP blocked")$separator"
   legend+="$(paint "$C_DIM" "$SYMBOL_UNKNOWN unknown")"
-  if [[ -n "$EXTERNAL_IPV6" ]]; then
-    legend+="$separator$(paint "$C_DIM" "$SYMBOL_NONE $(none_legend)")"
+  if has_protocol_columns "$GROUP_PLATFORMS"; then
+    legend+="$separator$(paint "$C_DIM" "$SYMBOL_NONE no IPv6")"
   fi
 
-  printf ' %s\n\n' "$legend"
-}
-
-print_proxy_note() {
-  if ! is_checked_once "$GROUP_PLATFORMS"; then
-    return
+  printf '%*s%s\n' "$LEGEND_INDENT" '' "$legend"
+  if is_checked_once "$GROUP_PLATFORMS"; then
+    printf '%*s%s\n' "$LEGEND_INDENT" '' "$(paint "$C_DIM" "$PROXY_CHECKED_ONCE_NOTE")"
   fi
-
-  printf ' %s\n\n' "$(paint "$C_DIM" "$PROXY_CHECKED_ONCE_NOTE")"
+  printf '\n'
 }
 
 fetch_verdict_country_names() {
@@ -4103,7 +4090,6 @@ print_report() {
   print_cards
   print_cdn
   print_legend
-  print_proxy_note
 }
 
 is_service_report() {
@@ -4124,7 +4110,6 @@ print_service_report() {
   fi
   print_cdn
   print_legend
-  print_proxy_note
 }
 
 print_json_array() {

@@ -23,5 +23,5 @@
 │  DeepSeek API      -                │
 ╰─────────────────────────────────────╯
 
- ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - no IPv6
+   ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown
 

@@ -49,5 +49,5 @@
 ┃  YouTube            DE      DE            muc11s18 · tzfraa-cd
 ┃  Netflix            DE      DE            c002-fra001-ix · c002-fra001-ix
 
- ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - no IPv6
+   ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - no IPv6
 

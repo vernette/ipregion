@@ -56,7 +56,6 @@
 ┃  YouTube            DE                    tzfraa-cd
 ┃  Netflix            DE                    c002-fra001-ix
 
- ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - other protocol
-
- Through a proxy each service is checked once: the proxy picks IPv4 or IPv6
+   ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown
+   Each service is checked once, the proxy picks the protocol
 

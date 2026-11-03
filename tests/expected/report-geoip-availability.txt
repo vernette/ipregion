@@ -22,5 +22,5 @@
 │  DE  ifconfig.co, ipquery.io                                             v6  │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
- ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - no IPv6
+   ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown · - no IPv6
 

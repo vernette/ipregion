@@ -45,5 +45,5 @@
 ┃  YouTube            DE                    muc11s18
 ┃  Netflix            DE                    c002-fra001-ix
 
- ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown
+   ✓ available · ✗ region blocked · ⊘ IP blocked · ? unknown
 
