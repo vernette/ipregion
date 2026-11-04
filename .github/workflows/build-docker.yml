@@ -1,19 +1,18 @@
 name: Build and Push Docker Image
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - Test
+    types:
+      - completed
     branches:
       - master
-    paths:
-      - "ipregion.sh"
   workflow_dispatch:
 
 jobs:
-  test:
-    uses: ./.github/workflows/test.yml
-
   build:
-    needs: test
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
 
     steps:
