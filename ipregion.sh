@@ -1879,7 +1879,7 @@ http_request() {
 
   HTTP_IP_VERSION="$ip_version"
   entry=$(request_cache_entry "$ip_version" "$url" "$@")
-  if mkdir -- "$entry.lock" 2>/dev/null; then
+  if (set -o noclobber && : >"$entry.lock") 2>/dev/null; then
     fetch_to_cache "$entry" "$ip_version" "$url" "$@"
   fi
 
