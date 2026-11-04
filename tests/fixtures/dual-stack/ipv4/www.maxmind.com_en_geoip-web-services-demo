@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+    <meta
+      name="description"
+      content="
+  Demo MaxMind’s GeoIP web services by entering up to 25 IP addresses. Instantly
+  access IP geolocation and IP intelligence data.
+"
+    />
+
+    <meta name="viewport" content="width=device-width" />
+
+    
+
+
+    <title>GeoIP web services demo | MaxMind</title>
+
+    <base href="/en/" />
+    
+      <link
+        media="all"
+        rel="stylesheet"
+        type="text/css"
+        href="https://static.maxmind.com/9739079674a0f81caf13/css/marketing.css"
+        integrity="sha256-EVnXLpn&#43;toHTx2pts7ogl9OBjwWpuAl&#43;YUqoThG0pDY="
+        crossorigin="anonymous"
+        nonce="QIglm0v-y_IEILMQ_Edixw=="
+      />
+    
+
+
+    
+    
+
+      <script nonce="QIglm0v-y_IEILMQ_Edixw==">
+        var dataLayer = window.dataLayer || [];
+        
+        
+      </script>
+
+    
+    <script nonce="QIglm0v-y_IEILMQ_Edixw==">
+        (function (w, d, s, l, i) {
+          w[l] = w[l] || [];
+          w[l].push({ "gtm.start": new Date().getTime(), event: "gtm.js" });
+          var f = d.getElementsByTagName(s)[0],
+            j = d.createElement(s),
+            dl = l != "dataLayer" ? "&l=" + l : "";
+          j.async = true;
+          j.src = "https://www.googletagmanager.com/gtm.js?id=" + i + dl;
+          j.setAttribute("data-testid", "injected-script-for-gtm");
+          f.parentNode.insertBefore(j, f);
+        })(window, document, "script", "dataLayer", "GTM-M8K593P");
+      </script>
+    
+
+    
+
+  </head>
+
+  <body>
+    
+
+    <noscript
+        ><iframe
+          src="https://www.googletagmanager.com/ns.html?id=GTM-M8K593P"
+          height="0"
+          width="0"
+          style="display:none;visibility:hidden"
+        ></iframe
+      ></noscript>
+
+
+    
+
+    <div class="wrapper">
+      
+      <div class="header__system-status js-header__system-status">
+          <div class="header__system-status-content">
+            <span class="header__status-icon js-header__status-icon">
+              <i
+                class="bi bi-exclamation-triangle-fill status-icon status-icon__warning"
+              ></i>
+            </span>
+            <span
+              class="header__status-message js-header__status-message"
+            ></span>
+            <a
+              class="header__status-more-info"
+              href="https://status.maxmind.com"
+              >More info
+              <i
+                class="header__status-more-info-icon bi bi-chevron-double-right"
+              ></i
+            ></a>
+          </div>
+        </div>
+        
+      
+
+      <header
+  class="header 
+    has-subnav
+   
+        "
+>
+  <nav class="header__nav navbar navbar-expand-lg mx-auto">
+    <a class="header__logo" href="/en/home" aria-label="MaxMind">
+    </a>
+
+    <div
+      id="header__toggle"
+      class="offcanvas-lg offcanvas-end header__toggle"
+      tabindex="-1"
+    >
+      
+      <nav class="main-nav">
+        <ul class="main-nav__list navbar-nav">
+          <li class="main-nav__item js-main-nav__item dropdown">
+            <button
+              aria-haspopup="true"
+              class="main-nav__link js-main-nav__link dropdown-toggle"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+              disabled
+            >
+              Products &amp; solutions
+            </button>
+            <div
+              class="main-nav__dropdown-menu main-nav__dropdown-menu--products dropdown-menu"
+            >
+              <div class="main-nav__dropdown-heading text-medium-blue">
+                Products
+              </div>
+              <div class="row main-nav__dropdown-group">
+                <div class="main-nav__subnav-group col-lg-4">
+                  <a
+                    class="main-nav__subnav-item main-nav__subnav-item--products"
+                    href="/en/solutions/fraud-prevention/overview"
+                  >
+                    <img
+                      alt="minFraud product icon"
+                      src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/minfraud-product-icon.svg"
+                    />
+                    <div
+                      class="main-nav__subnav-title main-nav__subnav-title--products"
+                    >
+                      minFraud: fraud &amp; risk API
+                    </div>
+                    <div class="main-nav__subnav-description">
+                      Prevent online fraud and identify cyber threats with
+                      machine learning
+                    </div>
+                  </a>
+                </div>
+                <div class="main-nav__subnav-group col-lg-4">
+                  <a
+                    class="main-nav__subnav-item main-nav__subnav-item--products"
+                    href="/en/solutions/ip-geolocation-databases-api-services"
+                  >
+                    <img
+                      alt="GeoIP product icon"
+                      src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/geoip-product-icon.svg"
+                    />
+                    <div
+                      class="main-nav__subnav-title main-nav__subnav-title--products"
+                    >
+                      GeoIP: IP geolocation &amp; intelligence
+                    </div>
+                    <div class="main-nav__subnav-description">
+                      Understand your online visitors and serve them customized,
+                      relevant content
+                    </div>
+                  </a>
+                </div>
+                <div class="main-nav__subnav-group col-lg-4">
+                  <a
+                    class="main-nav__subnav-item main-nav__subnav-item--products"
+                    href="/en/solutions/proxy-vpn-fraud-detection"
+                  >
+                    <img
+                      alt="Proxy detection product icon"
+                      src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/proxy-detection-product-icon.svg"
+                    />
+                    <div
+                      class="main-nav__subnav-title main-nav__subnav-title--products"
+                    >
+                      Proxy &amp; VPN detection
+                    </div>
+                    <div class="main-nav__subnav-description">
+                      Manage unauthorized access and cyber threats with
+                      anonymous IP detection for safety and compliance
+                    </div>
+                  </a>
+                </div>
+              </div>
+              <div class="main-nav__separator"></div>
+              <div>
+                <div class="main-nav__dropdown-heading text-orange mt-3">
+                  Solutions
+                </div>
+                <div class="row main-nav__dropdown-group">
+                  <div class="main-nav__subnav-group col-lg-4">
+                    <a
+                      class="main-nav__subnav-item main-nav__subnav-item--products"
+                      href="/en/solutions/compliance"
+                    >
+                      <img
+                        alt="Compliance solution icon"
+                        src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/compliance-solution-icon.svg"
+                      />
+                      <div
+                        class="main-nav__subnav-title main-nav__subnav-title--products"
+                      >
+                        Compliance
+                      </div>
+                      <div class="main-nav__subnav-description">
+                        Build an auditable solution capable of navigating
+                        evolving risks and regulatory requirements
+                      </div>
+                    </a>
+                  </div>
+                  <div class="main-nav__subnav-group col-lg-4">
+                    <a
+                      class="main-nav__subnav-item main-nav__subnav-item--products"
+                      href="/en/geoip-exchange"
+                    >
+                      <img
+                        alt="Network operations icon"
+                        src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/geoip-exchange-icon.svg"
+                      />
+                      <div
+                        class="main-nav__subnav-title main-nav__subnav-title--products"
+                      >
+                        Network operations
+                      </div>
+                      <div class="main-nav__subnav-description">
+                        Get visibility into how MaxMind codes the networks that
+                        you own and operate, and resolve discrepancies quickly
+                      </div>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </li>
+          <li class="main-nav__item js-main-nav__item dropdown">
+            <button
+              aria-haspopup="true"
+              class="main-nav__link js-main-nav__link dropdown-toggle"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+              disabled
+            >
+              Resources
+            </button>
+            <div
+              class="main-nav__dropdown-menu main-nav__dropdown-menu--resources dropdown-menu"
+            >
+              <div class="row main-nav__dropdown-group">
+                <div class="main-nav__subnav-group col-lg-3">
+                  <div
+                    class="main-nav__subnav-item main-nav__subnav-item--resources"
+                  >
+                    <img
+                      alt="Support icon"
+                      src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/support-resources-icon.svg"
+                    />
+                    <div
+                      class="main-nav__subnav-title main-nav__subnav-title--resources"
+                    >
+                      Support
+                    </div>
+                    <ul
+                      class="main-nav__subnav-list main-nav__subnav-list--resources"
+                    >
+                      <li class="main-nav__subnav-list-item">
+                        <a
+                          href="/en/geoip-data-correction-request"
+                          >Submit a data correction</a
+                        >
+                      </li>
+                      <li class="main-nav__subnav-list-item">
+                        <a
+                          href="https://status.maxmind.com/"
+                          rel="noopener"
+                          target="_blank"
+                          >System status</a
+                        >
+                      </li>
+                      <li class="main-nav__subnav-list-item">
+                        <a href="/en/company/contact-us"
+                          >Contact support</a
+                        >
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <div class="main-nav__subnav-group col-lg-3">
+                  <div
+                    class="main-nav__subnav-item main-nav__subnav-item--resources"
+                  >
+                    <img
+                      alt="Learning icon"
+                      src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/learning-resources-icon.svg"
+                    />
+                    <div
+                      class="main-nav__subnav-title main-nav__subnav-title--resources"
+                    >
+                      Learning
+                    </div>
+                    <ul
+                      class="main-nav__subnav-list main-nav__subnav-list--resources"
+                    >
+                      <li class="main-nav__subnav-list-item">
+                        <a
+                          href="https://support.maxmind.com/knowledge-base"
+                          rel="noopener"
+                          target="_blank"
+                          >Knowledge base</a
+                        >
+                      </li>
+                      <li class="main-nav__subnav-list-item">
+                        <a
+                          href="https://blog.maxmind.com/"
+                          rel="noopener"
+                          target="_blank"
+                          >Blog</a
+                        >
+                      </li>
+                      <li class="main-nav__subnav-list-item">
+                        <a href="/en/geoip-web-services-demo">
+                          GeoIP<sup>®</sup> demo
+                        </a>
+                      </li>
+                      <li class="main-nav__subnav-list-item">
+                        <a href="/en/locate-my-ip-address"
+                          >Locate my IP address</a
+                        >
+                      </li>
+                      <li class="main-nav__subnav-list-item">
+                        <a href="/en/geoip-accuracy-comparison"
+                          >Accuracy comparison tool</a
+                        >
+                      </li>
+                      <li class="main-nav__subnav-list-item">
+                        <a href="/en/geoip"
+                          >GeoIP learning center</a
+                        >
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <div class="main-nav__subnav-group col-lg-3">
+                  <div
+                    class="main-nav__subnav-item main-nav__subnav-item--resources"
+                  >
+                    <img
+                      alt="Developers icon"
+                      src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/developers-resources-icon.svg"
+                    />
+                    <div
+                      class="main-nav__subnav-title main-nav__subnav-title--resources"
+                    >
+                      Developers
+                    </div>
+                    <ul
+                      class="main-nav__subnav-list main-nav__subnav-list--resources"
+                    >
+                      <li class="main-nav__subnav-list-item">
+                        <a
+                          href="https://dev.maxmind.com/"
+                          rel="noopener"
+                          target="_blank"
+                          >Developer portal</a
+                        >
+                      </li>
+                      <li class="main-nav__subnav-list-item">
+                        <a href="/en/affiliate-program"
+                          >Affiliate program</a
+                        >
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <div class="main-nav__subnav-group col-lg-3">
+                  <div
+                    class="main-nav__subnav-item main-nav__subnav-item--resources"
+                  >
+                    <img
+                      alt="Legal icon"
+                      src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/legal-resources-icon.svg"
+                    />
+                    <div
+                      class="main-nav__subnav-title main-nav__subnav-title--resources"
+                    >
+                      Legal
+                    </div>
+                    <ul
+                      class="main-nav__subnav-list main-nav__subnav-list--resources"
+                    >
+                      <li class="main-nav__subnav-list-item">
+                        <a href="/en/site-license-overview"
+                          >Licensing</a
+                        >
+                      </li>
+                      <li class="main-nav__subnav-list-item">
+                        <a href="/en/opt-out"
+                          >Do not sell my personal information</a
+                        >
+                      </li>
+                      <li class="main-nav__subnav-list-item">
+                        <a
+                          href="/en/privacy-policy#california-notice-of-collection"
+                          >Notice of collection</a
+                        >
+                      </li>
+                      <li class="main-nav__subnav-list-item">
+                        <a
+                          href="/en/modern-slavery-transparency-statement"
+                          >Modern Slavery Transparency Statement</a
+                        >
+                      </li>
+                      <li class="main-nav__subnav-list-item">
+                        <a
+                          href="/en/compliance-and-due-diligence"
+                          >Compliance and due diligence</a
+                        >
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </li>
+          <li class="main-nav__item js-main-nav__item dropdown">
+            <button
+              aria-haspopup="true"
+              class="main-nav__link js-main-nav__link dropdown-toggle"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+              disabled
+            >
+              About us
+            </button>
+            <div
+              class="main-nav__dropdown-menu main-nav__dropdown-menu--company dropdown-menu"
+            >
+              <div class="row main-nav__dropdown-group">
+                <div class="main-nav__subnav-group col-lg-4">
+                  <a
+                    class="main-nav__subnav-item main-nav__subnav-item--company"
+                    href="/en/company/our-story"
+                  >
+                    <img
+                      alt="Our story icon"
+                      src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/our-story-company-icon.svg"
+                    />
+                    <div
+                      class="main-nav__subnav-title main-nav__subnav-title--company"
+                    >
+                      Our story
+                    </div>
+                    <div class="main-nav__subnav-description">
+                      Who we are and our history
+                    </div>
+                  </a>
+                </div>
+                <div class="main-nav__subnav-group col-lg-4">
+                  <a
+                    class="main-nav__subnav-item main-nav__subnav-item--company"
+                    href="company/why-choose-maxmind"
+                  >
+                    <img
+                      alt="Why choose MaxMind icon"
+                      src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/why-choose-maxmind-icon.svg"
+                    />
+                    <div
+                      class="main-nav__subnav-title main-nav__subnav-title--company"
+                    >
+                      Why choose MaxMind
+                    </div>
+                    <div class="main-nav__subnav-description">
+                      Why our customers value us
+                    </div>
+                  </a>
+                </div>
+                <div class="main-nav__subnav-group col-lg-4">
+                  <a
+                    class="main-nav__subnav-item main-nav__subnav-item--company"
+                    href="/en/company/working-at-maxmind"
+                  >
+                    <img
+                      alt="Working at MaxMind icon"
+                      src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/working-at-maxmind-icon.svg"
+                    />
+                    <div
+                      class="main-nav__subnav-title main-nav__subnav-title--company"
+                    >
+                      Working at MaxMind
+                    </div>
+                    <div class="main-nav__subnav-description">
+                      Opportunities to join our team
+                    </div>
+                  </a>
+                </div>
+                <div class="main-nav__subnav-group col-lg-4">
+                  <a
+                    class="main-nav__subnav-item main-nav__subnav-item--company"
+                    href="/en/company/commitment-to-security"
+                  >
+                    <img
+                      alt="Commitment to security icon"
+                      src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/commitment-to-security-icon.svg"
+                    />
+                    <div
+                      class="main-nav__subnav-title main-nav__subnav-title--company"
+                    >
+                      Commitment to security
+                    </div>
+                    <div class="main-nav__subnav-description">
+                      Your privacy and security matters
+                    </div>
+                  </a>
+                </div>
+                <div class="main-nav__subnav-group col-lg-4">
+                  <a
+                    class="main-nav__subnav-item main-nav__subnav-item--company"
+                    href="/en/company/contact-us"
+                  >
+                    <img
+                      alt="Contact us icon"
+                      src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/contact-us-icon.svg"
+                    />
+                    <div
+                      class="main-nav__subnav-title main-nav__subnav-title--company"
+                    >
+                      Contact us
+                    </div>
+                    <div class="main-nav__subnav-description">
+                      Get in touch with our team
+                    </div>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </nav>
+
+      
+      <nav class="utility-nav">
+        <button
+          type="button"
+          class="btn-close mm-icon mm-icon__close d-block d-lg-none"
+          data-bs-dismiss="offcanvas"
+          data-bs-target="#header__toggle"
+          aria-label="Close"
+        ></button>
+        <ul class="utility-nav__list">
+          
+
+          <li
+            class="utility-nav__item 
+                  "
+          >
+            
+              <a
+                href="/en/account/sign-in"
+                class="utility-nav__link"
+                title="Account"
+              >
+                <span
+                  class="bi bi-person-circle mm-icon mm-icon__logged-out"
+                  title="Account"
+                  role="img"
+                >
+                </span>
+                <span class="utility-nav__label">Sign In</span>
+              </a>
+
+
+            
+
+          </li>
+
+          
+          <li class="utility-nav__item">
+            <a
+              class="utility-nav__link"
+              href="/en/shopping-cart/summary"
+              title="Order summary"
+            >
+              
+                <span
+                  class="bi bi-cart-fill mm-icon mm-icon__cart mm-icon__cart--empty"
+                  role="img"
+                ></span>
+              
+            </a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+
+    <div class="header__actions">
+      
+        <div class="utility-nav__item utility-nav__item--search">
+          <button
+            aria-label="Search MaxMind"
+            class="utility-nav__link utility-nav__link--search"
+            id="searchWidgetTrigger"
+            type="button"
+          >
+            <span
+              class="bi bi-search mm-icon mm-icon__search utility-nav__icon-search"
+              role="presentation"
+            >
+            </span>
+          </button>
+        </div>
+
+
+      <button
+        class="navbar-toggler mm-icon mm-icon__toggler bi bi-list"
+        type="button"
+        data-bs-toggle="offcanvas"
+        data-bs-target="#header__toggle"
+        aria-controls="header__toggle"
+        aria-expanded="false"
+        aria-label="Toggle navigation"
+      ></button>
+    </div>
+  </nav>
+</header>
+
+
+
+      
+      <main class="main">
+        <div class="container page-container">
+          <div class="main-holder">
+            
+            <div class="row page-row">
+              
+              <div
+                class="content-container col-12"
+                id="content-container"
+              >
+                <div id="content" class="content">
+                  <div id="js-alerts"></div>
+                  
+                  <nav class="subnav__wrapper">
+  <div class="subnav js-subnav d-flex gap-2 navbar navbar-expand-lg">
+    <div class="d-lg-none d-block">
+      <div class="dropdown subnav-dropdown">
+        <button
+          class="btn btn-sm btn-dark-blue subnav-dropdown-button js-subnav-dropdown-button dropdown-toggle"
+          type="button"
+          data-bs-toggle="dropdown"
+          aria-expanded="false"
+        ></button>
+        <ul class="dropdown-menu subnav-dropdown-menu js-subnav-dropdown-menu">
+          <li class="subnav-item">
+            <a
+              class="subnav-link js-subnav-link"
+              href="/en/geoip-web-services-demo"
+              >GeoIP web services demo</a
+            >
+          </li>
+          <li class="subnav-item">
+            <a
+              class="subnav-link js-subnav-link"
+              href="/en/geoip-demo"
+              >GeoIP databases demo</a
+            >
+          </li>
+          <li class="subnav-item">
+            <a
+              class="subnav-link js-subnav-link"
+              href="/en/locate-my-ip-address"
+              >Locate my IP address</a
+            >
+          </li>
+        </ul>
+      </div>
+    </div>
+    <ul class="navbar-nav collapse navbar-collapse">
+      <li class="subnav-item">
+        <a
+          class="subnav-link js-subnav-link"
+          href="/en/geoip-web-services-demo"
+          >GeoIP web services demo</a
+        >
+      </li>
+      <li class="subnav-item">
+        <a
+          class="subnav-link js-subnav-link"
+          href="/en/geoip-demo"
+          >GeoIP databases demo</a
+        >
+      </li>
+      <li class="subnav-item">
+        <a
+          class="subnav-link js-subnav-link"
+          href="/en/locate-my-ip-address"
+          >Locate my IP address</a
+        >
+      </li>
+    </ul>
+  </div>
+</nav>
+
+
+
+  <section
+    class="section geoip-demo__intro geoip-demo__intro--geoip-web-services"
+  >
+    <div class="section__wrapper">
+      <h1 class="geoip-demo__intro-heading text-dark-blue">
+        Demo MaxMind's <br />
+        <span class="text-geoip">GeoIP<sup>®</sup> Web Services</span>
+      </h1>
+      <h2 class="geoip-demo__intro-subheading text-dark-blue">
+        IP geolocation data with IP intelligence and proxy detection
+      </h2>
+      <div class="row gy-5 justify-content-center pt-3">
+        <div class="col-md-3 col-6">
+          <div class="icon-group">
+            <div class="icon-group__image">
+              <img
+                class="geoip-demo__intro-image"
+                loading="lazy"
+                src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/secure-server-host-icon.svg"
+                height="62"
+                width="62"
+              />
+            </div>
+            <div class="icon-group__title text-center text-dark-blue fw-bold">
+              Hosted on secure <br />
+              MaxMind servers
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="icon-group">
+            <div class="icon-group__image">
+              <img
+                class="geoip-demo__intro-image"
+                loading="lazy"
+                src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/api-uptime-icon.svg"
+                height="62"
+                width="62"
+              />
+            </div>
+            <div class="icon-group__title text-center text-dark-blue fw-bold">
+              99.99% API <br />
+              uptime
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="icon-group">
+            <div class="icon-group__image">
+              <img
+                class="geoip-demo__intro-image"
+                loading="lazy"
+                src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/ip-address-in-use-icon.svg"
+                height="62"
+                width="62"
+              />
+            </div>
+            <div class="icon-group__title text-center text-dark-blue fw-bold">
+              Covers 99.9999% of <br />
+              IP addresses in use
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="icon-group">
+            <div class="icon-group__image">
+              <img
+                class="geoip-demo__intro-image"
+                loading="lazy"
+                src="https://static.maxmind.com/9739079674a0f81caf13/images/marketing/regular-updates-icon.svg"
+                height="62"
+                width="62"
+              />
+            </div>
+            <div class="icon-group__title text-center text-dark-blue fw-bold">
+              Updated <br />
+              regularly
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section__wrapper">
+      <h2 class="text-dark-blue pt-4">
+  Demo results highlight a subset of data from our <br />
+  <a href="geoip-api-web-services">GeoIP web services</a>
+</h2>
+
+<form class="js-geoip-lookup mb-3">
+  <label class="geoip-demo-form__label" for="geoip-demo-form__textarea"
+    >Enter up to 25 IP addresses separated by spaces or commas</label
+  >
+  <textarea
+    id="geoip-demo-form__textarea"
+    class="geoip-demo-form__textarea form-control js-geoip-demo-textarea"
+    type="text"
+    name="ip_addresses"
+  ></textarea>
+  <input type="hidden" value="4de47c5e76b4fc0ef66fb7667edb866aeaee33d8" name="csrf_token" />
+  <button class="btn btn-sm btn-medium-blue js-geoip-demo-btn" type="submit">
+    View results
+  </button>
+</form>
+
+<div class="geoip-demo-form__table-wrapper">
+  <table
+    class="geoip-demo-form__table"
+    data-ip-demo-base-url="/en/geoip-web-services-demo"
+  >
+    <thead>
+      <tr>
+        <th>IP Address</th>
+        <th>
+          <a
+            class="geoip-demo-form__tooltip"
+            data-bs-title="The city, country, country code, and continent associated with the IP address."
+            data-bs-toggle="tooltip"
+            role="button"
+          >
+            Location
+          </a>
+        </th>
+        <th>
+          <a
+            class="geoip-demo-form__tooltip"
+            data-bs-title="The network in CIDR notation associated with the record. This is the largest network where all of the fields besides IP address have the same value."
+            data-bs-toggle="tooltip"
+            role="button"
+          >
+            Network
+          </a>
+        </th>
+        <th>
+          <a
+            class="geoip-demo-form__tooltip"
+            data-bs-title="The postal code associated with the IP address."
+            data-bs-toggle="tooltip"
+            role="button"
+          >
+            Postal Code
+          </a>
+        </th>
+        <th class="geoip-demo-form__heading-280">
+          <a
+            class="geoip-demo-form__tooltip"
+            data-bs-title="The approximate accuracy radius, in kilometers, around the latitude and longitude for the geographical entity (country, subdivision, city, or postal code) associated with the IP address."
+            data-bs-toggle="tooltip"
+            role="button"
+          >
+            Approximate Latitude / Longitude<sup>*</sup>, and Accuracy Radius
+          </a>
+        </th>
+        <th>
+          <a
+            class="geoip-demo-form__tooltip"
+            data-bs-title="The ISP and registering Organization associated with the IP address."
+            data-bs-toggle="tooltip"
+            role="button"
+          >
+            ISP / Organization
+          </a>
+        </th>
+        <th>
+          <a
+            class="geoip-demo-form__tooltip"
+            data-bs-title="The second level domain associated with the IP address. This will be something like 'example.com' or 'example.co.uk', not 'foo.example.com'."
+            data-bs-toggle="tooltip"
+            role="button"
+          >
+            Domain
+          </a>
+        </th>
+        <th>
+          <a
+            class="geoip-demo-form__tooltip"
+            data-bs-title="Possible values are cable/DSL, cellular, corporate, or satellite. Most high-speed consumer connections are covered under the cable/DSL category."
+            data-bs-toggle="tooltip"
+            role="button"
+          >
+            Connection Type
+          </a>
+        </th>
+      </tr>
+    </thead>
+    <tbody class="js-result-table-tbody">
+      <tr class="js-no-ip-address-row">
+        <td colspan="8">No IP addresses submitted yet.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<p class="d-none pt-3 js-anycast-network-text">
+  Your search contains anycast networks. We do not provide geolocation
+  information for anycast networks. Anycast networks do not have a fixed
+  geolocation, and can serve content from anywhere in the world.
+</p>
+
+<div class="d-flex flex-wrap gap-3 mt-4">
+  <a
+    class="btn btn-sm btn-medium-blue geoip-demo-btn"
+    href="/en/locate-my-ip-address"
+    >Test your IP address</a
+  >
+  <a
+    class="btn btn-sm btn-dark-blue--inverse geoip-demo-btn"
+    href="/en/geoip-data-correction-request"
+    >Submit a data correction</a
+  >
+</div>
+
+<div class="pt-3">
+  <div class="asterisk__wrapper">
+  <small class="asterisk"
+    >The coordinates are not precise and should not be used to identify a
+    particular street address or household. To better represent a level of
+    accuracy, you must include the Accuracy Radius (km) when displaying latitude
+    and longitude and make it clear that the coordinates refer to a larger
+    geographical area instead of a precise location.</small
+  >
+</div>
+
+</div>
+
+    </div>
+  </section>
+
+  <section class="section bg-light-blue">
+    <div class="section__wrapper">
+      <h2 class="text-dark-blue">
+        Uncover the full extent of the GeoIP web services
+      </h2>
+      <p>
+        Unlock comprehensive insights beyond basic geolocation. Access detailed
+        IP intelligence data, including country, region, city, ZIP/postal code,
+        anonymizer type, user count, confidence factors, static IP score, and
+        more.
+        <a href="/en/geoip-api-web-services"
+          >Discover the power of our GeoIP web services</a
+        >
+        tailored to meet your business needs.
+      </p>
+    </div>
+  </section>
+
+  <section class="section bg-dark-blue">
+  <div class="section__wrapper">
+    <h2 class="text-white">Explore more from MaxMind</h2>
+    <div class="row justify-content-center gy-4 mt-4 mb-4">
+      <div class="col-auto">
+          <div class="card card--no-icon card-shadow--light">
+            <div class="card-body">
+              <a
+                class="card-title card-title-link"
+                href="/en/solutions/ip-geolocation-databases-api-services"
+                rel="noopener"
+                target="_blank"
+                >IP geolocation and intelligence</a
+              >
+              <div class="card-text">Get insight into your web visitors and tailor their online experience</div>
+              <a
+                class="btn btn-medium-blue card-btn"
+                href="/en/solutions/ip-geolocation-databases-api-services"
+                rel="noopener"
+                target="_blank"
+                >Learn more</a
+              >
+            </div>
+          </div>
+        </div><div class="col-auto">
+          <div class="card card--no-icon card-shadow--light">
+            <div class="card-body">
+              <a
+                class="card-title card-title-link"
+                href="/en/solutions/proxy-vpn-fraud-detection"
+                rel="noopener"
+                target="_blank"
+                >Proxy detection</a
+              >
+              <div class="card-text">Detect proxy users, manage access, and prevent online fraud</div>
+              <a
+                class="btn btn-medium-blue card-btn"
+                href="/en/solutions/proxy-vpn-fraud-detection"
+                rel="noopener"
+                target="_blank"
+                >Learn more</a
+              >
+            </div>
+          </div>
+        </div><div class="col-auto">
+          <div class="card card--no-icon card-shadow--light">
+            <div class="card-body">
+              <a
+                class="card-title card-title-link"
+                href="https://blog.maxmind.com/safer-ip-geolocation/"
+                rel="noopener"
+                target="_blank"
+                >Safer IP geolocation</a
+              >
+              <div class="card-text">Achieve geolocation accuracy while upholding security and privacy</div>
+              <a
+                class="btn btn-medium-blue card-btn"
+                href="https://blog.maxmind.com/safer-ip-geolocation/"
+                rel="noopener"
+                target="_blank"
+                >Learn more</a
+              >
+            </div>
+          </div>
+        </div>
+    </div>
+  </div>
+</section>
+
+
+                </div>
+                
+              </div>
+              
+            </div>
+            
+          </div>
+          
+        </div>
+        
+      </main>
+      
+
+      <footer class="footer">
+  <div class="footer__body">
+    <div class="footer__links row g-5">
+      <nav
+        class="footer__nav 
+          col-md-8 col-lg-9
+        "
+      >
+        <div class="row gy-3">
+          <div class="col-sm-6 col-lg-3">
+            <h3 class="footer__nav-heading">Products</h3>
+            <ul class="footer__nav-list">
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/solutions/fraud-prevention/overview"
+                >
+                  minFraud services
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/residential-proxy-detection"
+                >
+                  Residential proxy detection
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/geoip-api-web-services"
+                >
+                  GeoIP web services
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/geoip-databases"
+                >
+                  GeoIP databases
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/geoip-anonymous-ip-database"
+                >
+                  GeoIP Anonymous IP database
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/geoip-enterprise-database"
+                >
+                  GeoIP Enterprise database
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/geolite-free-ip-geolocation-data"
+                >
+                  GeoLite free geolocation data
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div class="col-sm-6 col-lg-3">
+            <h3 class="footer__nav-heading">Resources</h3>
+            <ul class="footer__nav-list">
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="https://support.maxmind.com/knowledge-base"
+                >
+                  Knowledge base
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/geoip-web-services-demo"
+                >
+                  GeoIP demo
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a class="footer__nav-link" href="https://status.maxmind.com/">
+                  System status
+                </a>
+                <span class="footer__system-status">
+                  <i
+                    class="bi bi-exclamation-triangle-fill status-icon status-icon__warning"
+                  ></i>
+                </span>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/geoip-data-correction-request"
+                >
+                  Submit a data correction
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a class="footer__nav-link" href="/en/opt-out">
+                  Your privacy choices
+                </a>
+                <span class="footer__ccpa">
+                  <img
+                    class="footer__ccpa-icon"
+                    alt="California Consumer Privacy Act (CCPA) Opt-Out Icon"
+                    width="30"
+                    height="14"
+                    src="https://static.maxmind.com/9739079674a0f81caf13/images/icon-ccpa-opt-out.svg"
+                  />
+                </span>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/privacy-policy#california-notice-of-collection"
+                >
+                  Notice of collection
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/geoip"
+                  >GeoIP learning center</a
+                >
+              </li>
+            </ul>
+          </div>
+          <div class="col-sm-6 col-lg-3">
+            <h3 class="footer__nav-heading">Developers</h3>
+            <ul class="footer__nav-list">
+              <li class="footer__nav-item">
+                <a class="footer__nav-link" href="https://dev.maxmind.com">
+                  Developer portal
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/affiliate-program"
+                >
+                  Affiliate program
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div class="col-sm-6 col-lg-3">
+            <h3 class="footer__nav-heading">About us</h3>
+            <ul class="footer__nav-list">
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/company/our-story"
+                >
+                  Our story
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/company/why-choose-maxmind"
+                >
+                  Why choose MaxMind
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/company/working-at-maxmind"
+                >
+                  Working at MaxMind
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/company/commitment-to-security"
+                >
+                  Commitment to security
+                </a>
+              </li>
+              <li class="footer__nav-item">
+                <a
+                  class="footer__nav-link"
+                  href="/en/company/contact-us"
+                >
+                  Contact us
+                </a>
+              </li>
+            </ul>
+            <div class="footer__social">
+              <a
+                class="footer__social-link"
+                href="https://twitter.com/maxmind"
+                target="_blank"
+                rel="noopener"
+                title="MaxMind's X (formerly Twitter) profile"
+                ><span
+                  aria-hidden="true"
+                  class="bi bi-twitter-x text-black"
+                ></span
+              ></a>
+              <a
+                class="footer__social-link"
+                href="https://www.linkedin.com/company/maxmind"
+                target="_blank"
+                rel="noopener"
+                title="MaxMind's LinkedIn profile"
+                ><span aria-hidden="true" class="bi bi-linkedin"></span
+              ></a>
+            </div>
+          </div>
+        </div>
+      </nav>
+      <div
+          class="footer__newsletter col-md-4 col-lg-3 d-lg-flex justify-content-lg-end"
+        >
+          <div>
+            <h3 class="footer__nav-heading">Insights in your inbox</h3>
+            <p>
+              Join thousands of data professionals. <br />
+              Sign up for exclusive content.
+            </p>
+
+            <script
+              nonce="QIglm0v-y_IEILMQ_Edixw=="
+              charset="utf-8"
+              type="text/javascript"
+              src="https://js.hsforms.net/forms/embed/v2.js"
+            ></script>
+            <script nonce="QIglm0v-y_IEILMQ_Edixw==">
+              hbspt.forms.create({
+                region: "na1",
+                portalId: "21266834",
+                formId: "3e92e169-496d-4be7-95f2-44052278f132",
+              });
+            </script>
+          </div>
+        </div>
+    </div>
+  </div>
+
+  <div class="footer__legal">
+    <div class="row gy-3 align-items-center">
+      <div class="col-lg-9 col-sm-6">
+        <div class="row gy-3">
+          <div class="footer__legal-trademarks col-lg-9">
+            <div>
+              &copy; 2026 MaxMind, Inc. MaxMind, GeoIP, minFraud,
+              and related trademarks belong to MaxMind, Inc.
+            </div>
+          </div>
+          <div class="col-lg-3">
+            <div class="footer__legal-links">
+              <a
+                class="footer__legal-link"
+                href="/en/terms-of-use"
+                >Terms of Use</a
+              >
+              <span class="footer__legal-divider">|</span>
+              <a
+                class="footer__legal-link"
+                href="/en/privacy-policy"
+                >Privacy Policy</a
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-3 col-sm-6 d-flex justify-content-md-end">
+        <div class="footer__legal-logo">
+          <a class="footer__logo" href="/en/home">
+            <img
+              class="footer__logo-svg"
+              alt="MaxMind's footer logo"
+              width="200"
+              height="35"
+              src="https://static.maxmind.com/9739079674a0f81caf13/images/maxmind-header-logo-compact-alt.svg"
+            />
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+    </div>
+
+    
+
+    
+      <script
+        type="text/javascript"
+        nonce="QIglm0v-y_IEILMQ_Edixw=="
+        id="hs-script-loader"
+        async
+        defer
+        src="https://js.hs-scripts.com/21266834.js"
+      ></script>
+
+
+    
+
+    <script
+        src="https://cloud.google.com/ai/gen-app-builder/client?hl=en_US"
+        nonce="QIglm0v-y_IEILMQ_Edixw=="
+      ></script>
+
+      <gen-search-widget
+        configId="d708cd20-64f4-4e48-890a-9bc856be73da"
+        triggerId="searchWidgetTrigger"
+      >
+      </gen-search-widget>
+
+
+    <script
+      src="https://static.maxmind.com/9739079674a0f81caf13/js/main.js"
+      integrity="sha256-ELCQ7ormuH1YJcu3NpE92EYgPfEWMoeYM7iXSs0jJ7c="
+      crossorigin="anonymous"
+      nonce="QIglm0v-y_IEILMQ_Edixw=="
+      type="module"
+    ></script>
+
+    <script
+      async
+      src="https://static.maxmind.com/9739079674a0f81caf13/js/global-privacy-control.js"
+      integrity="sha256-n79UQzEQ08Vy63Yx7POzH7Sp1toQPkhqqJuV7GkLgiY="
+      crossorigin="anonymous"
+      nonce="QIglm0v-y_IEILMQ_Edixw=="
+      type="module"
+    ></script>
+
+<script nonce="QIglm0v-y_IEILMQ_Edixw==" type="module">
+  import('https://device.maxmind.com/js/device-module.js')
+    .then(({ trackDevice }) =>
+      trackDevice({
+        accountId: 10,
+      })
+    )
+    .catch((e) => console.error(e));
+</script> 
+      <script
+        crossorigin="anonymous"
+        integrity="sha256-tvrJGE/d6n3x5v5xBwDSaqL48jCin4ib2TqRMe5E&#43;gQ="
+        nonce="QIglm0v-y_IEILMQ_Edixw=="
+        src="https://static.maxmind.com/9739079674a0f81caf13/js/pages/geoip-demos.js"
+        type="module"
+      ></script>
+    
+
+  </body>
+</html>
+
+
+
+
+
+

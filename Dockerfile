@@ -11,10 +11,7 @@ ARG USER
 RUN apk add --no-cache \
   curl \
   jq \
-  bash \
-  util-linux \
-  iputils \
-  grep
+  bash
 
 WORKDIR $WORK_DIR
 

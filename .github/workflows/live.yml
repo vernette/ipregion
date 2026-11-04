@@ -1,0 +1,43 @@
+name: Live
+
+on:
+  schedule:
+    - cron: "0 6 */3 * *"
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: pipx install check-jsonschema
+
+      - name: Run against real services
+        run: bash ipregion.sh --json >report.json
+
+      - name: Validate JSON schema
+        run: check-jsonschema --schemafile schema/ipregion-v2.schema.json report.json
+
+      - name: Check that every group answered
+        run: |
+          empty_groups=$(jq -r '
+            .results
+            | to_entries[]
+            | select(all(.value[]; [.ipv4, .ipv6] | all(. == null or (.country == null and .access == null))))
+            | .key
+          ' report.json)
+          if [[ -n $empty_groups ]]; then
+            echo "::error::No service answered in groups: $empty_groups"
+            exit 1
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report
+          path: report.json

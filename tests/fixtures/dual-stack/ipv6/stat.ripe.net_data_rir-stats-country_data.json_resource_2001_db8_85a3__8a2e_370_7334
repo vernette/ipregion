@@ -1,0 +1,1 @@
+{"messages":[["info","Result is based on an encompassing, larger prefix: 2001:db8::/29"]],"data_call_name":"rir-stats-country","status":"ok","status_code":200,"data":{"located_resources":[{"resource":"2001:db8::/29","location":"DE"}],"parameters":{"resource":"2001:db8:85a3::8a2e:370:7334"}}}

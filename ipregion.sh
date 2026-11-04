@@ -1,698 +1,888 @@
 #!/usr/bin/env bash
 
-SCRIPT_NAME="ipregion.sh"
-SCRIPT_URL="https://github.com/vernette/ipregion"
-USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
-DEBUG_LOG_FILE="ipregion_debug_$(date +%Y%m%d_%H%M%S)_$$.log"
-exec {SLEEP_FD}<> <(:)
+# Shows how GeoIP databases, popular platforms, CDNs and AI services see this host over IPv4 and IPv6.
 
-SPOTIFY_API_KEY="142b583129b2df829de3656f9eb484e6"
-SPOTIFY_CLIENT_ID="9a8d2f0ce77a4e248bb71fefcb557637"
-NETFLIX_API_KEY="YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm"
-TWITCH_CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
-CHATGPT_STATSIG_API_KEY="client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG"
-CHATGPT_DERIVED_FIELDS_PREFIX='"derived_fields":'
-CHATGPT_DERIVED_FIELDS_PATTERN="$CHATGPT_DERIVED_FIELDS_PREFIX\\{[^}]*\\}"
-REDDIT_BASIC_ACCESS_TOKEN="b2hYcG9xclpZdWIxa2c6"
-YOUTUBE_SOCS_COOKIE="CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjUwNzMwLjA1X3AwGgJlbiACGgYIgPC_xAY"
-DISNEY_PLUS_API_KEY="ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
-DISNEY_PLUS_JSON_BODY='{"query":"\n     mutation registerDevice($registerDevice: RegisterDeviceInput!) {\n       registerDevice(registerDevice: $registerDevice) {\n         __typename\n       }\n     }\n     ","variables":{"registerDevice":{"applicationRuntime":"android","attributes":{"operatingSystem":"Android","operatingSystemVersion":"13"},"deviceFamily":"android","deviceLanguage":"en","deviceProfile":"phone","devicePlatformId":"android"}},"operationName":"registerDevice"}'
+set -euo pipefail
+shopt -s extglob
 
-GEMINI_REGIONS_URL="https://ai.google.dev/gemini-api/docs/available-regions.md.txt"
-CLDR_TERRITORIES_URL="https://cdn.jsdelivr.net/npm/cldr-localenames-full/main/en/territories.json"
-GEMINI_MATCH_FILTER=$(
-  cat <<'EOF'
-def stopwords: ["the", "of", "and", "republic", "island", "islands", "saint", "st"];
+readonly MIN_BASH_MAJOR=4
+readonly MIN_BASH_MINOR=4
 
-def words:
-  ascii_downcase
-  | [splits("[^\\p{L}]+")]
-  | map(select(. != "" and (IN(stopwords[]) | not)))
-  | unique;
+# Runs before the other constants: bash 3.2 (macOS) fails on readonly -A below.
+require_bash_version() {
+  local major="$1"
+  local minor="$2"
 
-def gemini_regions:
-  $md | split("\n") | map(select(startswith("- ")) | .[2:] | words);
+  if ((major > MIN_BASH_MAJOR || (major == MIN_BASH_MAJOR && minor >= MIN_BASH_MINOR))); then
+    return
+  fi
 
-def cldr_names:
-  $cldr_raw | try fromjson catch {}
-  | .main.en.localeDisplayNames.territories // {}
-  | to_entries | map(select(.key | startswith($code)) | .value);
+  printf 'Error: bash %s.%s+ is required, this is bash %s.%s\n' "$MIN_BASH_MAJOR" "$MIN_BASH_MINOR" "$major" "$minor" >&2
+  if [[ "$OSTYPE" == darwin* ]]; then
+    printf 'Install a newer one with: brew install bash, then run the script again in a new terminal\n' >&2
+  fi
+  exit 1
+}
 
-gemini_regions as $supported
-| cldr_names + [$api_name]
-| map(words)
-| any(IN($supported[]))
-EOF
+require_bash_version "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"
+
+readonly SCRIPT_NAME="ipregion.sh"
+readonly SCRIPT_URL="https://github.com/vernette/ipregion"
+readonly REQUIRED_COMMANDS=(curl jq)
+readonly PACKAGE_MANAGERS=(apt-get dnf yum pacman zypper apk xbps-install)
+readonly SERVICE_GROUPS=(platforms cdn availability ai geoip)
+readonly ALL_GROUPS="all"
+readonly DEFAULT_TIMEOUT=5
+readonly TIMEOUT_PATTERN='^[1-9][0-9]*$'
+readonly DEFAULT_YOUTUBE_LANG="ru"
+readonly YOUTUBE_LANG_PATTERN='^[a-z]{2,3}(-[A-Za-z0-9]{2,4})?$'
+readonly PROXY_PATTERN='^([^:/[:space:]]+|\[[0-9A-Fa-f:]+\]):[0-9]{1,5}$'
+readonly COUNTRY_CODE_PATTERN='^[A-Z]{2}$'
+readonly REGIONAL_INDICATOR_A=0x1F1E6
+readonly ASCII_A=65
+readonly UTF8_LOCALE="C.UTF-8"
+# A bracket range like [🌀-🫿] follows the locale collation and misses emoji under en_US.UTF-8 on glibc 2.36
+readonly WIDE_EMOJI_PATTERN='[🚨📱🌍🔓🤖📡✅]'
+readonly FLAG_WIDTH=3
+readonly -A GROUP_EMOJI=(
+  ["Attention"]=🚨
+  ["Platforms"]=📱
+  ["GeoIP"]=🌍
+  ["Availability"]=🔓
+  ["AI"]=🤖
+  ["CDN"]=📡
 )
 
+readonly ANSI_SEQUENCE=$'\033\[+([0-9;])m'
+readonly CARD_GAP=1
+readonly WIDE_LEFT_CARD_WIDTH=40
+readonly WIDE_RIGHT_CARD_WIDTH=39
+readonly CARD_CONTENT_INDENT=1
+readonly LEGEND_INDENT=3
+readonly CARD_SIDES_WIDTH=2
+readonly CARD_TRAILING_GAP=1
+readonly CARD_TITLE_OFFSET=1
+readonly LEFT_GRID_NAME=19
+readonly LEFT_GRID_CELL=8
+readonly RIGHT_GRID_NAME=18
+readonly RIGHT_GRID_CELL=8
+readonly CARD_TOP_LEFT="╭"
+readonly CARD_TOP_RIGHT="╮"
+readonly CARD_BOTTOM_LEFT="╰"
+readonly CARD_BOTTOM_RIGHT="╯"
+readonly CARD_SIDE="│"
+readonly CARD_HORIZONTAL="─"
+readonly NAME_GAP=2
+readonly GEOIP_COUNTRY_WIDTH=4
+readonly HEADER_LABEL_WIDTH=6
+readonly CHECKS_BAR_MARGIN=26
+readonly SUMMARY_BAR_CHAR="━"
+readonly SUMMARY_BAR_REST_CHAR="─"
+readonly ATTENTION_LIST_LINES=2
+readonly ATTENTION_EMPTY_CELL="·"
+readonly GROUP_ROW_FIELDS=3
+readonly CDN_ROW_FIELDS=9
+readonly ATTENTION_ENTRY_FIELDS=5
+readonly GEOIP_DEVIATION_FIELDS=3
+readonly HEADER_MARK="┃"
+readonly AUTHOR="vernette"
+readonly VERDICT_NOTE="seen by most services"
+readonly TIE_NOTE="services split evenly"
+readonly CHECKS_PASSED_NOTE="checks passed"
+readonly CHECKS_GOOD_PERCENT=85
+readonly CHECKS_FAIR_PERCENT=65
+readonly CHECKS_GOOD="good"
+readonly CHECKS_FAIR="fair"
+readonly CHECKS_POOR="poor"
+readonly REGISTERED_NOTE="registered in"
+readonly MAXMIND_LIMIT_HEADER_NOTE="MaxMind daily limit used up · ASN from RIPE"
+readonly MAXMIND_FAILURE_HEADER_NOTE="MaxMind unavailable · ASN from RIPE"
+readonly MAXMIND_LIMIT_SUMMARY_NOTE="MaxMind limit used up"
+readonly GEOIP_AGREEMENT_NOTE="every service agrees"
+readonly GEOIP_AGREEMENT_EMOJI="✅"
+readonly MAXMIND_LIMIT_CELL="limit"
+readonly EXITS_NOTE="exits over"
+readonly DUAL_STACK_EXITS="IPv4 and IPv6"
+readonly PROXY_CHECKED_ONCE_NOTE="Each service is checked once, the proxy picks the protocol"
+readonly PROXY_IGNORES_IP_VERSION_WARNING="--ipv4 and --ipv6 are ignored with --proxy, the proxy picks the protocol"
+readonly PROXY_IP_VERSION="proxy"
+readonly BOTH_IP_VERSION="both"
+
+readonly STATUS_YES="yes"
+readonly STATUS_NO="no"
+readonly STATUS_IPBLOCK="ipblock"
+readonly STATUS_NONE="none"
+readonly SYMBOL_YES="✓"
+readonly SYMBOL_NO="✗"
+readonly SYMBOL_IPBLOCK="⊘"
+readonly SYMBOL_UNKNOWN="?"
+readonly SYMBOL_NONE="-"
+readonly STATUS_UNKNOWN="unknown"
+
+readonly CURL_BASE_ARGS=(--disable --silent --compressed --retry 1 --retry-connrefused)
+readonly CURL_WRITE_OUT='%{http_code}\n%{redirect_url}\n'
+readonly CACHE_POLL_INTERVAL=0.1
+
+readonly MAX_PARALLEL_JOBS=16
+readonly JOB_POLL_INTERVAL=0.1
+readonly RESULT_FILE_PREFIX="result-"
+readonly CLEAR_LINE=$'\r\033[K'
+readonly PROGRESS_LABEL="Checking services"
+readonly PREPARATION_LABEL="Detecting IP addresses"
+readonly PROGRESS_SPINNER_FRAMES=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+readonly PROGRESS_BAR_WIDTH=24
+readonly PROGRESS_BAR_DONE="━"
+readonly PROGRESS_BAR_LEFT="─"
+
+readonly VERBOSE_TIME_FORMAT='%H:%M:%S'
+# shellcheck disable=SC2016 # expanded by bash on every trace line, not here
+readonly DEBUG_TRACE_PS4='+ [${BASHPID}] ${FUNCNAME[0]:-main}:${LINENO} '
+readonly DEBUG_LOG_TEMPLATE="ipregion-debug.XXXXXX"
+readonly DEBUG_RECORD_LIMIT=4096
+readonly DEBUG_UPLOAD_TIMEOUT=60
+readonly UPLOAD_SPEED_LIMIT=1024
+readonly UPLOAD_SPEED_TIME=10
+readonly X0_AT_NAME="x0.at"
+readonly X0_AT_UPLOAD_URL="https://x0.at"
+readonly LITTERBOX_NAME="litterbox"
+readonly LITTERBOX_UPLOAD_URL="https://litterbox.catbox.moe/resources/internals/api.php"
+readonly LITTERBOX_RETENTION="72h"
+readonly UPLOADED_URL_PATTERN='^https://[^[:space:]]+$'
+readonly UPLOAD_RESPONSE_NAME="upload-response"
+readonly UPLOAD_WRITE_OUT='%{http_code}'
+readonly MASKED_VALUE="masked"
+readonly MASKED_ASN="AS64496"
+readonly MASKED_ORG="Example Hosting"
+readonly MASKED_HOME="~"
+# shellcheck disable=SC2016 # awk program, $0 belongs to awk
+readonly DEBUG_LOG_FILTER='
+function replace_literal(text, from_text, to_text,    result, position) {
+  result = ""
+  while ((position = index(text, from_text)) > 0) {
+    result = result substr(text, 1, position - 1) to_text
+    text = substr(text, position + length(from_text))
+  }
+  return result text
+}
+
+function mask_keys(text,    result, matched, colon) {
+  result = ""
+  while (match(text, key_pattern)) {
+    matched = substr(text, RSTART, RLENGTH)
+    colon = index(matched, ":")
+    result = result substr(text, 1, RSTART - 1) substr(matched, 1, colon) "\"" masked "\""
+    text = substr(text, RSTART + RLENGTH)
+  }
+  return result text
+}
+
+function print_truncated() {
+  if (truncated > 0) {
+    printf "[... %d bytes truncated]\n", truncated
+  }
+  truncated = 0
+}
+
+BEGIN {
+  for (i = 1; i < ARGC; i += 2) {
+    from[++pairs] = ARGV[i]
+    to[pairs] = ARGV[i + 1]
+    delete ARGV[i]
+    delete ARGV[i + 1]
+  }
+  key_pattern = "\"(ip|query|ip_address|network|hostname|host|domain|org|isp|isp_name|ispName|as|asn|" \
+    "asname|organization|company|name|sponsor|autonomous_system_number|autonomous_system_organization|" \
+    "city|city_name|cityName|region|region_name|regionName|" \
+    "region_code|state|district|postal|zip|postal_code|latitude|longitude|lat|lon|loc|names|" \
+    "metro_code|accuracy_radius|timezone|time_zone)\" *: *(\"[^\"]*\"|-?[0-9.]+|[{][^}]*[}])"
+}
+
+/^\++ \[[0-9]+\] / {
+  print_truncated()
+  record_size = 0
+}
+
+{
+  line = $0
+  for (i = 1; i <= pairs; i++) {
+    line = replace_literal(line, from[i], to[i])
+  }
+  line = mask_keys(line)
+
+  if (record_size >= limit) {
+    truncated += length(line) + 1
+    next
+  }
+  if (record_size + length(line) > limit) {
+    truncated += record_size + length(line) - limit
+    line = substr(line, 1, limit - record_size)
+  }
+  record_size += length(line) + 1
+  print line
+}
+
+END {
+  print_truncated()
+}'
+
+readonly IPV4_IDENTITY_URLS=(
+  https://ipv4.icanhazip.com
+  https://api.ipify.org
+  https://ipv4.seeip.org
+  https://ipv4.wtfismyip.com/text
+)
+readonly IPV6_IDENTITY_URLS=(
+  https://ipv6.icanhazip.com
+  https://api6.ipify.org
+  https://ipv6.seeip.org
+  https://ipv6.wtfismyip.com/text
+)
+readonly PROC_NET_DIR="${IPREGION_PROC_NET_DIR:-/proc/net}"
+readonly IPV4_ROUTE_TABLE="$PROC_NET_DIR/route"
+readonly IPV6_ROUTE_TABLE="$PROC_NET_DIR/ipv6_route"
+readonly IPV4_DEFAULT_ROUTE="00000000"
+readonly IPV6_DEFAULT_ROUTE="00000000000000000000000000000000"
+readonly IPV6_DEFAULT_PREFIX_LENGTH="00"
+readonly ROUTE_FLAG_UP=1
+readonly ROUTE_FLAG_GATEWAY=2
+readonly IPV4_PATTERN='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+readonly IPV6_PATTERN='^[0-9A-Fa-f]{0,4}(:[0-9A-Fa-f]{0,4}){2,7}$'
+readonly IPV6_GROUP_COUNT=8
+
+readonly MAXMIND_DEMO_PAGE_URL="https://www.maxmind.com/en/geoip-web-services-demo"
+readonly MAXMIND_TOKEN_URL="https://www.maxmind.com/en/geoip2/demo/token"
+readonly MAXMIND_CITY_URL="https://geoip.maxmind.com/geoip/v2.1/city"
+readonly MAXMIND_CSRF_PATTERN='value="([0-9a-f]+)" name="csrf_token"'
+readonly RIPE_RDAP_IP_URL="https://rdap.db.ripe.net/ip"
+readonly RIPESTAT_PREFIX_OVERVIEW_URL="https://stat.ripe.net/data/prefix-overview/data.json"
+readonly RIPESTAT_RIR_STATS_COUNTRY_URL="https://stat.ripe.net/data/rir-stats-country/data.json"
+
+readonly IPV4_TRANSPORT=4
+readonly ANY_TRANSPORT=""
+readonly IPINFO_IPV4_URL="https://ipinfo.io/widget/demo"
+readonly IPINFO_IPV6_URL="https://v6.ipinfo.io/widget/demo"
+readonly CLOUDFLARE_TRACE_URL="https://www.cloudflare.com/cdn-cgi/trace"
+readonly CLOUDFLARE_COUNTRY_PATTERN=$'(^|\n)loc=([A-Z]{2})(\n|$)'
+readonly CLOUDFLARE_IP_PATTERN=$'(^|\n)ip=([^\n]+)(\n|$)'
+readonly IPREGISTRY_URL="https://api.ipregistry.co"
+readonly IPREGISTRY_KEY="sb69ksjcajfs4c"
+readonly IPREGISTRY_ORIGIN="https://ipregistry.co"
+readonly IPAPI_CO_URL="https://ipapi.co"
+readonly IPAPI_CO_REFERER="https://ipapi.co/"
+readonly IFCONFIG_CO_URL="https://ifconfig.co/country-iso"
+readonly IP2LOCATION_URL="https://api.ip2location.io/"
+readonly COUNTRY_IS_URL="https://api.country.is"
+readonly GEOAPIFY_URL="https://api.geoapify.com/v1/ipinfo"
+readonly GEOAPIFY_KEY="b8568cb9afc64fad861a69edbddb2658"
+readonly GEOJS_URL="https://get.geojs.io/v1/ip/country.json"
+readonly IPBASE_URL="https://api.ipbase.com/v2/info"
+readonly IPQUERY_URL="https://api.ipquery.io"
+readonly IPWHO_URL="https://ipwho.is"
+readonly IP_API_URL="https://demo.ip-api.com/json"
+readonly IP_API_ORIGIN="https://ip-api.com"
+
+readonly USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
+readonly GOOGLE_URL="https://accounts.google.com/v3/signin/identifier?flowName=GlifSetupAndroid"
+readonly GOOGLE_COUNTRY_PATTERN='name="region" value="([^"]*)"'
+readonly YOUTUBE_URL="https://www.youtube.com/sw.js_data"
+readonly YOUTUBE_JSON_PREFIX=")]}'"
+readonly TWITCH_URL="https://gql.twitch.tv/gql"
+readonly TWITCH_CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
+readonly TWITCH_QUERY='[{"operationName":"VerifyEmail_CurrentUser","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f9e7dcdf7e99c314c82d8f7f725fab5f99d1df3d7359b53c9ae122deec590198"}}}]'
+readonly CHATGPT_URL="https://ab.chatgpt.com/v1/initialize"
+readonly CHATGPT_STATSIG_API_KEY="client-zUdXdSTygXJdzoE0sWTkP8GKTVsUMF2IRM7ShVO2JAG"
+readonly CHATGPT_COUNTRY_PATTERN='"derived_fields":\{[^}]*"country":"([^"]*)"'
+readonly CLAUDE_URL="https://claude.ai/api/bootstrap"
+readonly CLAUDE_USER_AGENT="Claude com.anthropic.claude/1.261023.20 (Android 30) Claude/1.261023.20"
+readonly CLAUDE_PLATFORM_HEADER="Anthropic-Client-Platform: android"
+readonly NETFLIX_URL="https://api.fast.com/netflix/speedtest/v2?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=1"
+readonly SPOTIFY_URL="https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=142b583129b2df829de3656f9eb484e6"
+readonly SPOTIFY_CLIENT_ID="9a8d2f0ce77a4e248bb71fefcb557637"
+readonly REDDIT_NOT_FOUND_URL="https://www.reddit.com/api/v1/not-found"
+readonly REDDIT_COUNTRY_PATTERN='country code: ([A-Z]{2})'
+readonly DISNEY_PLUS_URL="https://disney.api.edge.bamgrid.com/graph/v1/device/graphql"
+readonly DISNEY_PLUS_API_KEY="ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
+# shellcheck disable=SC2016 # $registerDevice is a GraphQL variable, not a shell expansion
+readonly DISNEY_PLUS_QUERY='{"query":"mutation registerDevice($registerDevice: RegisterDeviceInput!) { registerDevice(registerDevice: $registerDevice) { __typename } }","variables":{"registerDevice":{"applicationRuntime":"android","attributes":{"operatingSystem":"Android","operatingSystemVersion":"13"},"deviceFamily":"android","deviceLanguage":"en","deviceProfile":"phone","devicePlatformId":"android"}},"operationName":"registerDevice"}'
+readonly TIKTOK_URL="https://www.tiktok.com/api/v1/web-cookie-privacy/config?appId=1988"
+readonly APPLE_URL="https://gspe1-ssl.ls.apple.com/pep/gcc"
+readonly STEAM_URL="https://store.steampowered.com"
+readonly STEAM_COUNTRY_PATTERN='steamCountry=([^%;]*)'
+readonly MICROSOFT_URL="https://login.live.com"
+readonly MICROSOFT_COUNTRY_PATTERN='"sRequestCountry":"([^"]*)"'
+readonly OOKLA_URL="https://www.speedtest.net/api/js/config-sdk"
+readonly JETBRAINS_URL="https://data.services.jetbrains.com/geo"
+readonly PLAYSTATION_URL="https://www.playstation.com"
+readonly PLAYSTATION_COUNTRY_PATTERN='[Cc]ookie: country=([^;]*)'
+
+readonly CLOUDFLARE_SPEED_META_URL="https://speed.cloudflare.com/meta"
+readonly CLOUDFLARE_SPEED_REFERER="https://speed.cloudflare.com"
+readonly YOUTUBE_CDN_MAPPING_URL="https://redirector.googlevideo.com/report_mapping?di=no"
+readonly YOUTUBE_CDN_NODE_PATTERN='=> ([^ ]+)'
+readonly GOOGLE_NODE_PATTERN='^([a-z]{3})[0-9]'
+readonly ISP_NODE_PATTERN='^[a-z]+-([a-z]{3})[0-9]'
+readonly GGC_NODE_PATTERN='^[a-z]{2}([a-z]{3})[a-z]-[a-z0-9]+$'
+readonly NETFLIX_CDN_URL_PATTERN='^https://ipv[46]-([a-z0-9]+-([a-z]{3})[0-9]+[a-z0-9-]*)\.'
+readonly AIRPORT_CODES_URL="https://www.air-port-codes.com/api/v1/single"
+readonly AIRPORT_CODES_KEY="96dc04b3fb"
+readonly AIRPORT_CODES_REFERER="https://www.air-port-codes.com/"
+
+readonly GOOGLE_SOCS_COOKIE="Cookie: SOCS=CAI"
+readonly ACCEPT_LANGUAGE_ENGLISH="Accept-Language: en-US,en;q=0.9"
+readonly YOUTUBE_INNERTUBE_BROWSE_URL="https://www.youtube.com/youtubei/v1/browse"
+readonly YOUTUBE_PREMIUM_QUERY='{"context":{"client":{"clientName":"MWEB","clientVersion":"2.20261020.00.00","hl":"en","gl":"US"}},"browseId":"SPunlimited"}'
+readonly YOUTUBE_PREMIUM_PURCHASE_MARKER="premiumPurchaseButtonRenderer"
+readonly YOUTUBE_WATCH_URL="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+readonly YOUTUBE_VIEWER_COOKIE_PREFIX="Cookie: SOCS=CAI; PREF=hl="
+readonly ACCEPT_LANGUAGE_PREFIX="Accept-Language: "
+readonly YOUTUBE_NO_ADS_SERVICE_PREFIX="YouTube No Ads"
+readonly YOUTUBE_PLAYER_RESPONSE_MARKER="ytInitialPlayerResponse"
+readonly YOUTUBE_VIDEO_AD_MARKER="SLOT_TYPE_PLAYER_BYTES"
+readonly YOUTUBE_COOKIE_JAR_PREFIX="youtube-cookies-"
+readonly SPOTIFY_SIGNUP_BLOCKED_STATUS_PATTERN='^(120|320)$'
+readonly DISNEY_PLUS_FORBIDDEN_MARKER="Forbidden location"
+readonly REDDIT_GUEST_URL="https://www.reddit.com"
+readonly GOOGLE_SEARCH_URL="https://www.google.com/search?q=cats"
+readonly GOOGLE_SEARCH_CAPTCHA_PATH="/sorry/"
+readonly GOOGLE_SEARCH_NO_JS_MARKER="enablejs"
+
+readonly GEMINI_WEB_REGIONS_URL="https://support.google.com/gemini/answer/13575153?hl=en"
+readonly GEMINI_WEB_REGIONS_FILTER='split("Supported countries &amp; territories")[1] // "" | [scan("<li>([^<]+)</li>")[0] | gsub("&[a-z]+;"; " ")]'
+readonly GEMINI_API_REGIONS_URL="https://ai.google.dev/gemini-api/docs/available-regions.md.txt"
+readonly GEMINI_API_REGIONS_FILTER='split("\n") | map(select(startswith("- ")) | .[2:])'
+readonly CLDR_TERRITORIES_URL="https://cdn.jsdelivr.net/npm/cldr-localenames-full/main/en/territories.json"
+# shellcheck disable=SC2016 # $code, $regions, $yes and $no are jq variables, not shell expansions
+readonly GEMINI_MATCH_FILTER='
+def stopwords: ["the", "of", "and", "republic", "island", "islands", "saint", "st"];
+def words: ascii_downcase | [splits("[^\\p{L}]+")] | map(select(. != "" and (IN(stopwords[]) | not))) | unique;
+def names_missing_in_cldr: {CD: ["Democratic Republic of the Congo"], MO: ["Macau"], UM: ["United States Minor Outlying Islands"]}[$code] // [];
+(.main.en.localeDisplayNames.territories | to_entries | map(select(.key | startswith($code)) | .value)) + names_missing_in_cldr
+| map(words)
+| if any(IN($regions[] | words)) then $yes else $no end'
+readonly OPENAI_API_URL="https://api.openai.com/v1/models"
+readonly OPENAI_API_REGION_BLOCKED_MARKER="unsupported_country_region_territory"
+readonly ANTHROPIC_API_URL="https://api.anthropic.com/v1/models"
+readonly ANTHROPIC_API_REGION_BLOCKED_MARKER="Request not allowed"
+readonly GROK_API_URL="https://api.x.ai/v1/models"
+readonly GROK_API_REGION_BLOCKED_MARKER="not available in your region"
+readonly QWEN_API_URL="https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models"
+readonly QWEN_CN_API_URL="https://dashscope.aliyuncs.com/compatible-mode/v1/models"
+readonly KIMI_API_URL="https://api.moonshot.ai/v1/models"
+readonly KIMI_CN_API_URL="https://api.moonshot.cn/v1/models"
+readonly GLM_API_URL="https://api.z.ai/api/paas/v4/models"
+readonly GLM_CN_API_URL="https://open.bigmodel.cn/api/paas/v4/models"
+readonly MINIMAX_API_URL="https://api.minimax.io/v1/models"
+readonly MINIMAX_CN_API_URL="https://api.minimaxi.com/v1/models"
+readonly DOUBAO_API_URL="https://ark.cn-beijing.volces.com/api/v3/models"
+readonly SILICONFLOW_API_URL="https://api.siliconflow.cn/v1/models"
+readonly DEEPSEEK_API_URL="https://api.deepseek.com/models"
+
+readonly CURL_EXIT_OK=0
+readonly CURL_EXIT_DNS=6
+readonly CURL_EXIT_CONNECT=7
+readonly CURL_EXIT_TIMEOUT=28
+readonly CURL_EXIT_TLS_HANDSHAKE=35
+readonly CURL_EXIT_TLS_CERTIFICATE=60
+readonly CURL_EXIT_PROXY=97
+readonly HTTP_OK=200
+readonly HTTP_CREATED=201
+readonly HTTP_UNAUTHORIZED=401
+readonly HTTP_PAYMENT_REQUIRED=402
+readonly HTTP_FORBIDDEN=403
+readonly HTTP_TOO_MANY_REQUESTS=429
+
+readonly REASON_DNS="DNS error"
+readonly REASON_CONNECT="connection failed"
+readonly REASON_TIMEOUT="timeout"
+readonly REASON_TLS="TLS error"
+readonly REASON_PROXY="proxy error"
+readonly REASON_CAPTCHA="captcha"
+readonly REASON_PROXY_PICKED="proxy picked IPv"
+readonly REASON_NETWORK="network error"
+readonly REASON_FORBIDDEN="access denied"
+readonly REASON_RATE_LIMITED="rate limited"
+readonly REASON_SERVER_ERROR="server error"
+readonly REASON_UNEXPECTED_RESPONSE="unexpected response"
+readonly REASON_DAILY_LIMIT="daily limit used up"
+readonly REASON_NO_DEMO_TOKEN="no demo token"
+readonly REASON_NO_IPV6="no IPv6"
+readonly REASON_VIDEO_ADS="video ads"
+
+readonly GROUP_PLATFORMS="platforms"
+readonly PLATFORMS_CHECKS=(
+  check_platforms_google
+  check_platforms_youtube
+  check_platforms_twitch
+  check_platforms_chatgpt
+  check_platforms_claude
+  check_platforms_netflix
+  check_platforms_spotify
+  check_platforms_reddit
+  check_platforms_disney_plus
+  check_platforms_tiktok
+  check_platforms_apple
+  check_platforms_steam
+  check_platforms_microsoft
+  check_platforms_ookla
+  check_platforms_jetbrains
+  check_platforms_playstation
+)
+
+readonly GROUP_CDN="cdn"
+readonly CDN_CHECKS=(
+  check_cdn_cloudflare
+  check_cdn_youtube
+  check_cdn_netflix
+)
+
+readonly GROUP_AVAILABILITY="availability"
+readonly AVAILABILITY_CHECKS=(
+  check_availability_youtube_premium
+  check_availability_youtube_no_ads
+  check_availability_google_search
+  check_availability_spotify_signup
+  check_availability_disney_plus
+  check_availability_reddit_guest
+)
+
+readonly GROUP_AI="ai"
+readonly AI_CHECKS=(
+  check_ai_gemini_web
+  check_ai_gemini_api
+  check_ai_openai_api
+  check_ai_anthropic_api
+  check_ai_grok_api
+  check_ai_qwen_api
+  check_ai_qwen_cn_api
+  check_ai_kimi_api
+  check_ai_kimi_cn_api
+  check_ai_glm_api
+  check_ai_glm_cn_api
+  check_ai_minimax_api
+  check_ai_minimax_cn_api
+  check_ai_doubao_api
+  check_ai_siliconflow_api
+  check_ai_deepseek_api
+)
+
+readonly GROUP_GEOIP="geoip"
+readonly GEOIP_CHECKS=(
+  check_geoip_maxmind
+  check_geoip_ripe
+  check_geoip_ipinfo_io
+  check_geoip_cloudflare
+  check_geoip_ipregistry_co
+  check_geoip_ipapi_co
+  check_geoip_ifconfig_co
+  check_geoip_ip2location_io
+  check_geoip_country_is
+  check_geoip_geoapify_com
+  check_geoip_geojs_io
+  check_geoip_ipbase_com
+  check_geoip_ipquery_io
+  check_geoip_ipwho_is
+  check_geoip_ip_api_com
+)
+
+readonly ALL_CHECKS=(
+  "${PLATFORMS_CHECKS[@]}"
+  "${CDN_CHECKS[@]}"
+  "${AVAILABILITY_CHECKS[@]}"
+  "${AI_CHECKS[@]}"
+  "${GEOIP_CHECKS[@]}"
+)
+
+readonly REASON_DIFFERENT_COUNTRY="different country"
+readonly ATTENTION_COLLAPSE_MIN=3
+# shellcheck disable=SC2016 # $yes, $platforms and $geoip are jq variables, not shell expansions
+readonly VERDICT_FILTER='
+def country_counts: group_by(.country) | map({country: .[0].country, count: length});
+map(select(.status == $yes and (.group == $platforms or .group == $geoip)))
+| group_by(.group)
+| (map(length) | reduce .[] as $total (1; . * $total)) as $common_total
+| map(($common_total / length) as $scale | country_counts | map(.weight = .count * $scale))
+| add // []
+| group_by(.country)
+| map({country: .[0].country, weight: (map(.weight) | add)})
+| (map(.weight) | max) as $top_weight
+| map(select(.weight == $top_weight) | .country)
+| .[]'
+# shellcheck disable=SC2016 # $daily_limit, $limit, $unknown and the other names are jq variables, not shell expansions
+readonly GROUP_ROWS_FILTER='
+def cell:
+  if .reason == $daily_limit then $limit
+  elif .status == $yes and .country != "" then .country
+  elif .status == "" then $unknown
+  else .status end;
+def result_of($ip_version): (map(select(.ip_version == $ip_version)) | first) // first;
+map(select(.group == $group)) as $rows
+| reduce ($rows[].service) as $service ([]; if any(.[]; . == $service) then . else . + [$service] end)
+| .[] as $service
+| ($rows | map(select(.service == $service))) as $results
+| $service, ($results | result_of("4") | cell), ($results | result_of("6") | cell)'
+# shellcheck disable=SC2016 # $cdn, $unknown and $service are jq variables, not shell expansions
+readonly CDN_ROWS_FILTER='
+def result_of($ip_version): (map(select(.ip_version == $ip_version)) | first) // first;
+def edge: (if .status == "" then $unknown else .status end), .country, .iata, .node;
+map(select(.group == $cdn)) as $rows
+| reduce ($rows[].service) as $service ([]; if any(.[]; . == $service) then . else . + [$service] end)
+| .[] as $service
+| ($rows | map(select(.service == $service))) as $results
+| $service, ($results | result_of("4") | edge), ($results | result_of("6") | edge)'
+# shellcheck disable=SC2016 # $geoip and $yes are jq variables, not shell expansions
+readonly GEOIP_MAJORITY_FILTER='
+map(select(.group == $geoip and .status == $yes and .country != ""))
+| group_by(.country)
+| max_by(length)
+| .[0].country // empty'
+# shellcheck disable=SC2016 # $geoip, $reference and the other names are jq variables, not shell expansions
+readonly GEOIP_AGREEMENT_FILTER='
+map(select(.group == $geoip))
+| group_by(.service)
+| map(select(all(.[]; .reason == $daily_limit) | not)) as $counted
+| ($counted | map(map(select(.status == $yes and .country != "") | .country) | select(length > 0 and all(. == $reference))) | length),
+  ($counted | length),
+  (length > ($counted | length))'
+# shellcheck disable=SC2016 # $geoip, $reference and $yes are jq variables, not shell expansions
+readonly GEOIP_DEVIATIONS_FILTER='
+map(select(.group == $geoip and .status == $yes and .country != "" and .country != $reference))
+| reduce .[] as $result ([];
+    (map(.country == $result.country and .ip_version == $result.ip_version) | index(true)) as $index
+    | if $index == null then . + [{country: $result.country, ip_version: $result.ip_version, services: [$result.service]}]
+      else .[$index].services += [$result.service] end)
+| .[]
+| .country, .ip_version, (.services | length), .services[]'
+# shellcheck disable=SC2016 # $verdict, $geoip and the other names are jq variables, not shell expansions
+readonly NEEDS_ATTENTION_DEFINITION='
+def is_failed:
+  if .group == $cdn or .status == $none or .reason == $daily_limit or .reason == $video_ads then false
+  elif .status == "" then true
+  elif .group == $geoip then false
+  elif .country != "" then $verdict != "" and .country != $verdict
+  else .status != $yes end;
+def needs_attention:
+  is_failed and (.status == "" or .country != "");'
+# shellcheck disable=SC2016 # $verdict and $geoip are jq variables, not shell expansions
+readonly ABNORMAL_CHECKS_FILTER="$NEEDS_ATTENTION_DEFINITION"'
+def differs_from_verdict:
+  .group == $geoip and .country != "" and $verdict != "" and .country != $verdict;
+[.[] | select(is_failed or differs_from_verdict) | [.group, .service]] | unique | length'
+# shellcheck disable=SC2016 # $collapse_min, $different_country and the other names are jq variables, not shell expansions
+readonly ATTENTION_FILTER="$NEEDS_ATTENTION_DEFINITION"'
+def severity:
+  if .country != "" then 0 else 1 end;
+to_entries
+| map(.value + {order: .key} | select(needs_attention))
+| map(if .status == $yes then .reason = $different_country else . end)
+| group_by([.group, .service, .country, .status, .reason])
+| map(.[0] + {ip_version: (if length == 2 then "both" else .[0].ip_version end)})
+| group_by([.country, .status, .reason, .ip_version])
+| map(if length >= $collapse_min then sort_by(.order) | [.[0] + {services: map(.service)}] else map(. + {services: [.service]}) end)
+| add // []
+| sort_by([(.services | length) >= $collapse_min, severity, .order])
+| map({services, ip_version, country, status, reason})'
+readonly JSON_VERSION=2
+readonly JSON_SCHEMA_URL="https://raw.githubusercontent.com/vernette/ipregion/master/schema/ipregion-v2.schema.json"
+# shellcheck disable=SC2016 # $ip, $asn and the other names are jq variables, not shell expansions
+readonly JSON_ADDRESS_FILTER='
+def nullable: if . == "" then null else . end;
+{
+  ip: $ip,
+  asn: ($asn | if . == "" then null else tonumber end),
+  org: ($org | nullable),
+  registered: ($registered | nullable),
+  maxmind_failure: ($maxmind_failure | nullable)
+}'
+# shellcheck disable=SC2016 # $schema, $version, $availability and the other names are jq variables, not shell expansions
+readonly JSON_REPORT_FILTER='
+def nullable: if . == "" then null else . end;
+def access:
+  if (.group == $availability or .group == $ai) and .status != $none then .status | nullable else null end;
+def protocol_result:
+  {country: (.country | nullable), access: access, reason: (.reason | nullable)}
+  + if has("iata") then {iata: (.iata | nullable), node: (.node | nullable)} else {} end;
+def protocol_entry($rows; $ip_version):
+  first($rows[] | select(.ip_version == $ip_version) | protocol_result) // null;
+def service_entries($results; $group):
+  [$results[] | select(.group == $group)] as $rows
+  | reduce $rows[].id as $id ([]; if any(.[]; . == $id) then . else . + [$id] end)
+  | map(. as $id | [$rows[] | select(.id == $id)] as $service_rows | {
+      id: $id,
+      service: $service_rows[0].service,
+      ipv4: protocol_entry($service_rows; "4"),
+      ipv6: protocol_entry($service_rows; "6"),
+      proxy: protocol_entry($service_rows; $proxy)
+    });
+. as $results
+| {
+    "$schema": $schema,
+    version: $version,
+    ipv4: $ipv4,
+    ipv6: $ipv6,
+    verdict: {country: ($verdict | nullable), tied: $tied},
+    attention: ($attention | map({
+      services,
+      ip_version,
+      country: (.country | nullable),
+      access: (if .status == $yes or .status == $none then null else .status | nullable end),
+      reason: (.reason | nullable)
+    })),
+    results: (reduce $groups[] as $group ({}; .[$group] = service_entries($results; $group)))
+  }'
+
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  readonly C_TITLE=$'\033[1;36m'
+  readonly C_BADGE=$'\033[1;30;46m'
+  readonly C_BADGE_FAIR=$'\033[1;30;43m'
+  readonly C_BADGE_POOR=$'\033[1;30;41m'
+  readonly C_BAR=$'\033[0;36m'
+  readonly C_BAR_FAIR=$'\033[0;33m'
+  readonly C_BAR_POOR=$'\033[0;31m'
+  readonly C_VALUE=$'\033[1m'
+  readonly C_DIM=$'\033[0;90m'
+  readonly C_YES=$'\033[1;32m'
+  readonly C_NO=$'\033[1;31m'
+  readonly C_WARN=$'\033[1;33m'
+  readonly C_RESET=$'\033[0m'
+else
+  readonly C_TITLE=""
+  readonly C_BADGE=""
+  readonly C_BADGE_FAIR=""
+  readonly C_BADGE_POOR=""
+  readonly C_BAR=""
+  readonly C_BAR_FAIR=""
+  readonly C_BAR_POOR=""
+  readonly C_VALUE=""
+  readonly C_DIM=""
+  readonly C_YES=""
+  readonly C_NO=""
+  readonly C_WARN=""
+  readonly C_RESET=""
+fi
+
+if [[ -t 2 && -z "${NO_COLOR:-}" ]]; then
+  readonly M_ERROR=$'\033[1;31m'
+  readonly M_WARN=$'\033[1;33m'
+  readonly M_ASK=$'\033[1;36m'
+  readonly M_ACCENT=$'\033[0;36m'
+  readonly M_VALUE=$'\033[1m'
+  readonly M_DIM=$'\033[0;90m'
+  readonly M_RESET=$'\033[0m'
+else
+  readonly M_ERROR=""
+  readonly M_WARN=""
+  readonly M_ASK=""
+  readonly M_ACCENT=""
+  readonly M_VALUE=""
+  readonly M_DIM=""
+  readonly M_RESET=""
+fi
+
 VERBOSE=false
+DEBUG=false
+ASSUME_YES=false
+MISSING_COMMANDS=()
+PACKAGE_MANAGER=""
+ROOT_COMMAND=()
 JSON_OUTPUT=false
-GROUPS_TO_SHOW="all"
-CURL_TIMEOUT=5
-CURL_RETRIES=1
+REQUESTED_GROUPS=()
+SELECTED_GROUPS=("${SERVICE_GROUPS[@]}")
+REQUESTED_SERVICES=()
+SELECTED_CHECKS=()
+CURL_TIMEOUT="$DEFAULT_TIMEOUT"
+YOUTUBE_LANG="$DEFAULT_YOUTUBE_LANG"
 IPV4_ONLY=false
 IPV6_ONLY=false
 PROXY_ADDR=""
 INTERFACE_NAME=""
-DEBUG=false
-CACHE_POLL_INTERVAL=0.1
-PROGRESS_POLL_INTERVAL=0.2
-PROGRESS_LABELS_WIDTH=50
+MAIN_INTERFACE=""
+SHOW_EMOJI=false
+COUNTRY_EXTRA=0
+GEOIP_BREAKDOWN=false
+SHOW_ATTENTION=true
+VERDICT=""
+VERDICT_TIED_COUNTRIES=()
+ATTENTION="[]"
+CHECKS_TOTAL=0
+CHECKS_NORMAL=0
+WORK_DIR=""
+EXTERNAL_IPV4=""
+EXTERNAL_IPV6=""
+CURL_ARGS=()
+MAXMIND_TOKEN=""
+MAXMIND_TOKEN_FAILURE=""
+JOB_COUNT=0
+JOB_SLOTS_FD=""
+PROGRESS_FRAME=0
+RESULTS=""
+DEBUG_TRACE_FILE=""
+DEBUG_TRACE_DIR=""
+DEBUG_LOG_FILE=""
+DEBUG_MASKS=()
+HEADER_IP_VERSIONS=()
+HEADER_IP_VALUES=()
+HEADER_NETWORKS=()
+HEADER_EXIT_LABEL=""
+HEADER_VALUE_WIDTH=0
+HEADER_NETWORK_WIDTH=0
+LEFT_CARD_WIDTH=0
+RIGHT_CARD_WIDTH=0
+FULL_CARD_WIDTH=0
+RIGHT_COLUMN_START=0
+RIGHT_COLUMN_WIDTH=0
+GEOIP_LINE_WIDTH=0
+CHECKS_BAR_WIDTH=0
+declare -gA REGISTRATION_ASN=()
+declare -gA REGISTRATION_ORG=()
+declare -gA REGISTRATION_COUNTRY=()
+declare -gA REGISTRATION_MAXMIND_FAILURE=()
 
-RESULT_JSON=""
-ARR_PRIMARY=()
-ARR_CUSTOM=()
-ARR_CDN=()
+use_utf8_locale() {
+  local probe="$SYMBOL_YES"
 
-COLOR_HEADER="1;36"
-COLOR_SERVICE="1;32"
-COLOR_HEART="1;31"
-COLOR_URL="1;90"
-COLOR_ASN="1;33"
-COLOR_TABLE_HEADER="1;97"
-COLOR_TABLE_VALUE="1"
-COLOR_NULL="0;90"
-COLOR_ERROR="1;31"
-COLOR_WARN="1;33"
-COLOR_INFO="1;36"
-COLOR_RESET="0"
+  if ((${#probe} == 1)); then
+    return
+  fi
 
-LOG_INFO="INFO"
-LOG_WARN="WARNING"
-LOG_ERROR="ERROR"
+  export LC_ALL="$UTF8_LOCALE" 2>/dev/null || true
+}
 
-STATUS_NA="N/A"
-STATUS_DENIED="Denied"
-STATUS_RATE_LIMIT="Rate-limit"
-STATUS_SERVER_ERROR="Server error"
+print_error() {
+  local message="$1"
 
-declare -A DEPENDENCIES=(
-  [jq]="jq"
-  [curl]="curl"
-  [column]="util-linux"
-  [nslookup]="bind-utils"
-)
+  printf '%sError:%s %s\n' "$M_ERROR" "$M_RESET" "$message" >&2
+}
 
-declare -A PACKAGE_MAPPING=(
-  ["apt:nslookup"]="dnsutils"
-  ["apt:column"]="bsdmainutils"
-  ["pacman:nslookup"]="bind"
-  ["dnf:nslookup"]="bind-utils"
-  ["yum:nslookup"]="bind-utils"
-  ["termux:column"]="util-linux"
-)
+print_warning() {
+  local message="$1"
 
-declare -A PRIMARY_SERVICES=(
-  [MAXMIND]="maxmind.com|geoip.maxmind.com|/geoip/v2.1/city/me"
-  [RIPE]="rdap.db.ripe.net|rdap.db.ripe.net|/ip/{ip}"
-  [IPINFO_IO]="ipinfo.io|ipinfo.io|/widget/demo/{ip}"
-  [IPREGISTRY]="ipregistry.co|api.ipregistry.co|/{ip}?hostname=true&key=sb69ksjcajfs4c"
-  [IPAPI_CO]="ipapi.co|ipapi.co|/{ip}/json"
-  [CLOUDFLARE]="cloudflare.com|speed.cloudflare.com|/meta"
-  [IFCONFIG_CO]="ifconfig.co|ifconfig.co|/country-iso?ip={ip}|plain"
-  [IP2LOCATION_IO]="ip2location.io|api.ip2location.io|/?ip={ip}"
-  [IPLOCATION_COM]="iplocation.com|iplocation.com"
-  [COUNTRY_IS]="country.is|api.country.is|/{ip}"
-  [GEOAPIFY_COM]="geoapify.com|api.geoapify.com|/v1/ipinfo?&ip={ip}&apiKey=b8568cb9afc64fad861a69edbddb2658"
-  [GEOJS_IO]="geojs.io|get.geojs.io|/v1/ip/country.json?ip={ip}"
-  [IPAPI_IS]="ipapi.is|api.ipapi.is|/?q={ip}"
-  [IPBASE_COM]="ipbase.com|api.ipbase.com|/v2/info?ip={ip}"
-  [IPQUERY_IO]="ipquery.io|api.ipquery.io|/{ip}"
-  [IPWHO_IS]="ipwho.is|ipwho.is|/{ip}"
-  [IPAPI_COM]="ip-api.com|demo.ip-api.com|/json/{ip}?fields=countryCode"
-)
+  printf '%sWarning:%s %s\n' "$M_WARN" "$M_RESET" "$message" >&2
+}
 
-PRIMARY_SERVICES_ORDER=(
-  "MAXMIND"
-  "RIPE"
-  "IPINFO_IO"
-  "CLOUDFLARE"
-  "IPREGISTRY"
-  "IPAPI_CO"
-  "IFCONFIG_CO"
-  "IP2LOCATION_IO"
-  "IPLOCATION_COM"
-  "COUNTRY_IS"
-  "GEOAPIFY_COM"
-  "GEOJS_IO"
-  "IPAPI_IS"
-  "IPBASE_COM"
-  "IPQUERY_IO"
-  "IPWHO_IS"
-  "IPAPI_COM"
-)
+print_note() {
+  local message="$1"
 
-declare -A PRIMARY_SERVICES_CUSTOM_HANDLERS=(
-  [IPLOCATION_COM]="lookup_iplocation_com"
-)
+  printf '%s%s%s\n' "$M_DIM" "$message" "$M_RESET" >&2
+}
 
-declare -A SERVICE_HEADERS=(
-  [IPREGISTRY]="Origin: https://ipregistry.co"
-  [MAXMIND]="Referer: https://www.maxmind.com"
-  [IPAPI_COM]="Origin: https://ip-api.com"
-  [CLOUDFLARE]="Referer: https://speed.cloudflare.com"
-)
+ask_yes_no() {
+  local question="$1"
+  local answer
 
-declare -A CUSTOM_SERVICES=(
-  [GOOGLE]="Google"
-  [YOUTUBE]="YouTube"
-  [TWITCH]="Twitch"
-  [CHATGPT]="ChatGPT"
-  [NETFLIX]="Netflix"
-  [SPOTIFY]="Spotify"
-  [REDDIT]="Reddit"
-  [DISNEY_PLUS]="Disney+"
-  [GEMINI_SUPPORTED]="Gemini Supported"
-  [REDDIT_GUEST_ACCESS]="Reddit (Guest Access)"
-  [YOUTUBE_PREMIUM]="YouTube Premium"
-  [GOOGLE_SEARCH_CAPTCHA]="Google Search Captcha"
-  [SPOTIFY_SIGNUP]="Spotify Signup"
-  [DISNEY_PLUS_ACCESS]="Disney+ Access"
-  [APPLE]="Apple"
-  [STEAM]="Steam"
-  [TIKTOK]="Tiktok"
-  [OOKLA_SPEEDTEST]="Ookla Speedtest"
-  [JETBRAINS]="JetBrains"
-  [PLAYSTATION]="PlayStation"
-  [MICROSOFT]="Microsoft"
-)
-
-CUSTOM_SERVICES_ORDER=(
-  "GOOGLE"
-  "YOUTUBE"
-  "TWITCH"
-  "CHATGPT"
-  "NETFLIX"
-  "SPOTIFY"
-  "REDDIT"
-  "DISNEY_PLUS"
-  "GEMINI_SUPPORTED"
-  "REDDIT_GUEST_ACCESS"
-  "YOUTUBE_PREMIUM"
-  "GOOGLE_SEARCH_CAPTCHA"
-  "SPOTIFY_SIGNUP"
-  "DISNEY_PLUS_ACCESS"
-  "APPLE"
-  "STEAM"
-  "TIKTOK"
-  "OOKLA_SPEEDTEST"
-  "JETBRAINS"
-  "PLAYSTATION"
-  "MICROSOFT"
-)
-
-declare -A CUSTOM_SERVICES_HANDLERS=(
-  [GOOGLE]="lookup_google"
-  [YOUTUBE]="lookup_youtube"
-  [GEMINI_SUPPORTED]="lookup_gemini_supported"
-  [TWITCH]="lookup_twitch"
-  [CHATGPT]="lookup_chatgpt"
-  [NETFLIX]="lookup_netflix"
-  [SPOTIFY]="lookup_spotify"
-  [REDDIT]="lookup_reddit"
-  [DISNEY_PLUS]="lookup_disney_plus"
-  [REDDIT_GUEST_ACCESS]="lookup_reddit_guest_access"
-  [YOUTUBE_PREMIUM]="lookup_youtube_premium"
-  [GOOGLE_SEARCH_CAPTCHA]="lookup_google_search_captcha"
-  [SPOTIFY_SIGNUP]="lookup_spotify_signup"
-  [DISNEY_PLUS_ACCESS]="lookup_disney_plus_access"
-  [APPLE]="lookup_apple"
-  [STEAM]="lookup_steam"
-  [TIKTOK]="lookup_tiktok"
-  [CLOUDFLARE_CDN]="lookup_cloudflare_cdn"
-  [YOUTUBE_CDN]="lookup_youtube_cdn"
-  [NETFLIX_CDN]="lookup_netflix_cdn"
-  [OOKLA_SPEEDTEST]="lookup_ookla_speedtest"
-  [JETBRAINS]="lookup_jetbrains"
-  [PLAYSTATION]="lookup_playstation"
-  [MICROSOFT]="lookup_microsoft"
-)
-
-declare -A CDN_SERVICES=(
-  [CLOUDFLARE_CDN]="Cloudflare CDN"
-  [YOUTUBE_CDN]="YouTube CDN"
-  [NETFLIX_CDN]="Netflix CDN"
-)
-
-CDN_SERVICES_ORDER=(
-  "CLOUDFLARE_CDN"
-  "YOUTUBE_CDN"
-  "NETFLIX_CDN"
-)
-
-declare -A SERVICE_GROUPS=(
-  [primary]="${PRIMARY_SERVICES_ORDER[*]}"
-  [custom]="${CUSTOM_SERVICES_ORDER[*]}"
-  [cdn]="${CDN_SERVICES_ORDER[*]}"
-)
-
-EXCLUDED_SERVICES=(
-  # "IPINFO_IO"
-  # "IPREGISTRY"
-  # "IPAPI_CO"
-  "GOOGLE_SEARCH_CAPTCHA"
-)
-
-IDENTITY_SERVICES=(
-  "ident.me"
-  "ifconfig.me"
-  "api64.ipify.org"
-  "ifconfig.co"
-)
-
-IPV6_OVER_IPV4_SERVICES=(
-  "IPINFO_IO"
-  "IPAPI_IS"
-  "IPLOCATION_COM"
-  "IPWHO_IS"
-  "IPAPI_COM"
-)
-
-color() {
-  local color_name="$1"
-  local text="$2"
-  local code
-
-  case "$color_name" in
-    HEADER) code="$COLOR_HEADER" ;;
-    SERVICE) code="$COLOR_SERVICE" ;;
-    HEART) code="$COLOR_HEART" ;;
-    URL) code="$COLOR_URL" ;;
-    ASN) code="$COLOR_ASN" ;;
-    TABLE_HEADER) code="$COLOR_TABLE_HEADER" ;;
-    TABLE_VALUE) code="$COLOR_TABLE_VALUE" ;;
-    NULL) code="$COLOR_NULL" ;;
-    ERROR) code="$COLOR_ERROR" ;;
-    WARN) code="$COLOR_WARN" ;;
-    INFO) code="$COLOR_INFO" ;;
-    RESET) code="$COLOR_RESET" ;;
-    *) code="$color_name" ;;
+  printf '%s%s%s %s[y/N]%s ' "$M_ASK" "$question" "$M_RESET" "$M_DIM" "$M_RESET" >/dev/tty
+  read -r answer </dev/tty
+  case "$answer" in
+    y | Y | yes) return ;;
   esac
 
-  printf "\033[%sm%s\033[0m" "$code" "$text"
+  return 1
 }
 
-bold() {
-  local text="$1"
-  printf "\033[1m%s\033[0m" "$text"
-}
-
-get_timestamp() {
-  local format="$1"
-  date +"$format"
-}
-
-pause() {
-  local seconds="$1"
-  read -r -t "$seconds" -u "$SLEEP_FD" || true
-}
-
-log() {
-  local log_level="$1"
-  local message="${*:2}"
-  local timestamp
-
-  if [[ "$VERBOSE" == true ]]; then
-    local color_code
-
-    timestamp=$(get_timestamp "%d.%m.%Y %H:%M:%S")
-
-    case "$log_level" in
-      "$LOG_ERROR") color_code=ERROR ;;
-      "$LOG_WARN") color_code=WARN ;;
-      "$LOG_INFO") color_code=INFO ;;
-      *) color_code=RESET ;;
-    esac
-
-    printf "[%s] [%s]: %s\n" "$timestamp" "$(color $color_code "$log_level")" "$message" >&2
-  fi
-}
-
-error_exit() {
+die() {
   local message="$1"
-  local exit_code="${2:-1}"
-  printf "%s %s\n" "$(color ERROR '[ERROR]')" "$(color TABLE_HEADER "$message")" >&2
-  display_help
-  exit "$exit_code"
+
+  print_error "$message"
+  printf '\n' >&2
+  print_note "Run $SCRIPT_NAME --help for usage"
+  exit 1
 }
 
-display_help() {
-  cat <<EOF
+log_verbose() {
+  local message="$1"
 
+  if [[ "$VERBOSE" != true ]]; then
+    return
+  fi
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    message="${message//"$EXTERNAL_IPV4"/"$(mask_ipv4 "$EXTERNAL_IPV4")"}"
+  fi
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    message="${message//"$EXTERNAL_IPV6"/"$(mask_ipv6 "$EXTERNAL_IPV6")"}"
+  fi
+  printf "[%($VERBOSE_TIME_FORMAT)T] %s\n" -1 "$message" >&2
+}
+
+usage() {
+  cat <<EOF
 Usage: $SCRIPT_NAME [OPTIONS]
 
-IPRegion — determines your IP geolocation using various GeoIP services and popular websites
+Shows how GeoIP databases, popular platforms, CDNs and AI services see this
+host over IPv4 and IPv6.
 
 Options:
-  -h, --help           Show this help message and exit
-  -v, --verbose        Enable verbose logging
-  -d, --debug          Enable full debug trace and save full trace to file and upload it to 0x0.st
-  -j, --json           Output results in JSON format
-  -g, --group GROUP    Run only one group: 'primary', 'custom', 'cdn', or 'all' (default: all)
-  -t, --timeout SEC    Set curl request timeout in seconds (default: $CURL_TIMEOUT)
-  -4, --ipv4           Test only IPv4
-  -6, --ipv6           Test only IPv6
-  -p, --proxy ADDR     Use SOCKS5 proxy (format: host:port)
-  -i, --interface IF   Use specified network interface (e.g. eth1)
+  -h, --help             Show this help and exit
+  -v, --verbose          Log every step to stderr
+  -d, --debug            Save a masked trace to a file and offer to upload it
+  -y, --yes              Install missing curl and jq and upload the debug
+                         log without asking
+  -j, --json             Print results as JSON
+  -g, --group GROUPS     Check only these groups, comma-separated or repeated:
+                         ${SERVICE_GROUPS[*]} (default: $ALL_GROUPS)
+  -s, --service NAMES    Check only these services, comma-separated or repeated:
+                         [GROUP/]SERVICE, names from --list-services
+      --list-services    List service names and exit
+  -t, --timeout SEC      Request timeout in seconds (default: $DEFAULT_TIMEOUT)
+  -4, --ipv4             Check IPv4 only
+  -6, --ipv6             Check IPv6 only
+  -p, --proxy HOST:PORT  Send requests through a SOCKS5 proxy
+  -i, --interface IFACE  Send requests through a network interface
+      --emoji            Show country flags and group icons
+      --geoip-breakdown  Show every GeoIP service instead of the summary
+      --no-attention     Hide the Attention card
+      --youtube-lang LANG
+                         Viewer's YouTube language for YouTube No Ads
+                         (default: $DEFAULT_YOUTUBE_LANG)
 
-Examples:
-  $SCRIPT_NAME                       # Check all services with default settings
-  $SCRIPT_NAME -g primary            # Check only GeoIP services
-  $SCRIPT_NAME -g custom             # Check only popular websites
-  $SCRIPT_NAME -g cdn                # Check only CDN endpoints
-  $SCRIPT_NAME -4                    # Test only IPv4
-  $SCRIPT_NAME -6                    # Test only IPv6
-  $SCRIPT_NAME -p 127.0.0.1:1080     # Use SOCKS5 proxy
-  $SCRIPT_NAME -i eth1               # Use network interface eth1
-  $SCRIPT_NAME -j                    # Output result as JSON
-  $SCRIPT_NAME -v                    # Enable verbose logging
-  $SCRIPT_NAME -d                    # Enable debug and save full trace to file and upload it to 0x0.st
-
+More: $SCRIPT_URL
 EOF
 }
 
-setup_debug() {
-  if [[ "$DEBUG" != true ]]; then
-    return 1
-  fi
+require_option_value() {
+  local option="$1"
+  local remaining="$2"
 
-  exec 3>&1 4>&2
-
-  exec 1> >(tee -a "$DEBUG_LOG_FILE" >&3)
-  exec 2> >(tee -a "$DEBUG_LOG_FILE" >&4)
-
-  set -x
-  return 0
-}
-
-grep_wrapper() {
-  local grep_args=()
-
-  if [[ "$1" == "--perl" ]]; then
-    grep_args+=("-oP")
-    shift
-  fi
-
-  grep "${grep_args[@]}" "$@"
-}
-
-upload_debug() {
-  local ip_version=4
-  local user_agent="ipregion-script/1.0 (github.com/vernette/ipregion)"
-
-  curl_wrapper POST "https://0x0.st" \
-    --user-agent "$user_agent" \
-    --form "file=@$DEBUG_LOG_FILE" \
-    --form "secret=" \
-    --form "expires=24" \
-    --ip-version "$ip_version"
-}
-
-cleanup_debug() {
-  local debug_url
-
-  if [[ ! -f "$DEBUG_LOG_FILE" ]]; then
-    return 1
-  fi
-
-  set +x
-  exec 1>&3 2>&4 3>&- 4>&-
-
-  debug_url="$(upload_debug)"
-
-  printf "\n%s\n  %s\n  %s\n\n%s\n%s\n\n%s\n" \
-    "$(color WARN 'Debug information:')" \
-    "Local file: $DEBUG_LOG_FILE" \
-    "Remote URL: $debug_url" \
-    "$(color INFO 'PRIVACY NOTICE: This file is uploaded to 0x0.st - a public file hoster.')" \
-    "$(color INFO 'The file will be automatically deleted in 24 hours.')" \
-    "$(color INFO 'If you open a GitHub Issue, please download the log and attach it')"
-}
-
-is_command_available() {
-  local cmd="$1"
-  command -v "$cmd" >/dev/null 2>&1
-}
-
-detect_distro() {
-  if [[ -f /etc/os-release ]]; then
-    source /etc/os-release
-    distro="$ID"
-  elif [[ -f /etc/redhat-release ]]; then
-    distro="rhel"
-  elif [[ -d /data/data/com.termux ]]; then
-    distro="termux"
+  if ((remaining < 2)); then
+    die "option $option requires a value"
   fi
 }
 
-detect_package_manager() {
-  local pkg_manager
+check_group() {
+  local check="$1"
+  local group="${check#check_}"
 
-  case "$distro" in
-    ubuntu | debian | termux)
-      pkg_manager="apt"
-      ;;
-    arch | manjaro)
-      pkg_manager="pacman"
-      ;;
-    fedora)
-      pkg_manager="dnf"
-      ;;
-    centos | rhel)
-      if is_command_available "dnf"; then
-        pkg_manager="dnf"
-      else
-        pkg_manager="yum"
-      fi
-      ;;
-    opensuse*)
-      pkg_manager="zypper"
-      ;;
-    alpine)
-      pkg_manager="apk"
-      ;;
-    *)
-      error_exit "Unknown distro: $distro"
-      ;;
-  esac
-
-  echo "$pkg_manager"
+  printf '%s' "${group%%_*}"
 }
 
-get_missing_commands() {
-  local missing=()
+check_id() {
+  local check="$1"
+  local group
 
-  for cmd in "${!DEPENDENCIES[@]}"; do
-    if ! is_command_available "$cmd"; then
-      missing+=("$cmd")
-    fi
+  group=$(check_group "$check")
+  printf '%s' "${check#check_"$group"_}"
+}
+
+service_name() {
+  local check="$1"
+
+  printf '%s/%s' "$(check_group "$check")" "$(check_id "$check")"
+}
+
+print_service_list() {
+  local check
+
+  for check in "${ALL_CHECKS[@]}"; do
+    printf '%s\n' "$(service_name "$check")"
   done
-
-  printf '%s\n' "${missing[@]}"
 }
 
-get_package_name() {
-  local pkg_manager="$1"
-  local command="$2"
-  local mapping_key="${pkg_manager}:${command}"
+parse_args() {
+  local -a groups services
 
-  if [[ -n "${PACKAGE_MAPPING[$mapping_key]}" ]]; then
-    echo "${PACKAGE_MAPPING[$mapping_key]}"
-    return
-  fi
-
-  echo "${DEPENDENCIES[$command]:-$command}"
-}
-
-is_sudo_required() {
-  if [[ "${EUID:-$(id -u)}" -eq 0 || "$distro" == "termux" ]]; then
-    return 1
-  fi
-
-  return 0
-}
-
-get_install_args() {
-  local pkg_manager="$1"
-  local install_args
-
-  case "$pkg_manager" in
-    apt)
-      install_args=("install" "-y")
-      ;;
-    pacman)
-      install_args=("-Sy" "--noconfirm")
-      ;;
-    dnf | yum | zypper)
-      install_args=("install" "-y")
-      ;;
-    apk)
-      install_args=("add" "--no-cache")
-      ;;
-  esac
-
-  echo "${install_args[@]}"
-}
-
-install_packages() {
-  local pkg_manager="$1"
-  shift
-  local packages=("$@")
-  local cmd_prefix=()
-  local install_cmd=()
-
-  if is_sudo_required; then
-    cmd_prefix=("sudo")
-    log "$LOG_INFO" "Running as non-root user, using sudo"
-  fi
-
-  cmd_prefix+=("$pkg_manager")
-
-  if [[ "$pkg_manager" == "apt" ]]; then
-    log "$LOG_INFO" "Updating package lists"
-    if ! "${cmd_prefix[@]}" update; then
-      error_exit "Error occurred while updating package lists"
-    fi
-  fi
-
-  read -ra install_args <<<"$(get_install_args "$pkg_manager")"
-  install_cmd+=("${cmd_prefix[@]}" "${install_args[@]}" "${packages[@]}")
-
-  log "$LOG_INFO" "Running: ${install_cmd[*]}"
-
-  if ! "${install_cmd[@]}"; then
-    error_exit "Error occurred while installing packages"
-  fi
-}
-
-prompt_for_installation() {
-  local missing=("$@")
-  local response
-  local formatted_deps=""
-
-  for dep in "${missing[@]}"; do
-    formatted_deps+="  $dep\n"
-  done
-
-  printf "\n%s\n%b\n%s " \
-    "$(color WARN 'Missing dependencies:')" \
-    "$formatted_deps" \
-    "$(color INFO 'Do you want to install them? [y/N]:')"
-
-  read -r response
-  response=${response,,}
-
-  case "$response" in
-    y | yes)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-install_dependencies() {
-  local missing_dependencies=()
-  local missing_commands pkg_manager package_name
-
-  log "$LOG_INFO" "Checking dependencies"
-
-  mapfile -t missing_commands < <(get_missing_commands)
-
-  if [[ "${missing_commands[*]}" =~ ^[[:space:]]*$ ]]; then
-    log "$LOG_INFO" "All dependencies are installed"
-    return 0
-  fi
-
-  log "$LOG_INFO" "Missing commands: ${missing_commands[*]}"
-
-  pkg_manager=$(detect_package_manager)
-
-  log "$LOG_INFO" "Detected package manager: $pkg_manager"
-
-  for cmd in "${missing_commands[@]}"; do
-    package_name=$(get_package_name "$pkg_manager" "$cmd")
-    missing_dependencies+=("$package_name")
-  done
-
-  log "$LOG_INFO" "Missing dependencies: ${missing_dependencies[*]}"
-
-  if ! prompt_for_installation "${missing_dependencies[@]}" </dev/tty; then
-    printf "%s\n" "$(color WARN 'Installation canceled by user')"
-    exit 1
-  fi
-
-  log "$LOG_INFO" "Installing missing dependencies"
-  install_packages "$pkg_manager" "${missing_dependencies[@]}"
-}
-
-process_json() {
-  local json="$1"
-  local jq_filter="$2"
-
-  if is_status_string "$json"; then
-    echo "$json"
-    return
-  fi
-
-  jq -r "$jq_filter" <<<"$json"
-}
-
-format_value() {
-  local value="$1"
-
-  case "$value" in
-    "$STATUS_NA")
-      color NULL "$value"
-      ;;
-    "$STATUS_DENIED" | "$STATUS_SERVER_ERROR")
-      color ERROR "$value"
-      ;;
-    "$STATUS_RATE_LIMIT")
-      color WARN "$value"
-      ;;
-    *)
-      bold "$value"
-      ;;
-  esac
-}
-
-print_value_or_colored() {
-  local value="$1"
-  local color_name="$2"
-
-  if [[ "$JSON_OUTPUT" == true ]]; then
-    echo "$value"
-    return
-  fi
-
-  color "$color_name" "$value"
-}
-
-mask_ipv4() {
-  local ip="$1"
-  echo "${ip%.*.*}.*.*"
-}
-
-mask_ipv6() {
-  local ip="$1"
-  echo "$ip" | awk '{
-    split($0, halves, "::")
-    left_count = halves[1] == "" ? 0 : split(halves[1], left, ":")
-    right_count = halves[2] == "" ? 0 : split(halves[2], right, ":")
-    for (i = 1; i <= left_count; i++) groups[i] = left[i]
-    for (i = left_count + 1; i <= 8 - right_count; i++) groups[i] = "0"
-    for (i = 1; i <= right_count; i++) groups[8 - right_count + i] = right[i]
-    printf "%s:%s:%s::\n", groups[1], groups[2], groups[3]
-  }'
-}
-
-parse_arguments() {
   while [[ $# -gt 0 ]]; do
-    case $1 in
+    case "$1" in
       -h | --help)
-        display_help
+        usage
         exit 0
         ;;
       -v | --verbose)
@@ -703,20 +893,33 @@ parse_arguments() {
         DEBUG=true
         shift
         ;;
+      -y | --yes)
+        ASSUME_YES=true
+        shift
+        ;;
       -j | --json)
         JSON_OUTPUT=true
         shift
         ;;
       -g | --group)
-        GROUPS_TO_SHOW="$2"
+        require_option_value "$1" "$#"
+        IFS=, read -ra groups <<<"$2"
+        REQUESTED_GROUPS+=("${groups[@]}")
         shift 2
         ;;
+      -s | --service)
+        require_option_value "$1" "$#"
+        IFS=, read -ra services <<<"$2"
+        REQUESTED_SERVICES+=("${services[@]}")
+        shift 2
+        ;;
+      --list-services)
+        print_service_list
+        exit 0
+        ;;
       -t | --timeout)
-        if [[ "$2" =~ ^[0-9]+$ ]]; then
-          CURL_TIMEOUT="$2"
-        else
-          error_exit "Invalid timeout value: $2. Timeout must be a positive integer"
-        fi
+        require_option_value "$1" "$#"
+        CURL_TIMEOUT="$2"
         shift 2
         ;;
       -4 | --ipv4)
@@ -724,880 +927,2440 @@ parse_arguments() {
         shift
         ;;
       -6 | --ipv6)
-        if ! check_ip_support 6; then
-          error_exit "IPv6 is not supported on this system"
-        fi
-
         IPV6_ONLY=true
         shift
         ;;
       -p | --proxy)
+        require_option_value "$1" "$#"
         PROXY_ADDR="$2"
-        log "$LOG_INFO" "Using SOCKS5 proxy: $PROXY_ADDR"
         shift 2
         ;;
       -i | --interface)
+        require_option_value "$1" "$#"
         INTERFACE_NAME="$2"
-        log "$LOG_INFO" "Using interface: $INTERFACE_NAME"
+        shift 2
+        ;;
+      --emoji)
+        SHOW_EMOJI=true
+        COUNTRY_EXTRA="$FLAG_WIDTH"
+        shift
+        ;;
+      --geoip-breakdown)
+        GEOIP_BREAKDOWN=true
+        shift
+        ;;
+      --no-attention)
+        SHOW_ATTENTION=false
+        shift
+        ;;
+      --youtube-lang)
+        require_option_value "$1" "$#"
+        YOUTUBE_LANG="$2"
         shift 2
         ;;
       *)
-        error_exit "Unknown option: $1"
+        die "unknown option $1"
         ;;
     esac
   done
 }
 
-is_status_string() {
+is_in_list() {
+  local needle="$1"
+  shift
+  local item
+
+  for item in "$@"; do
+    if [[ "$item" == "$needle" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+is_group_selected() {
+  local group="$1"
+
+  is_in_list "$group" "${SELECTED_GROUPS[@]}"
+}
+
+is_known_group() {
+  local group="$1"
+
+  [[ "$group" == "$ALL_GROUPS" ]] || is_in_list "$group" "${SERVICE_GROUPS[@]}"
+}
+
+validate_args() {
+  local group
+
+  for group in "${REQUESTED_GROUPS[@]}"; do
+    if ! is_known_group "$group"; then
+      die "unknown group $group, expected one of: ${SERVICE_GROUPS[*]} $ALL_GROUPS"
+    fi
+  done
+
+  if [[ ! "$CURL_TIMEOUT" =~ $TIMEOUT_PATTERN ]]; then
+    die "invalid timeout $CURL_TIMEOUT, expected a positive integer"
+  fi
+
+  if [[ "$IPV4_ONLY" == true && "$IPV6_ONLY" == true ]]; then
+    die "options --ipv4 and --ipv6 cannot be used together"
+  fi
+
+  if [[ -n "$PROXY_ADDR" && ! "$PROXY_ADDR" =~ $PROXY_PATTERN ]]; then
+    die "invalid proxy $PROXY_ADDR, expected HOST:PORT"
+  fi
+
+  if [[ ! "$YOUTUBE_LANG" =~ $YOUTUBE_LANG_PATTERN ]]; then
+    die "invalid YouTube language $YOUTUBE_LANG, expected a language code like ru, en or pt-BR"
+  fi
+}
+
+ignore_ip_version_with_proxy() {
+  if [[ -z "$PROXY_ADDR" || ("$IPV4_ONLY" == false && "$IPV6_ONLY" == false) ]]; then
+    return
+  fi
+
+  print_warning "$PROXY_IGNORES_IP_VERSION_WARNING"
+  IPV4_ONLY=false
+  IPV6_ONLY=false
+}
+
+print_ipv4_default_routes() {
+  local iface destination flags mask
+
+  if [[ ! -r "$IPV4_ROUTE_TABLE" ]]; then
+    return
+  fi
+
+  while read -r iface destination _ flags _ _ _ mask _; do
+    if [[ "$destination" == "$IPV4_DEFAULT_ROUTE" && "$mask" == "$IPV4_DEFAULT_ROUTE" ]]; then
+      printf '%s %s\n' "$iface" "$flags"
+    fi
+  done <"$IPV4_ROUTE_TABLE"
+}
+
+print_ipv6_default_routes() {
+  local destination prefix_length flags iface
+
+  if [[ ! -r "$IPV6_ROUTE_TABLE" ]]; then
+    return
+  fi
+
+  while read -r destination prefix_length _ _ _ _ _ _ flags iface; do
+    if [[ "$destination" == "$IPV6_DEFAULT_ROUTE" && "$prefix_length" == "$IPV6_DEFAULT_PREFIX_LENGTH" ]]; then
+      printf '%s %s\n' "$iface" "$flags"
+    fi
+  done <"$IPV6_ROUTE_TABLE"
+}
+
+print_bsd_default_route() {
+  local ip_version="$1"
+  local -a family=()
+  local key value iface=""
+  local flags="$ROUTE_FLAG_UP"
+
+  if [[ "$ip_version" == 6 ]]; then
+    family=(-inet6)
+  fi
+
+  while read -r key value _; do
+    case "$key" in
+      interface:) iface="$value" ;;
+      gateway:) flags=$((ROUTE_FLAG_UP | ROUTE_FLAG_GATEWAY)) ;;
+    esac
+  done < <(route -n get "${family[@]}" default 2>/dev/null)
+
+  if [[ -z "$iface" ]]; then
+    return
+  fi
+
+  printf '%s %x\n' "$iface" "$flags"
+}
+
+print_default_routes() {
+  local ip_version="$1"
+
+  if [[ "$OSTYPE" == darwin* ]]; then
+    print_bsd_default_route "$ip_version"
+    return
+  fi
+
+  case "$ip_version" in
+    4) print_ipv4_default_routes ;;
+    6) print_ipv6_default_routes ;;
+  esac
+}
+
+has_route_flag() {
+  local flags="$1"
+  local flag="$2"
+
+  ((16#$flags & flag))
+}
+
+print_gateway_interface() {
+  local ip_version="$1"
+  local iface flags
+
+  while read -r iface flags; do
+    if has_route_flag "$flags" "$ROUTE_FLAG_UP" && has_route_flag "$flags" "$ROUTE_FLAG_GATEWAY"; then
+      printf '%s' "$iface"
+      return
+    fi
+  done < <(print_default_routes "$ip_version")
+}
+
+has_default_route_through() {
+  local ip_version="$1"
+  local interface="$2"
+  local iface flags
+
+  while read -r iface flags; do
+    if [[ "$iface" == "$interface" ]] && has_route_flag "$flags" "$ROUTE_FLAG_UP"; then
+      return 0
+    fi
+  done < <(print_default_routes "$ip_version")
+
+  return 1
+}
+
+has_default_route() {
+  local ip_version="$1"
+  local iface flags
+
+  while read -r iface flags; do
+    if has_route_flag "$flags" "$ROUTE_FLAG_UP"; then
+      return 0
+    fi
+  done < <(print_default_routes "$ip_version")
+
+  return 1
+}
+
+detect_main_interface() {
+  if [[ -n "$INTERFACE_NAME" ]]; then
+    return
+  fi
+
+  MAIN_INTERFACE=$(print_gateway_interface 4)
+  if [[ -z "$MAIN_INTERFACE" ]]; then
+    MAIN_INTERFACE=$(print_gateway_interface 6)
+  fi
+}
+
+log_interface() {
+  if [[ -n "$INTERFACE_NAME" ]]; then
+    log_verbose "Interface: $INTERFACE_NAME (--interface)"
+    return
+  fi
+
+  if [[ -n "$MAIN_INTERFACE" ]]; then
+    log_verbose "Interface: $MAIN_INTERFACE (main, carries the default route)"
+    return
+  fi
+
+  log_verbose "Interface: not detected, the system routing picks it"
+}
+
+log_proxy() {
+  if [[ -z "$PROXY_ADDR" ]]; then
+    return
+  fi
+
+  log_verbose "Proxy: socks5h://$PROXY_ADDR"
+}
+
+limit_ip_versions_to_main_interface() {
+  if [[ -z "$MAIN_INTERFACE" || -n "$PROXY_ADDR" || "$IPV4_ONLY" == true || "$IPV6_ONLY" == true ]]; then
+    return
+  fi
+
+  if ! has_default_route_through 6 "$MAIN_INTERFACE"; then
+    IPV4_ONLY=true
+    if has_default_route 6; then
+      print_note "IPv6 goes out through another interface than the main one $MAIN_INTERFACE, checking IPv4 only (-6 or -i IFACE to check IPv6)"
+    fi
+    return
+  fi
+
+  if ! has_default_route_through 4 "$MAIN_INTERFACE"; then
+    IPV6_ONLY=true
+    if has_default_route 4; then
+      print_note "IPv4 goes out through another interface than the main one $MAIN_INTERFACE, checking IPv6 only (-4 or -i IFACE to check IPv4)"
+    fi
+  fi
+}
+
+detect_missing_commands() {
+  local command_name
+
+  for command_name in "${REQUIRED_COMMANDS[@]}"; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+      MISSING_COMMANDS+=("$command_name")
+    fi
+  done
+}
+
+missing_commands_list() {
+  local list
+
+  printf -v list '%s, ' "${MISSING_COMMANDS[@]}"
+  printf '%s' "${list%, }"
+}
+
+detect_package_manager() {
+  local manager
+
+  for manager in "${PACKAGE_MANAGERS[@]}"; do
+    if command -v "$manager" >/dev/null 2>&1; then
+      PACKAGE_MANAGER="$manager"
+      return
+    fi
+  done
+
+  print_error "missing dependencies ($(missing_commands_list)) and no supported package manager found, install them manually"
+  exit 1
+}
+
+resolve_root_command() {
+  if ((EUID == 0)) || [[ -n "${TERMUX_VERSION:-}" ]]; then
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    ROOT_COMMAND=(sudo)
+    return
+  fi
+
+  print_error "missing dependencies ($(missing_commands_list)), installing them with $PACKAGE_MANAGER needs root or sudo"
+  exit 1
+}
+
+has_terminal() {
+  : 2>/dev/null </dev/tty
+}
+
+confirm_install() {
+  if [[ "$ASSUME_YES" == true ]]; then
+    return
+  fi
+
+  if ! has_terminal; then
+    print_error "missing dependencies ($(missing_commands_list)), run with --yes to install them with $PACKAGE_MANAGER"
+    exit 1
+  fi
+
+  printf '%sMissing dependencies:%s %s%s%s\n' "$M_WARN" "$M_RESET" "$M_VALUE" "$(missing_commands_list)" "$M_RESET" >/dev/tty
+  if ask_yes_no "Install them with $PACKAGE_MANAGER?"; then
+    return
+  fi
+
+  print_error "missing dependencies ($(missing_commands_list)), installation cancelled"
+  exit 1
+}
+
+install_packages() {
+  local -a manager=("${ROOT_COMMAND[@]}" "$PACKAGE_MANAGER")
+
+  case "$PACKAGE_MANAGER" in
+    apt-get)
+      "${manager[@]}" update
+      "${manager[@]}" install -y "${MISSING_COMMANDS[@]}"
+      ;;
+    dnf | yum) "${manager[@]}" install -y "${MISSING_COMMANDS[@]}" ;;
+    pacman) "${manager[@]}" -Sy --needed --noconfirm "${MISSING_COMMANDS[@]}" ;;
+    zypper) "${manager[@]}" --non-interactive install "${MISSING_COMMANDS[@]}" ;;
+    apk) "${manager[@]}" add --no-cache "${MISSING_COMMANDS[@]}" ;;
+    xbps-install) "${manager[@]}" -Sy "${MISSING_COMMANDS[@]}" ;;
+  esac >&2
+}
+
+require_installed_commands() {
+  local command_name
+
+  for command_name in "${MISSING_COMMANDS[@]}"; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+      print_error "$command_name is still missing after installing it with $PACKAGE_MANAGER"
+      exit 1
+    fi
+  done
+}
+
+install_missing_dependencies() {
+  detect_missing_commands
+  if ((${#MISSING_COMMANDS[@]} == 0)); then
+    return
+  fi
+
+  detect_package_manager
+  resolve_root_command
+  confirm_install
+  install_packages
+  require_installed_commands
+}
+
+resolve_selected_groups() {
+  local group
+
+  if is_in_list "$ALL_GROUPS" "${REQUESTED_GROUPS[@]}"; then
+    return
+  fi
+
+  if ((${#REQUESTED_GROUPS[@]} + ${#REQUESTED_SERVICES[@]} == 0)); then
+    return
+  fi
+
+  SELECTED_GROUPS=()
+  for group in "${SERVICE_GROUPS[@]}"; do
+    if is_in_list "$group" "${REQUESTED_GROUPS[@]}"; then
+      SELECTED_GROUPS+=("$group")
+    fi
+  done
+}
+
+normalize_service_name() {
+  local name="${1,,}"
+
+  name="${name//+/_plus}"
+  printf '%s' "${name//[. -]/_}"
+}
+
+matching_checks() {
+  local request="$1"
+  local group=""
+  local name="$request"
+  local -a exact=() shortened=()
+  local check id
+
+  if [[ "$request" == */* ]]; then
+    group="${request%%/*}"
+    group="${group,,}"
+    name="${request#*/}"
+  fi
+  name=$(normalize_service_name "$name")
+
+  for check in "${ALL_CHECKS[@]}"; do
+    if [[ -n "$group" && "$(check_group "$check")" != "$group" ]]; then
+      continue
+    fi
+    id=$(check_id "$check")
+    if [[ "$id" == "$name" ]]; then
+      exact+=("$check")
+    elif [[ "${id%_*}" == "$name" ]]; then
+      shortened+=("$check")
+    fi
+  done
+
+  if ((${#exact[@]} > 0)); then
+    printf '%s\n' "${exact[@]}"
+    return
+  fi
+  printf '%s\n' "${shortened[@]}"
+}
+
+resolve_selected_checks() {
+  local -a matches candidates
+  local request check
+
+  for request in "${REQUESTED_SERVICES[@]}"; do
+    mapfile -t matches < <(matching_checks "$request")
+    if [[ -z "${matches[0]:-}" ]]; then
+      die "unknown service $request, see --list-services"
+    fi
+    if ((${#matches[@]} > 1)); then
+      candidates=()
+      for check in "${matches[@]}"; do
+        candidates+=("$(service_name "$check")")
+      done
+      die "ambiguous service $request, expected one of: ${candidates[*]}"
+    fi
+    SELECTED_CHECKS+=("${matches[0]}")
+  done
+}
+
+visible_length() {
+  local text="$1"
+  local plain="${text//$ANSI_SEQUENCE/}"
+  local narrow="${plain//$WIDE_EMOJI_PATTERN/}"
+
+  printf '%d' $((2 * ${#plain} - ${#narrow}))
+}
+
+repeat_char() {
+  local char="$1"
+  local count="$2"
+  local line
+
+  if ((count <= 0)); then
+    return
+  fi
+
+  printf -v line '%*s' "$count" ''
+  printf '%s' "${line// /$char}"
+}
+
+pad() {
+  local text="$1"
+  local width="$2"
+  local fill
+
+  fill=$((width - $(visible_length "$text")))
+  if ((fill < 0)); then
+    fill=0
+  fi
+
+  printf '%s%*s' "$text" "$fill" ''
+}
+
+pad_cell() {
+  local color="$1"
+  local text="$2"
+  local width="$3"
+  local fill
+
+  fill=$((width - $(visible_length "$text")))
+  if ((fill < 1)); then
+    fill=1
+  fi
+
+  printf '%s%s%s%*s' "$color" "$text" "$C_RESET" "$fill" ''
+}
+
+max_length() {
+  local max=0
+  local text length
+
+  for text in "$@"; do
+    length=$(visible_length "$text")
+    if ((length > max)); then
+      max="$length"
+    fi
+  done
+
+  printf '%d' "$max"
+}
+
+paint() {
+  local color="$1"
+  local text="$2"
+
+  printf '%s%s%s' "$color" "$text" "$C_RESET"
+}
+
+format_flag() {
+  local country="$1"
+  local first=$((REGIONAL_INDICATOR_A + $(printf '%d' "'${country:0:1}") - ASCII_A))
+  local second=$((REGIONAL_INDICATOR_A + $(printf '%d' "'${country:1:1}") - ASCII_A))
+
+  printf '%b' "\\U$(printf '%08X' "$first")\\U$(printf '%08X' "$second")"
+}
+
+label_country() {
+  local country="$1"
+
+  if [[ "$SHOW_EMOJI" != true || ! "$country" =~ $COUNTRY_CODE_PATTERN ]]; then
+    printf '%s' "$country"
+    return
+  fi
+
+  printf '%s %s' "$(format_flag "$country")" "$country"
+}
+
+label_group() {
+  local title="$1"
+
+  if [[ "$SHOW_EMOJI" != true || -z "$title" ]]; then
+    printf '%s' "$title"
+    return
+  fi
+
+  printf '%s %s' "${GROUP_EMOJI[$title]}" "$title"
+}
+
+is_verdict_country() {
+  local country="$1"
+
+  [[ "$country" == "$VERDICT" ]] || is_in_list "$country" "${VERDICT_TIED_COUNTRIES[@]}"
+}
+
+format_country() {
+  local country="$1"
+  local width="$2"
+
+  if [[ -z "$country" ]]; then
+    paint "$C_DIM" "$(pad "$SYMBOL_UNKNOWN" "$width")"
+    return
+  fi
+
+  if is_verdict_country "$country"; then
+    paint "$C_VALUE" "$(pad "$(label_country "$country")" "$width")"
+    return
+  fi
+
+  paint "$C_WARN" "$(pad "$(label_country "$country")" "$width")"
+}
+
+format_status() {
+  local status="$1"
+  local width="$2"
+
+  case "$status" in
+    "$STATUS_YES") paint "$C_YES" "$(pad "$SYMBOL_YES" "$width")" ;;
+    "$STATUS_NO") paint "$C_NO" "$(pad "$SYMBOL_NO" "$width")" ;;
+    "$STATUS_IPBLOCK") paint "$C_NO" "$(pad "$SYMBOL_IPBLOCK" "$width")" ;;
+    "$STATUS_NONE") paint "$C_DIM" "$(pad "$SYMBOL_NONE" "$width")" ;;
+    "$MAXMIND_LIMIT_CELL") paint "$C_DIM" "$(pad "$MAXMIND_LIMIT_CELL" "$width")" ;;
+    *) paint "$C_DIM" "$(pad "$SYMBOL_UNKNOWN" "$width")" ;;
+  esac
+}
+
+format_cell() {
   local value="$1"
+  local width="$2"
 
-  case "$value" in
-    "$STATUS_DENIED" | "$STATUS_SERVER_ERROR" | "$STATUS_RATE_LIMIT" | "$STATUS_NA")
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
+  if [[ "$value" =~ $COUNTRY_CODE_PATTERN ]]; then
+    format_country "$value" "$width"
+    return
+  fi
+
+  format_status "$value" "$width"
 }
 
-status_from_http_code() {
-  local code="$1"
+print_card_top() {
+  local title_color="$1"
+  local title="$2"
+  local width="$3"
+  local summary="${4:-}"
+  local label
 
-  case "$code" in
-    403)
-      echo "$STATUS_DENIED"
-      ;;
-    429)
-      echo "$STATUS_RATE_LIMIT"
-      ;;
-    5*)
-      echo "$STATUS_SERVER_ERROR"
-      ;;
-    4*)
-      echo "$STATUS_NA"
-      ;;
-    *)
-      echo ""
-      ;;
-  esac
+  label="$(paint "$title_color" " $(label_group "$title") ")"
+  if [[ -n "$summary" ]]; then
+    label="$(paint "$title_color" " $(label_group "$title")") $(paint "$C_DIM" "·") $summary "
+  fi
+  printf '%s%s%s%s%s%s%s%s\n' "$C_DIM" "$CARD_TOP_LEFT" "$(repeat_char "$CARD_HORIZONTAL" "$CARD_TITLE_OFFSET")" \
+    "$label" "$C_DIM" \
+    "$(repeat_char "$CARD_HORIZONTAL" $((width - CARD_SIDES_WIDTH - CARD_TITLE_OFFSET - $(visible_length "$label"))))" \
+    "$CARD_TOP_RIGHT" "$C_RESET"
 }
 
-get_ping_command() {
-  local version="$1"
-  local ping_cmd
+print_card_line() {
+  local line="$1"
+  local width="$2"
+  local fill
 
-  if [[ "$version" == "4" ]]; then
-    if is_command_available "ping"; then
-      ping_cmd="ping"
-    fi
-  else
-    if is_command_available "ping6"; then
-      ping_cmd="ping6"
-    elif is_command_available "ping"; then
-      ping_cmd="ping -6"
-    fi
+  line="${line%%+( )}"
+  fill=$((width - CARD_SIDES_WIDTH - CARD_CONTENT_INDENT - CARD_TRAILING_GAP - $(visible_length "$line")))
+  if ((fill < 0)); then
+    fill=0
   fi
 
-  if [[ -n "$ping_cmd" ]]; then
-    echo "$ping_cmd"
-    return 0
-  else
-    return 1
-  fi
+  printf '%s%s%s%*s%s%*s%s%s%s\n' "$C_DIM" "$CARD_SIDE" "$C_RESET" "$CARD_CONTENT_INDENT" '' "$line" \
+    $((fill + CARD_TRAILING_GAP)) '' "$C_DIM" "$CARD_SIDE" "$C_RESET"
 }
 
-check_ip_interfaces() {
-  local version="$1"
+print_card_bottom() {
+  local width="$1"
 
-  log "$LOG_INFO" "Checking for IPv${version} interfaces"
-
-  if [[ -n $(ip -"${version}" addr show scope global 2>/dev/null) ]]; then
-    log "$LOG_INFO" "IPv${version} global interfaces found"
-    return 0
-  fi
-
-  log "$LOG_ERROR" "No global IPv${version} addresses found on interfaces"
-  return 1
+  printf '%s%s%s%s%s\n' "$C_DIM" "$CARD_BOTTOM_LEFT" "$(repeat_char "$CARD_HORIZONTAL" $((width - CARD_SIDES_WIDTH)))" "$CARD_BOTTOM_RIGHT" "$C_RESET"
 }
 
-check_ip_connectivity() {
-  local version="$1"
-  local test_hosts_v4=("8.8.8.8" "8.8.4.4" "1.1.1.1" "1.0.0.1" "9.9.9.9")
-  local test_hosts_v6=("2001:4860:4860::8888" "2001:4860:4860::8844" "2606:4700:4700::1111" "2606:4700:4700::1001" "2620:fe::9")
-  local timeout=3
-  local count=1
-  local test_hosts ping_cmd
+print_titled_card() {
+  local title_color="$1"
+  local title="$2"
+  local width="$3"
+  local height="$4"
+  local summary="${5:-}"
+  local -a content_lines=()
+  local index
 
-  log "$LOG_INFO" "Checking IPv${version} connectivity"
-
-  ping_cmd=($(get_ping_command "$version"))
-
-  if [[ ${#ping_cmd[@]} -eq 0 ]]; then
-    log "$LOG_ERROR" "Ping command for IPv${version} is not available"
-    return 1
-  fi
-
-  if [[ "$version" == "4" ]]; then
-    test_hosts=("${test_hosts_v4[@]}")
-  else
-    test_hosts=("${test_hosts_v6[@]}")
-  fi
-
-  for host in "${test_hosts[@]}"; do
-    if "${ping_cmd[@]}" -c "$count" -W "$timeout" "$host" >/dev/null 2>&1; then
-      log "$LOG_INFO" "IPv${version} connectivity confirmed via $host"
-      return 0
-    fi
+  mapfile -t content_lines
+  while ((${#content_lines[@]} > 0)) && [[ -z "${content_lines[-1]}" ]]; do
+    unset 'content_lines[-1]'
   done
-
-  log "$LOG_ERROR" "IPv${version} connectivity test failed"
-  return 1
-}
-
-check_ip_dns() {
-  local version="$1"
-  local test_domain="google.com"
-  local record_type
-
-  log "$LOG_INFO" "Checking IPv${version} DNS resolution"
-
-  if [[ "$version" == "4" ]]; then
-    record_type="A"
-  else
-    record_type="AAAA"
+  if ((${#content_lines[@]} > height)); then
+    height="${#content_lines[@]}"
   fi
 
-  if nslookup -type="$record_type" "$test_domain" >/dev/null 2>&1; then
-    log "$LOG_INFO" "IPv${version} DNS resolution works via nslookup"
-    return 0
-  fi
-
-  log "$LOG_ERROR" "IPv${version} DNS resolution failed"
-  return 1
-}
-
-check_ip_support() {
-  local version="$1"
-  local -a checks=("interfaces" "connectivity" "dns")
-  local -a failed=()
-
-  spinner_update "IPv$version support"
-  log "$LOG_INFO" "Starting comprehensive IPv${version} support check"
-
-  for check in "${checks[@]}"; do
-    if ! "check_ip_${check}" "$version"; then
-      failed+=("$check")
-      break
-    fi
+  print_card_top "$title_color" "$title" "$width" "$summary"
+  for ((index = 0; index < height; index++)); do
+    print_card_line "${content_lines[index]:-}" "$width"
   done
+  print_card_bottom "$width"
+}
 
-  if [[ ${#failed[@]} -eq 0 ]]; then
-    log "$LOG_INFO" "IPv${version} is fully supported (${checks[*]})"
-    return 0
-  else
-    log "$LOG_ERROR" "IPv${version} is not fully supported. Failed checks: ${failed[*]}"
-    return 1
+print_titled_card_pair() {
+  local left_title="$1"
+  local right_title="$2"
+  local left_text="$3"
+  local right_text="$4"
+  local -a left_card=() right_card=()
+  local height index
+
+  mapfile -t left_card <<<"$left_text"
+  mapfile -t right_card <<<"$right_text"
+  height="${#left_card[@]}"
+  if ((${#right_card[@]} > height)); then
+    height="${#right_card[@]}"
   fi
-}
 
-ipv4_enabled() {
-  [[ "$IPV6_ONLY" != true ]] && [[ "$IPV4_SUPPORTED" -eq 0 ]]
-}
-
-ipv6_enabled() {
-  [[ "$IPV4_ONLY" != true ]] && [[ "$IPV6_SUPPORTED" -eq 0 ]]
-}
-
-can_use_ipv4() {
-  ipv4_enabled && [[ -n "$EXTERNAL_IPV4" ]]
-}
-
-can_use_ipv6() {
-  ipv6_enabled && [[ "$IPV6_SUPPORTED" -eq 0 ]] && [[ -n "$EXTERNAL_IPV6" ]]
-}
-
-preferred_ip_version() {
-  can_use_ipv4 && echo 4 || echo 6
-}
-
-preferred_ip() {
-  can_use_ipv4 && echo "$EXTERNAL_IPV4" || echo "$EXTERNAL_IPV6"
-}
-
-shuffle_identity_services() {
-  local i tmp size rand_idx
-  size=${#IDENTITY_SERVICES[@]}
-
-  for ((i = size - 1; i > 0; i--)); do
-    rand_idx=$((RANDOM % (i + 1)))
-
-    if ((rand_idx != i)); then
-      tmp=${IDENTITY_SERVICES[i]}
-      IDENTITY_SERVICES[i]=${IDENTITY_SERVICES[rand_idx]}
-      IDENTITY_SERVICES[rand_idx]=$tmp
-    fi
+  mapfile -t left_card < <(printf '%s\n' "${left_card[@]}" | print_titled_card "$C_TITLE" "$left_title" "$LEFT_CARD_WIDTH" "$height")
+  mapfile -t right_card < <(printf '%s\n' "${right_card[@]}" | print_titled_card "$C_TITLE" "$right_title" "$RIGHT_CARD_WIDTH" "$height")
+  for ((index = 0; index < ${#left_card[@]}; index++)); do
+    printf '%s%*s%s\n' "${left_card[index]}" "$CARD_GAP" '' "${right_card[index]:-}"
   done
 }
 
-fetch_ip_from_service() {
-  local service="$1"
+print_bar_block() {
+  local -a block_lines=()
+  local line
+
+  mapfile -t block_lines
+  for line in "${block_lines[@]}"; do
+    line="${line%%+( )}"
+    if [[ -z "$line" ]]; then
+      printf '%s%s%s\n' "$C_BAR" "$HEADER_MARK" "$C_RESET"
+      continue
+    fi
+    printf '%s%s%s%*s%s\n' "$C_BAR" "$HEADER_MARK" "$C_RESET" "$CARD_CONTENT_INDENT" '' "$line"
+  done
+  printf '\n'
+}
+
+stop_jobs() {
+  local pid
+
+  for pid in $(jobs -pr); do
+    kill "$pid" 2>/dev/null || true
+  done
+}
+
+print_debug_environment() {
+  local curl_version
+
+  curl_version=$(curl --version)
+  printf 'Arguments: %s\n' "$*"
+  printf 'Bash: %s\n' "$BASH_VERSION"
+  printf 'System: %s\n' "$(uname -srm)"
+  printf 'Locale: %s\n' "${LC_ALL:-${LANG:-}}"
+  printf 'Curl: %s\n' "${curl_version%%$'\n'*}"
+  printf 'Jq: %s\n\n' "$(jq --version)"
+}
+
+add_debug_mask() {
+  local value="$1"
+  local replacement="$2"
+
+  if [[ -n "$value" ]]; then
+    DEBUG_MASKS+=("$value" "$replacement")
+  fi
+}
+
+collect_debug_masks() {
+  local ip_version
+
+  DEBUG_MASKS=()
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    add_debug_mask "$EXTERNAL_IPV4" "$(mask_ipv4 "$EXTERNAL_IPV4")"
+    add_debug_mask "${EXTERNAL_IPV4%.*}." "${EXTERNAL_IPV4%.*.*}.*."
+  fi
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    add_debug_mask "$EXTERNAL_IPV6" "$(mask_ipv6 "$EXTERNAL_IPV6")"
+  fi
+
+  for ip_version in 4 6; do
+    add_debug_mask "${REGISTRATION_ORG[$ip_version]:-}" "$MASKED_ORG"
+    if [[ -n "${REGISTRATION_ASN[$ip_version]:-}" ]]; then
+      add_debug_mask "AS${REGISTRATION_ASN[$ip_version]}" "$MASKED_ASN"
+    fi
+  done
+
+  add_debug_mask "$PROXY_ADDR" "$MASKED_VALUE"
+  add_debug_mask "$HOME" "$MASKED_HOME"
+}
+
+print_debug_traces() {
+  local trace
+
+  cat -- "$DEBUG_TRACE_FILE"
+  for trace in "$DEBUG_TRACE_DIR"/*; do
+    if [[ ! -e "$trace" ]]; then
+      continue
+    fi
+
+    printf '\n=== job %s\n' "${trace##*/}"
+    cat -- "$trace"
+  done
+}
+
+save_debug_log() {
+  collect_debug_masks
+  DEBUG_LOG_FILE=$(mktemp "${TMPDIR:-/tmp}/$DEBUG_LOG_TEMPLATE")
+  print_debug_traces | LC_ALL=C awk -v limit="$DEBUG_RECORD_LIMIT" -v masked="$MASKED_VALUE" \
+    "$DEBUG_LOG_FILTER" "${DEBUG_MASKS[@]}" >"$DEBUG_LOG_FILE"
+}
+
+confirm_debug_log_upload() {
+  if [[ "$ASSUME_YES" == true ]]; then
+    return 0
+  fi
+
+  if ! has_terminal; then
+    print_note "Run with --yes to upload it"
+    return 1
+  fi
+
+  printf '%sIP addresses, ASN and location are masked, but the log is public for anyone with the link.%s\n' "$M_DIM" "$M_RESET" >/dev/tty
+  ask_yes_no "Upload it and get a link for the issue?"
+}
+
+upload_request() {
+  local url="$1"
+  shift
+  local response_file="$WORK_DIR/$UPLOAD_RESPONSE_NAME"
+
+  rm -f -- "$response_file"
+  HTTP_CURL_EXIT="$CURL_EXIT_OK"
+  HTTP_CODE=$(curl "${CURL_ARGS[@]}" --output "$response_file" --write-out "$UPLOAD_WRITE_OUT" "$@" "$url") || HTTP_CURL_EXIT=$?
+  HTTP_BODY=""
+  if [[ -f "$response_file" ]]; then
+    HTTP_BODY=$(<"$response_file")
+  fi
+}
+
+upload_to_x0_at() {
+  upload_request "$X0_AT_UPLOAD_URL" --form "file=@$DEBUG_LOG_FILE"
+}
+
+upload_to_litterbox() {
+  upload_request "$LITTERBOX_UPLOAD_URL" --form reqtype=fileupload --form "time=$LITTERBOX_RETENTION" \
+    --form "fileToUpload=@$DEBUG_LOG_FILE"
+}
+
+print_debug_log_url() {
+  if [[ "$HTTP_CURL_EXIT" != "$CURL_EXIT_OK" || ! "$HTTP_BODY" =~ $UPLOADED_URL_PATTERN ]]; then
+    return 1
+  fi
+
+  printf 'Debug log: %s%s%s\n' "$M_VALUE" "$HTTP_BODY" "$M_RESET" >&2
+}
+
+upload_debug_log() {
+  build_curl_args ""
+  CURL_ARGS+=(--max-time "$DEBUG_UPLOAD_TIMEOUT" --speed-limit "$UPLOAD_SPEED_LIMIT" --speed-time "$UPLOAD_SPEED_TIME")
+  print_note "Uploading the debug log..."
+
+  upload_to_x0_at
+  if print_debug_log_url; then
+    return 0
+  fi
+  print_warning "$X0_AT_NAME failed: $(response_failure_reason), trying $LITTERBOX_NAME"
+
+  upload_to_litterbox
+  if print_debug_log_url; then
+    return 0
+  fi
+  print_warning "$LITTERBOX_NAME failed: $(response_failure_reason)"
+
+  print_error "failed to upload the debug log, attach $DEBUG_LOG_FILE to the issue instead"
+}
+
+start_debug_trace() {
+  local trace_fd
+
+  if [[ "$DEBUG" != true ]]; then
+    return
+  fi
+
+  DEBUG_TRACE_FILE="$WORK_DIR/debug-trace"
+  DEBUG_TRACE_DIR="$WORK_DIR/debug-traces"
+  mkdir -- "$DEBUG_TRACE_DIR"
+  print_debug_environment "$@" >"$DEBUG_TRACE_FILE"
+  exec {trace_fd}>>"$DEBUG_TRACE_FILE"
+  BASH_XTRACEFD="$trace_fd"
+  PS4="$DEBUG_TRACE_PS4"
+  set -x
+}
+
+finish_debug_trace() {
+  if [[ -z "$DEBUG_TRACE_FILE" ]]; then
+    return 0
+  fi
+
+  set +x
+  save_debug_log
+  printf '\nDebug log saved to %s%s%s\n' "$M_VALUE" "$DEBUG_LOG_FILE" "$M_RESET" >&2
+  if confirm_debug_log_upload; then
+    upload_debug_log
+  fi
+}
+
+cleanup() {
+  stop_jobs
+  finish_debug_trace
+
+  if [[ -n "$WORK_DIR" ]]; then
+    rm -rf -- "$WORK_DIR"
+  fi
+}
+
+create_work_dir() {
+  WORK_DIR=$(mktemp -d)
+  trap cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+}
+
+request_cache_entry() {
+  local key
+
+  key=$(printf '%s\0' "$@" | cksum)
+  printf '%s/http-%s' "$WORK_DIR" "${key// /-}"
+}
+
+build_curl_args() {
+  local ip_version="$1"
+
+  CURL_ARGS=("${CURL_BASE_ARGS[@]}" --max-time "$CURL_TIMEOUT" --retry-max-time "$CURL_TIMEOUT")
+
+  if [[ -n "$PROXY_ADDR" ]]; then
+    CURL_ARGS+=(--proxy "socks5h://$PROXY_ADDR")
+  elif [[ -n "$ip_version" ]]; then
+    CURL_ARGS+=("-$ip_version")
+  fi
+
+  if [[ -n "$INTERFACE_NAME" ]]; then
+    CURL_ARGS+=(--interface "$INTERFACE_NAME")
+  fi
+}
+
+fetch_to_cache() {
+  local entry="$1"
   local ip_version="$2"
-  local response
+  local url="$3"
+  shift 3
+  local curl_exit=0
+  local http_code
 
-  response=$(curl_wrapper GET "https://$service" --ip-version "$ip_version")
+  build_curl_args "$ip_version"
+  curl "${CURL_ARGS[@]}" --output "$entry.body" --write-out "$CURL_WRITE_OUT" "$@" "$url" >"$entry.meta" || curl_exit=$?
+  printf '%s\n' "$curl_exit" >>"$entry.meta"
+  read -r http_code <"$entry.meta"
+  log_verbose "IPv${ip_version:-4/6} $url: HTTP $http_code, curl exit $curl_exit"
+  touch -- "$entry.body"
+  : >"$entry.done"
+}
 
-  if [[ -n "$response" ]]; then
-    echo "$response"
+wait_for_cache_entry() {
+  local entry="$1"
+
+  while [[ ! -e "$entry.done" ]]; do
+    sleep "$CACHE_POLL_INTERVAL"
+  done
+}
+
+read_cache_entry() {
+  local entry="$1"
+
+  {
+    read -r HTTP_CODE
+    read -r HTTP_REDIRECT_URL
+    read -r HTTP_CURL_EXIT
+  } <"$entry.meta"
+  HTTP_BODY=$(<"$entry.body")
+}
+
+http_request() {
+  local ip_version="$1"
+  local url="$2"
+  shift 2
+  local entry
+
+  HTTP_IP_VERSION="$ip_version"
+  entry=$(request_cache_entry "$ip_version" "$url" "$@")
+  if mkdir -- "$entry.lock" 2>/dev/null; then
+    fetch_to_cache "$entry" "$ip_version" "$url" "$@"
   fi
+
+  wait_for_cache_entry "$entry"
+  read_cache_entry "$entry"
+}
+
+curl_failure_reason() {
+  case "$HTTP_CURL_EXIT" in
+    "$CURL_EXIT_DNS") printf '%s' "$REASON_DNS" ;;
+    "$CURL_EXIT_CONNECT") printf '%s' "$REASON_CONNECT" ;;
+    "$CURL_EXIT_TIMEOUT") printf '%s' "$REASON_TIMEOUT" ;;
+    "$CURL_EXIT_TLS_HANDSHAKE" | "$CURL_EXIT_TLS_CERTIFICATE") printf '%s' "$REASON_TLS" ;;
+    "$CURL_EXIT_PROXY") printf '%s' "$REASON_PROXY" ;;
+    *) printf '%s' "$REASON_NETWORK" ;;
+  esac
+}
+
+http_failure_reason() {
+  if [[ "$HTTP_CURL_EXIT" != "$CURL_EXIT_OK" ]]; then
+    curl_failure_reason
+    return 0
+  fi
+
+  case "$HTTP_CODE" in
+    "$HTTP_FORBIDDEN") printf '%s (%s)' "$REASON_FORBIDDEN" "$HTTP_CODE" ;;
+    "$HTTP_TOO_MANY_REQUESTS") printf '%s (%s)' "$REASON_RATE_LIMITED" "$HTTP_CODE" ;;
+    5[0-9][0-9]) printf '%s (%s)' "$REASON_SERVER_ERROR" "$HTTP_CODE" ;;
+  esac
+}
+
+response_failure_reason() {
+  local reason
+
+  reason=$(http_failure_reason)
+  if [[ -n "$reason" ]]; then
+    printf '%s' "$reason"
+    return 0
+  fi
+
+  printf '%s (%s)' "$REASON_UNEXPECTED_RESPONSE" "$HTTP_CODE"
+}
+
+is_ip_address() {
+  local ip_version="$1"
+  local ip="$2"
+
+  case "$ip_version" in
+    4) [[ "$ip" =~ $IPV4_PATTERN ]] ;;
+    6) [[ "$ip" =~ $IPV6_PATTERN ]] ;;
+  esac
+}
+
+print_identity_answer() {
+  local ip_version="$1"
+  local answers_dir="$2"
+  local answer_file
+  local answer
+
+  for answer_file in "$answers_dir"/*; do
+    if [[ ! -f "$answer_file" ]]; then
+      continue
+    fi
+
+    answer=$(<"$answer_file")
+    if is_ip_address "$ip_version" "$answer"; then
+      printf '%s' "$answer"
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 fetch_external_ip() {
   local ip_version="$1"
-  local service ip
+  local answers_dir="$WORK_DIR/identity-ipv$ip_version"
+  local -a urls
+  local -a pids=()
+  local index
 
-  spinner_update "External IPv$ip_version address"
-  log "$LOG_INFO" "Getting external IPv${ip_version} address"
+  case "$ip_version" in
+    4) urls=("${IPV4_IDENTITY_URLS[@]}") ;;
+    6) urls=("${IPV6_IDENTITY_URLS[@]}") ;;
+  esac
 
-  shuffle_identity_services
+  mkdir -p -- "$answers_dir"
+  build_curl_args "$ip_version"
+  for index in "${!urls[@]}"; do
+    # curl runs directly, not via http_request: killing a wrapper subshell would leave its curl running until the timeout
+    curl "${CURL_ARGS[@]}" --output "$answers_dir/$index" "${urls[$index]}" &
+    pids+=("$!")
+  done
 
-  for service in "${IDENTITY_SERVICES[@]}"; do
-    ip=$(fetch_ip_from_service "$service" "$ip_version")
-
-    if [[ -n "$ip" ]]; then
-      log "$LOG_INFO" "Successfully obtained IPv${ip_version} address from $service: $ip"
-      echo "$ip"
-      return
-    else
-      log "$LOG_WARN" "No response from $service for IPv${ip_version}"
+  for index in "${!urls[@]}"; do
+    wait -n || true
+    if print_identity_answer "$ip_version" "$answers_dir"; then
+      break
     fi
   done
 
-  log "$LOG_ERROR" "Failed to obtain IPv${ip_version} address from any service"
+  kill "${pids[@]}" 2>/dev/null || true
+  wait 2>/dev/null
 }
 
-discover_external_ips() {
-  local ipv4_fd ipv6_fd
+mask_ipv4() {
+  local ip="$1"
 
-  if ipv4_enabled; then
-    run_async ipv4_fd fetch_external_ip 4
-  fi
-
-  if ipv6_enabled; then
-    run_async ipv6_fd fetch_external_ip 6
-  fi
-
-  read_async EXTERNAL_IPV4 "$ipv4_fd"
-  read_async EXTERNAL_IPV6 "$ipv6_fd"
-
-  if [[ -z "$EXTERNAL_IPV4" ]] && [[ -z "$EXTERNAL_IPV6" ]]; then
-    error_exit "Failed to obtain external IPv4 and IPv6 address"
-  fi
+  printf '%s.*.*' "${ip%.*.*}"
 }
 
-get_asn() {
-  local ip_version=4
-  local response
+mask_ipv6() {
+  local ip="$1"
+  local head="${ip%%::*}"
+  local tail=""
+  local -a left right groups
+  local missing
 
-  spinner_update "ASN info"
-  log "$LOG_INFO" "Getting ASN info for IP $ip"
+  if [[ "$ip" == *::* ]]; then
+    tail="${ip#*::}"
+  fi
 
-  response=$(curl_wrapper GET "https://geoip.maxmind.com/geoip/v2.1/city/me" \
-    --header "Referer: https://www.maxmind.com" \
-    --ip-version "$ip_version")
-  {
-    read -r asn
-    read -r asn_name
-  } < <(process_json "$response" ".traits | .autonomous_system_number, .autonomous_system_organization")
+  IFS=: read -ra left <<<"$head"
+  IFS=: read -ra right <<<"$tail"
+  missing=$((IPV6_GROUP_COUNT - ${#left[@]} - ${#right[@]}))
+  groups=("${left[@]}")
+  while ((missing-- > 0)); do
+    groups+=(0)
+  done
+  groups+=("${right[@]}")
 
-  log "$LOG_INFO" "ASN info: AS$asn $asn_name"
+  printf '%s:%s:%s::' "${groups[@]:0:3}"
 }
 
-get_registered_country() {
+json_value() {
+  local filter="$1"
+
+  jq -r "$filter" <<<"$HTTP_BODY" 2>/dev/null || true
+}
+
+request_maxmind_token() {
+  local cookie_jar="$WORK_DIR/maxmind-cookies"
+  local csrf_token
+
+  http_request "$ANY_TRANSPORT" "$MAXMIND_DEMO_PAGE_URL" --cookie-jar "$cookie_jar"
+  if [[ ! "$HTTP_BODY" =~ $MAXMIND_CSRF_PATTERN ]]; then
+    MAXMIND_TOKEN_FAILURE=$(response_failure_reason)
+    return
+  fi
+  csrf_token="${BASH_REMATCH[1]}"
+
+  http_request "$ANY_TRANSPORT" "$MAXMIND_TOKEN_URL" --request POST --cookie "$cookie_jar" --header "X-CSRF-Token: $csrf_token"
+  if [[ "$HTTP_CODE" != "$HTTP_CREATED" ]]; then
+    MAXMIND_TOKEN_FAILURE=$(response_failure_reason)
+    return
+  fi
+
+  MAXMIND_TOKEN=$(json_value '.token // empty')
+}
+
+no_demo_token_reason() {
+  if [[ -z "$MAXMIND_TOKEN_FAILURE" ]]; then
+    printf '%s' "$REASON_NO_DEMO_TOKEN"
+    return
+  fi
+
+  printf '%s: %s' "$REASON_NO_DEMO_TOKEN" "$MAXMIND_TOKEN_FAILURE"
+}
+
+fetch_maxmind_city() {
   local ip_version="$1"
-  local response
+  local ip="$2"
+  local other_ip_version=4
 
-  response=$(curl_wrapper GET "https://geoip.maxmind.com/geoip/v2.1/city/me" \
-    --header "Referer: https://www.maxmind.com" \
-    --ip-version "$ip_version")
-
-  process_json "$response" ".registered_country.names.en"
-}
-
-get_iata_location() {
-  local iata_code="$1"
-  local url="https://www.air-port-codes.com/api/v1/single"
-  local payload="iata=$iata_code"
-  local apc_auth="96dc04b3fb"
-  local referer="https://www.air-port-codes.com/"
-  local ip_version=4
-  local response
-
-  response=$(curl_wrapper POST "$url" \
-    --header "APC-Auth: $apc_auth" \
-    --header "Referer: $referer" \
-    --data "$payload" \
-    --ip-version "$ip_version")
-
-  process_json "$response" ".airport.country.iso // empty"
-}
-
-is_ipv6_over_ipv4_service() {
-  local service="$1"
-  for s in "${IPV6_OVER_IPV4_SERVICES[@]}"; do
-    [[ "$s" == "$service" ]] && return 0
-  done
-  return 1
-}
-
-spinner_start() {
-  local delay=0.1
-  # shellcheck disable=SC1003
-  local spinstr='|/-\\'
-  local current_service
-  local spin_frames=()
-  local label
-
-  for ((i = 0; i < ${#spinstr}; i++)); do
-    spin_frames+=("$(color HEADER "${spinstr:$i:1}")")
-  done
-
-  label=$(color HEADER "Checking:")
-  SPINNER_SERVICE_FILE=$(mktemp "${TMPDIR:-/tmp}/ipregion_spinner_XXXXXX")
-  spinner_running=true
-
-  (
-    while $spinner_running; do
-      for frame in "${spin_frames[@]}"; do
-        current_service=""
-
-        if [[ -f "$SPINNER_SERVICE_FILE" ]]; then
-          read -r current_service <"$SPINNER_SERVICE_FILE"
-        fi
-
-        printf "\r\033[K%s %s \033[%sm%s\033[0m" "$frame" "$label" "$COLOR_SERVICE" "$current_service"
-
-        pause "$delay"
-      done
-    done
-  ) &
-
-  spinner_pid=$!
-}
-
-spinner_stop() {
-  spinner_running=false
-
-  if [[ -n "$spinner_pid" ]]; then
-    kill "$spinner_pid" 2>/dev/null
-    wait "$spinner_pid" 2>/dev/null
-    spinner_pid=""
-    printf "\r\033[K"
+  if [[ "$ip_version" == 4 ]]; then
+    other_ip_version=6
   fi
 
-  if [[ -f "$SPINNER_SERVICE_FILE" ]]; then
-    rm -f "$SPINNER_SERVICE_FILE"
-    unset SPINNER_SERVICE_FILE
-  fi
-}
-
-spinner_update() {
-  local value="$1"
-
-  if [[ -n "$SPINNER_SERVICE_FILE" ]]; then
-    echo "$value" >"$SPINNER_SERVICE_FILE"
-  fi
-}
-
-kill_process_group_stragglers() {
-  local stat fields own_pgid proc pid
-
-  read -r stat <"/proc/$$/stat"
-  read -ra fields <<<"${stat##*) }"
-  own_pgid="${fields[2]}"
-
-  for proc in /proc/[0-9]*; do
-    pid="${proc#/proc/}"
-
-    if ((pid == $$)) || ! read -r stat 2>/dev/null <"$proc/stat"; then
-      continue
-    fi
-
-    read -ra fields <<<"${stat##*) }"
-
-    if [[ "${fields[2]}" == "$own_pgid" ]]; then
-      kill -KILL "$pid" 2>/dev/null
-    fi
-  done
-}
-
-cleanup() {
-  spinner_stop
-  remove_request_cache
-}
-
-interrupt_cleanup() {
-  trap '' TERM
-  kill -TERM 0 2>/dev/null
-  kill_process_group_stragglers
-  cleanup
-  exit 130
-}
-
-create_request_cache() {
-  REQUEST_CACHE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/ipregion_cache_XXXXXX")
-}
-
-remove_request_cache() {
-  if [[ -n "$REQUEST_CACHE_DIR" ]]; then
-    rm -rf "$REQUEST_CACHE_DIR"
-    REQUEST_CACHE_DIR=""
-  fi
-}
-
-fetch_url() {
-  local extract_pattern="$1"
-  shift
-
-  if [[ -z "$extract_pattern" ]]; then
-    curl "$@"
+  http_request "$ip_version" "$MAXMIND_CITY_URL/$ip?demo=1" --header "Authorization: Bearer $MAXMIND_TOKEN"
+  if [[ "$HTTP_CODE" != "$HTTP_PAYMENT_REQUIRED" || -n "$PROXY_ADDR" || -z "$(external_ip "$other_ip_version")" ]]; then
     return
   fi
 
-  curl "$@" | grep -oE "$extract_pattern|^[0-9]{3}$"
+  http_request "$other_ip_version" "$MAXMIND_CITY_URL/$ip?demo=1" --header "Authorization: Bearer $MAXMIND_TOKEN"
 }
 
-cached_curl() {
-  local extract_pattern="$1"
-  shift
-  local cache_key cache_file response owner_pid
+maxmind_failure_reason() {
+  local reason
 
-  if [[ -z "$REQUEST_CACHE_DIR" ]]; then
-    fetch_url "$extract_pattern" "$@"
+  reason=$(http_failure_reason)
+  if [[ -n "$reason" ]]; then
+    printf '%s' "$reason"
     return
   fi
 
-  cache_key=$(cksum <<<"$extract_pattern $*")
-  cache_file="$REQUEST_CACHE_DIR/${cache_key%% *}"
-
-  set -C
-  if { printf "%s" "$BASHPID" >"$cache_file.lock"; } 2>/dev/null; then
-    fetch_url "$extract_pattern" "$@" >"$cache_file"
-    : >"$cache_file.done"
-  fi
-  set +C
-
-  while [[ ! -f "$cache_file.done" ]]; do
-    owner_pid=""
-    read -r owner_pid <"$cache_file.lock"
-
-    if [[ -n "$owner_pid" ]] && ! kill -0 "$owner_pid" 2>/dev/null && [[ ! -f "$cache_file.done" ]]; then
-      return 1
-    fi
-
-    pause "$CACHE_POLL_INTERVAL"
-  done
-
-  IFS= read -r -d '' response <"$cache_file"
-  printf "%s" "$response"
-}
-
-run_async() {
-  local -n async_fd=$1
-  shift
-
-  exec {async_fd}< <("$@")
-}
-
-read_async() {
-  local -n async_result=$1
-  local fd="$2"
-
-  if [[ -z "$fd" ]]; then
-    return
-  fi
-
-  async_result=$(cat <&"$fd")
-  exec {fd}<&-
-}
-
-curl_wrapper() {
-  local method="$1"
-  local url="$2"
-  shift 2
-  local ip_version user_agent json data file forms headers extract_pattern response_with_code response http_code
-  local curl_args=(
-    --silent
-    --compressed
-    --location
-    --retry-connrefused
-    --retry "$CURL_RETRIES"
-    --max-time "$CURL_TIMEOUT"
-    --retry-max-time "$CURL_TIMEOUT"
-    -w '\n%{http_code}'
-  )
-
-  case "$method" in
-    HEAD)
-      curl_args+=(--head)
-      ;;
-    *)
-      curl_args+=(--request "$method")
-      ;;
+  case "$HTTP_CODE" in
+    "$HTTP_OK") ;;
+    "$HTTP_PAYMENT_REQUIRED") printf '%s' "$REASON_DAILY_LIMIT" ;;
+    *) printf '%s (%s)' "$REASON_UNEXPECTED_RESPONSE" "$HTTP_CODE" ;;
   esac
-
-  while (($#)); do
-    case "$1" in
-      --ip-version)
-        ip_version="$2"
-        shift 2
-        ;;
-      --user-agent)
-        user_agent="$2"
-        shift 2
-        ;;
-      --header)
-        headers+=("$2")
-        shift 2
-        ;;
-      --json)
-        json="$2"
-        shift 2
-        ;;
-      --data)
-        data="$2"
-        shift 2
-        ;;
-      --file)
-        file="$2"
-        shift 2
-        ;;
-      --form)
-        forms+=("$2")
-        shift 2
-        ;;
-      --extract)
-        extract_pattern="$2"
-        shift 2
-        ;;
-    esac
-  done
-
-  if [[ "$ip_version" == "4" ]]; then
-    curl_args+=(-4)
-  else
-    curl_args+=(-6)
-  fi
-
-  for h in "${headers[@]}"; do
-    curl_args+=(-H "$h")
-  done
-
-  if [[ -n "$user_agent" ]]; then
-    curl_args+=(-A "$user_agent")
-  fi
-
-  if [[ -n "$json" ]]; then
-    curl_args+=(--json "$json")
-  fi
-
-  if [[ -n "$data" ]]; then
-    curl_args+=(--data "$data")
-  fi
-
-  if [[ -n "$file" ]]; then
-    curl_args+=(--upload-file "$file")
-  fi
-
-  for f in "${forms[@]}"; do
-    curl_args+=(-F "$f")
-  done
-
-  if [[ -n "$PROXY_ADDR" ]]; then
-    curl_args+=(--proxy "socks5h://$PROXY_ADDR")
-  fi
-
-  if [[ -n "$INTERFACE_NAME" ]]; then
-    curl_args+=(--interface "$INTERFACE_NAME")
-  fi
-
-  curl_args+=("$url")
-
-  response_with_code=$(cached_curl "$extract_pattern" "${curl_args[@]}")
-  http_code=${response_with_code##*$'\n'}
-  response=${response_with_code%"$http_code"}
-  response=${response%$'\n'}
-
-  if [[ "$http_code" == 4* || "$http_code" == 5* ]]; then
-    status_from_http_code "$http_code"
-    return 0
-  fi
-
-  echo "$response"
 }
 
-service_build_request() {
-  local service="$1" ip="$2" ip_version="$3"
-  local cfg="${PRIMARY_SERVICES[$service]}"
-  local display_name domain url_template url headers_str response_format
+lookup_maxmind_registration() {
+  local ip_version="$1"
+  local ip="$2"
+  local failure
 
-  IFS='|' read -r display_name domain url_template response_format <<<"$cfg"
-
-  if [[ -z "$display_name" ]]; then
-    display_name="$service"
-  fi
-
-  url="https://$domain${url_template//\{ip\}/$ip}"
-
-  if [[ -n "${SERVICE_HEADERS[$service]}" ]]; then
-    headers_str="${SERVICE_HEADERS[$service]}"
-  fi
-
-  printf "%s\n%s\n%s\n%s" "$display_name" "$url" "${response_format:-json}" "$headers_str"
-}
-
-probe_service() {
-  local service="$1"
-  local ip_version="$2"
-  local ip="$3"
-  local built display_name url response_format headers_line request_params response
-
-  mapfile -t built < <(service_build_request "$service" "$ip" "$ip_version")
-  display_name="${built[0]}"
-  url="${built[1]}"
-  response_format="${built[2]}"
-  headers_line="${built[3]}"
-
-  if [[ -n "$headers_line" ]]; then
-    IFS='||' read -ra hs <<<"$headers_line"
-    for h in "${hs[@]}"; do
-      if [[ -n "$h" ]]; then
-        request_params+=(--header "$h")
-      fi
-    done
-  fi
-
-  if [[ "$ip_version" == "6" ]] && is_ipv6_over_ipv4_service "$service"; then
-    ip_version="4"
-  fi
-
-  response=$(curl_wrapper GET "$url" "${request_params[@]}" --ip-version "$ip_version")
-
-  process_response "$service" "$response" "$display_name" "$response_format"
-}
-
-process_response() {
-  local service="$1"
-  local response="$2"
-  local display_name="$3"
-  local response_format="${4:-json}"
-  local jq_filter value
-
-  if is_status_string "$response"; then
-    echo "$response"
-    return
-  fi
-
-  if [[ -z "$response" || "$response" == *"<html"* ]]; then
-    echo "$STATUS_NA"
-    return
-  fi
-
-  if [[ "$response_format" == "plain" ]]; then
-    echo "$response" | tr -d '\r\n '
-    return
-  fi
-
-  case "$service" in
-    MAXMIND)
-      jq_filter='.country.iso_code'
-      ;;
-    RIPE)
-      jq_filter='.country'
-      ;;
-    IP2LOCATION_IO)
-      jq_filter='.country_code'
-      ;;
-    IPINFO_IO)
-      jq_filter='.data.country'
-      ;;
-    IPREGISTRY)
-      jq_filter='.location.country.code'
-      ;;
-    IPAPI_CO)
-      jq_filter='.country'
-      ;;
-    CLOUDFLARE)
-      jq_filter='.country'
-      ;;
-    COUNTRY_IS)
-      jq_filter='.country'
-      ;;
-    GEOAPIFY_COM)
-      jq_filter='.country.iso_code'
-      ;;
-    GEOJS_IO)
-      jq_filter='.[0].country'
-      ;;
-    IPAPI_IS)
-      jq_filter='.location.country_code'
-      ;;
-    IPBASE_COM)
-      jq_filter='.data.location.country.alpha2'
-      ;;
-    IPQUERY_IO)
-      jq_filter='.location.country_code'
-      ;;
-    IPWHO_IS)
-      jq_filter='.country_code'
-      ;;
-    IPAPI_COM)
-      jq_filter='.countryCode'
-      ;;
-    *)
-      echo "$response"
-      ;;
-  esac
-
-  if ! value=$(jq -r "$jq_filter" 2>/dev/null <<<"$response"); then
-    log "$LOG_ERROR" "Invalid JSON response from $display_name: $response"
+  if [[ -z "$MAXMIND_TOKEN" ]]; then
+    REGISTRATION_MAXMIND_FAILURE[$ip_version]=$(no_demo_token_reason)
     return 1
   fi
 
-  echo "$value"
+  fetch_maxmind_city "$ip_version" "$ip"
+  failure=$(maxmind_failure_reason)
+  if [[ -n "$failure" ]]; then
+    REGISTRATION_MAXMIND_FAILURE[$ip_version]="$failure"
+    return 1
+  fi
+
+  REGISTRATION_ASN[$ip_version]=$(json_value '.traits.autonomous_system_number // empty')
+  REGISTRATION_ORG[$ip_version]=$(json_value '.traits.autonomous_system_organization // empty')
 }
 
-process_with_custom_handler() {
-  local service="$1"
-  local display_name="$2"
-  local handler_func="${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}"
-  local ipv4_result=""
-  local ipv6_result=""
-  local ipv4_fd ipv6_fd
+lookup_ripe_registration() {
+  local ip_version="$1"
+  local ip="$2"
 
-  if can_use_ipv4; then
-    log "$LOG_INFO" "Checking $display_name via IPv4 (custom handler)"
-    run_async ipv4_fd "$handler_func" 4 4
-  fi
-
-  if can_use_ipv6; then
-    local transport=6
-    local log_msg="Checking $display_name via IPv6 (custom handler)"
-
-    if is_ipv6_over_ipv4_service "$service"; then
-      transport=4
-      log_msg="Checking $display_name (IPv6 address, IPv4 transport) (custom handler)"
-    fi
-
-    log "$LOG_INFO" "$log_msg"
-    run_async ipv6_fd "$handler_func" "$transport" 6
-  fi
-
-  read_async ipv4_result "$ipv4_fd"
-  read_async ipv6_result "$ipv6_fd"
-  print_result_fields "primary" "$display_name" "$ipv4_result" "$ipv6_result"
+  http_request "$ip_version" "$RIPESTAT_PREFIX_OVERVIEW_URL?resource=$ip"
+  REGISTRATION_ASN[$ip_version]=$(json_value '.data.asns[0].asn // empty')
+  REGISTRATION_ORG[$ip_version]=$(json_value '.data.asns[0].holder // empty | sub("^\\S+ (- )?"; "")')
 }
 
-process_with_probe() {
-  local service="$1"
-  local display_name="$2"
-  local ipv4_result=""
-  local ipv6_result=""
-  local ipv4_fd ipv6_fd
+lookup_registration_country() {
+  local ip_version="$1"
+  local ip="$2"
 
-  if can_use_ipv4; then
-    log "$LOG_INFO" "Checking $display_name via IPv4"
-    run_async ipv4_fd probe_service "$service" 4 "$EXTERNAL_IPV4"
-  fi
-
-  if can_use_ipv6; then
-    local log_msg="Checking $display_name via IPv6"
-
-    if is_ipv6_over_ipv4_service "$service"; then
-      log_msg="Checking $display_name (IPv6 address, IPv4 transport)"
-    fi
-
-    log "$LOG_INFO" "$log_msg"
-    run_async ipv6_fd probe_service "$service" 6 "$EXTERNAL_IPV6"
-  fi
-
-  read_async ipv4_result "$ipv4_fd"
-  read_async ipv6_result "$ipv6_fd"
-  print_result_fields "primary" "$display_name" "$ipv4_result" "$ipv6_result"
+  http_request "$ip_version" "$RIPESTAT_RIR_STATS_COUNTRY_URL?resource=$ip"
+  REGISTRATION_COUNTRY[$ip_version]=$(json_value '.data.located_resources[0].location // empty')
 }
 
-process_service() {
-  local service="$1"
-  local custom="${2:-false}"
-  local service_config="${PRIMARY_SERVICES[$service]}"
-  local display_name domain url_template response_format handler_func
+lookup_ip_registration() {
+  local ip_version="$1"
+  local ip="$2"
 
-  IFS='|' read -r display_name domain url_template response_format <<<"$service_config"
-  display_name="${display_name:-$service}"
-
-  if [[ "$custom" == true ]]; then
-    process_custom_service "$service"
+  lookup_registration_country "$ip_version" "$ip"
+  if lookup_maxmind_registration "$ip_version" "$ip"; then
+    log_verbose "IPv$ip_version ASN from MaxMind"
     return
   fi
 
-  if [[ -n "${PRIMARY_SERVICES_CUSTOM_HANDLERS[$service]}" ]]; then
-    process_with_custom_handler "$service" "$display_name"
+  log_verbose "IPv$ip_version ASN from RIPE, MaxMind: ${REGISTRATION_MAXMIND_FAILURE[$ip_version]}"
+  lookup_ripe_registration "$ip_version" "$ip"
+}
+
+count_running_jobs() {
+  jobs -pr | wc -l
+}
+
+is_progress_shown() {
+  [[ -t 2 && "$VERBOSE" != true ]]
+}
+
+draw_spinner_line() {
+  local text="$1"
+  local spinner="${PROGRESS_SPINNER_FRAMES[PROGRESS_FRAME % ${#PROGRESS_SPINNER_FRAMES[@]}]}"
+
+  PROGRESS_FRAME=$((PROGRESS_FRAME + 1))
+  printf '%s%s%s%s  %s' "$CLEAR_LINE" "$M_ACCENT" "$spinner" "$M_RESET" "$text" >&2
+}
+
+clear_progress() {
+  if ! is_progress_shown; then
     return
   fi
 
-  process_with_probe "$service" "$display_name"
+  printf '%s' "$CLEAR_LINE" >&2
 }
 
-process_custom_service() {
-  local service="$1"
-  local ipv4_result=""
-  local ipv6_result=""
-  local display_name handler_func group ipv4_fd ipv6_fd
+prefetch_ip_registration() {
+  local ip_version="$1"
+  local ip="$2"
 
-  if [[ -n "${CUSTOM_SERVICES[$service]}" ]]; then
-    display_name="${CUSTOM_SERVICES[$service]}"
-    handler_func="${CUSTOM_SERVICES_HANDLERS[$service]}"
-    group="custom"
-  elif [[ -n "${CDN_SERVICES[$service]}" ]]; then
-    display_name="${CDN_SERVICES[$service]}"
-    handler_func="${CUSTOM_SERVICES_HANDLERS[$service]}"
-    group="cdn"
+  lookup_registration_country "$ip_version" "$ip"
+  request_maxmind_token
+  if [[ -n "$MAXMIND_TOKEN" ]]; then
+    fetch_maxmind_city "$ip_version" "$ip"
+    if [[ -z "$(maxmind_failure_reason)" ]]; then
+      return
+    fi
+  fi
+
+  lookup_ripe_registration "$ip_version" "$ip"
+}
+
+fetch_external_ip_and_registration() {
+  local ip_version="$1"
+  local ip_file="$2"
+  local ip
+
+  fetch_external_ip "$ip_version" >"$ip_file"
+  ip=$(<"$ip_file")
+  if [[ -z "$ip" ]]; then
+    return
+  fi
+
+  case "$ip_version" in
+    4) EXTERNAL_IPV4="$ip" ;;
+    6) EXTERNAL_IPV6="$ip" ;;
+  esac
+  prefetch_ip_registration "$ip_version" "$ip"
+}
+
+wait_for_preparation() {
+  while (($(count_running_jobs) > 0)); do
+    if is_progress_shown; then
+      draw_spinner_line "$PREPARATION_LABEL"
+    fi
+    sleep "$JOB_POLL_INTERVAL"
+  done
+
+  clear_progress
+}
+
+discover_external_ips() {
+  local ipv4_file="$WORK_DIR/external-ipv4"
+  local ipv6_file="$WORK_DIR/external-ipv6"
+
+  : >"$ipv4_file"
+  : >"$ipv6_file"
+
+  request_maxmind_token &
+
+  if [[ "$IPV6_ONLY" != true ]]; then
+    fetch_external_ip_and_registration 4 "$ipv4_file" &
+  fi
+
+  if [[ "$IPV4_ONLY" != true ]]; then
+    fetch_external_ip_and_registration 6 "$ipv6_file" &
+  fi
+
+  wait_for_preparation
+  EXTERNAL_IPV4=$(<"$ipv4_file")
+  EXTERNAL_IPV6=$(<"$ipv6_file")
+
+  log_verbose "External IPv4: ${EXTERNAL_IPV4:-not found}, IPv6: ${EXTERNAL_IPV6:-not found}"
+
+  if [[ -n "$EXTERNAL_IPV4" || -n "$EXTERNAL_IPV6" ]]; then
+    return
+  fi
+
+  if [[ -n "$INTERFACE_NAME" ]]; then
+    print_error "failed to detect an external IP address through interface $INTERFACE_NAME, check that it exists and routes traffic out"
+    exit 1
+  fi
+
+  print_error "failed to detect an external IP address, check the network connection"
+  exit 1
+}
+
+lookup_ip_registrations() {
+  request_maxmind_token
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    lookup_ip_registration 4 "$EXTERNAL_IPV4"
+  fi
+
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    lookup_ip_registration 6 "$EXTERNAL_IPV6"
+  fi
+}
+
+escape_json_string() {
+  local -n json_value_ref=$1
+
+  json_value_ref=${json_value_ref//\\/\\\\}
+  json_value_ref=${json_value_ref//\"/\\\"}
+  json_value_ref=${json_value_ref//$'\n'/\\n}
+  json_value_ref=${json_value_ref//$'\r'/\\r}
+  json_value_ref=${json_value_ref//$'\t'/\\t}
+  json_value_ref=${json_value_ref//[$'\001'-$'\037']/}
+}
+
+print_result() {
+  local group="$1"
+  local service="$2"
+  local ip_version="$3"
+  local country="$4"
+  local status="$5"
+  local reason="$6"
+
+  local field
+
+  log_verbose "$group / $service IPv$ip_version: country ${country:--}, status ${status:--}, reason ${reason:--}"
+  for field in group service ip_version country status reason; do
+    escape_json_string "$field"
+  done
+  printf '{"group":"%s","service":"%s","ip_version":"%s","country":"%s","status":"%s","reason":"%s"}\n' \
+    "$group" "$service" "$ip_version" "$country" "$status" "$reason"
+}
+
+print_progress_bar() {
+  local finished="$1"
+  local done_width=$((PROGRESS_BAR_WIDTH * finished / JOB_COUNT))
+  local done_part left_part
+
+  printf -v done_part '%*s' "$done_width" ''
+  printf -v left_part '%*s' "$((PROGRESS_BAR_WIDTH - done_width))" ''
+  printf '%s%s%s%s%s' "$M_ACCENT" "${done_part// /$PROGRESS_BAR_DONE}" "$M_DIM" "${left_part// /$PROGRESS_BAR_LEFT}" "$M_RESET"
+}
+
+draw_progress() {
+  local finished
+
+  if ! is_progress_shown; then
+    return
+  fi
+
+  finished=$((JOB_COUNT - $(count_running_jobs)))
+  draw_spinner_line "$PROGRESS_LABEL  $(print_progress_bar "$finished")  $M_DIM$finished/$JOB_COUNT$M_RESET"
+}
+
+create_job_slots() {
+  local slots_fifo="$WORK_DIR/job-slots"
+  local slots
+
+  mkfifo -- "$slots_fifo"
+  exec {JOB_SLOTS_FD}<>"$slots_fifo"
+  printf -v slots '%*s' "$MAX_PARALLEL_JOBS" ''
+  printf '%s' "$slots" >&"$JOB_SLOTS_FD"
+}
+
+take_job_slot() {
+  read -r -N 1 -u "$JOB_SLOTS_FD" _
+}
+
+return_job_slot() {
+  printf ' ' >&"$JOB_SLOTS_FD"
+}
+
+run_job() {
+  local result_file="$1"
+  shift
+  local trace_fd
+
+  if [[ -n "$DEBUG_TRACE_DIR" ]]; then
+    exec {trace_fd}>"$DEBUG_TRACE_DIR/${result_file##*/}"
+    BASH_XTRACEFD="$trace_fd"
+  fi
+
+  take_job_slot
+  trap return_job_slot EXIT
+  "$@" >"$result_file"
+  # bash 4.4 skips the EXIT trap of a background function that returns without exit
+  exit
+}
+
+run_check() {
+  local check="$1"
+  local ip_version="$2"
+  local id result
+
+  id=$(check_id "$check")
+  result=$("$check" "$ip_version")
+  printf '{"id":"%s",%s\n' "$id" "${result#\{}"
+}
+
+start_job() {
+  local result_file
+
+  JOB_COUNT=$((JOB_COUNT + 1))
+  printf -v result_file '%s/%s%04d' "$WORK_DIR" "$RESULT_FILE_PREFIX" "$JOB_COUNT"
+  run_job "$result_file" "$@" &
+}
+
+start_check() {
+  local check="$1"
+
+  if is_checked_once "$(check_group "$check")"; then
+    start_job run_check "$check" "$PROXY_IP_VERSION"
+    return
+  fi
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    start_job run_check "$check" 4
+  fi
+
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    start_job run_check "$check" 6
+  fi
+}
+
+is_dual_stack() {
+  [[ -n "$EXTERNAL_IPV4" && -n "$EXTERNAL_IPV6" ]]
+}
+
+is_checked_once() {
+  local group="$1"
+
+  [[ -n "$PROXY_ADDR" && "$group" != "$GROUP_GEOIP" ]] && is_dual_stack
+}
+
+is_check_selected() {
+  local check="$1"
+
+  is_group_selected "$(check_group "$check")" || is_in_list "$check" "${SELECTED_CHECKS[@]}"
+}
+
+external_ip() {
+  local ip_version="$1"
+
+  case "$ip_version" in
+    4) printf '%s' "$EXTERNAL_IPV4" ;;
+    6) printf '%s' "$EXTERNAL_IPV6" ;;
+  esac
+}
+
+is_service_without_ipv6() {
+  if [[ "$HTTP_IP_VERSION" != 6 || -n "$PROXY_ADDR" ]]; then
+    return 1
+  fi
+
+  [[ "$HTTP_CURL_EXIT" == "$CURL_EXIT_DNS" || "$HTTP_CURL_EXIT" == "$CURL_EXIT_CONNECT" ]]
+}
+
+print_failure() {
+  local group="$1"
+  local service="$2"
+  local ip_version="$3"
+  local reason="$4"
+
+  print_result "$group" "$service" "$ip_version" "" "" "$reason"
+}
+
+print_country() {
+  local group="$1"
+  local service="$2"
+  local ip_version="$3"
+  local country="$4"
+  local reason
+
+  if is_service_without_ipv6; then
+    print_result "$group" "$service" "$ip_version" "" "$STATUS_NONE" "$REASON_NO_IPV6"
+    return
+  fi
+
+  reason=$(http_failure_reason)
+  if [[ -n "$reason" ]]; then
+    print_failure "$group" "$service" "$ip_version" "$reason"
+    return
+  fi
+
+  if [[ ! "$country" =~ $COUNTRY_CODE_PATTERN ]]; then
+    print_failure "$group" "$service" "$ip_version" "$REASON_UNEXPECTED_RESPONSE"
+    return
+  fi
+
+  print_result "$group" "$service" "$ip_version" "$country" "$STATUS_YES" ""
+}
+
+print_status() {
+  local group="$1"
+  local service="$2"
+  local ip_version="$3"
+  local status="$4"
+  local reason
+
+  if is_service_without_ipv6; then
+    print_result "$group" "$service" "$ip_version" "" "$STATUS_NONE" "$REASON_NO_IPV6"
+    return
+  fi
+
+  reason=$(http_failure_reason)
+  if [[ -n "$status" ]]; then
+    print_result "$group" "$service" "$ip_version" "" "$status" "$reason"
+    return
+  fi
+
+  print_failure "$group" "$service" "$ip_version" "${reason:-$REASON_UNEXPECTED_RESPONSE}"
+}
+
+check_geoip_json() {
+  local service="$1"
+  local ip_version="$2"
+  local transport="$3"
+  local url="$4"
+  local filter="$5"
+  shift 5
+
+  http_request "$transport" "$url" "$@"
+  print_country "$GROUP_GEOIP" "$service" "$ip_version" "$(json_value "$filter")"
+}
+
+check_geoip_maxmind() {
+  local ip_version="$1"
+  local failure
+
+  if [[ -z "$MAXMIND_TOKEN" ]]; then
+    print_failure "$GROUP_GEOIP" MaxMind "$ip_version" "$(no_demo_token_reason)"
+    return
+  fi
+
+  fetch_maxmind_city "$ip_version" "$(external_ip "$ip_version")"
+  failure=$(maxmind_failure_reason)
+  if [[ -n "$failure" ]]; then
+    print_failure "$GROUP_GEOIP" MaxMind "$ip_version" "$failure"
+    return
+  fi
+
+  print_country "$GROUP_GEOIP" MaxMind "$ip_version" "$(json_value '.country.iso_code // empty')"
+}
+
+check_geoip_ripe() {
+  local ip_version="$1"
+
+  check_geoip_json RIPE "$ip_version" "$ip_version" "$RIPE_RDAP_IP_URL/$(external_ip "$ip_version")" '.country // empty' --location
+}
+
+check_geoip_ipinfo_io() {
+  local ip_version="$1"
+  local url
+
+  case "$ip_version" in
+    4) url="$IPINFO_IPV4_URL" ;;
+    6) url="$IPINFO_IPV6_URL" ;;
+  esac
+
+  check_geoip_json ipinfo.io "$ip_version" "$ip_version" "$url/$(external_ip "$ip_version")" '.data.country // empty'
+}
+
+cloudflare_trace_ip_version() {
+  if [[ ! "$HTTP_BODY" =~ $CLOUDFLARE_IP_PATTERN ]]; then
+    return
+  fi
+
+  case "${BASH_REMATCH[2]}" in
+    "$EXTERNAL_IPV4") printf '4' ;;
+    "$EXTERNAL_IPV6") printf '6' ;;
+  esac
+}
+
+check_geoip_cloudflare() {
+  local ip_version="$1"
+  local country=""
+  local used_ip_version
+
+  http_request "$ip_version" "$CLOUDFLARE_TRACE_URL"
+  used_ip_version=$(cloudflare_trace_ip_version)
+  if [[ -n "$PROXY_ADDR" && -n "$used_ip_version" && "$used_ip_version" != "$ip_version" ]]; then
+    print_result "$GROUP_GEOIP" Cloudflare "$ip_version" "" "$STATUS_NONE" "$REASON_PROXY_PICKED$used_ip_version"
+    return
+  fi
+
+  if [[ "$HTTP_BODY" =~ $CLOUDFLARE_COUNTRY_PATTERN ]]; then
+    country="${BASH_REMATCH[2]}"
+  fi
+
+  print_country "$GROUP_GEOIP" Cloudflare "$ip_version" "$country"
+}
+
+check_geoip_ipregistry_co() {
+  local ip_version="$1"
+
+  check_geoip_json ipregistry.co "$ip_version" "$ip_version" \
+    "$IPREGISTRY_URL/$(external_ip "$ip_version")?hostname=true&key=$IPREGISTRY_KEY" '.location.country.code // empty' \
+    --header "Origin: $IPREGISTRY_ORIGIN"
+}
+
+check_geoip_ipapi_co() {
+  local ip_version="$1"
+
+  check_geoip_json ipapi.co "$ip_version" "$ip_version" "$IPAPI_CO_URL/$(external_ip "$ip_version")/json" '.country // empty' \
+    --header "Referer: $IPAPI_CO_REFERER"
+}
+
+check_geoip_ifconfig_co() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$IFCONFIG_CO_URL?ip=$(external_ip "$ip_version")"
+  print_country "$GROUP_GEOIP" ifconfig.co "$ip_version" "$HTTP_BODY"
+}
+
+check_geoip_ip2location_io() {
+  local ip_version="$1"
+
+  check_geoip_json ip2location.io "$ip_version" "$ip_version" "$IP2LOCATION_URL?ip=$(external_ip "$ip_version")" '.country_code // empty'
+}
+
+check_geoip_country_is() {
+  local ip_version="$1"
+
+  check_geoip_json country.is "$ip_version" "$ip_version" "$COUNTRY_IS_URL/$(external_ip "$ip_version")" '.country // empty'
+}
+
+check_geoip_geoapify_com() {
+  local ip_version="$1"
+
+  check_geoip_json geoapify.com "$ip_version" "$ip_version" \
+    "$GEOAPIFY_URL?ip=$(external_ip "$ip_version")&apiKey=$GEOAPIFY_KEY" '.country.iso_code // empty'
+}
+
+check_geoip_geojs_io() {
+  local ip_version="$1"
+
+  check_geoip_json geojs.io "$ip_version" "$ip_version" "$GEOJS_URL?ip=$(external_ip "$ip_version")" '.[0].country // empty'
+}
+
+check_geoip_ipbase_com() {
+  local ip_version="$1"
+
+  check_geoip_json ipbase.com "$ip_version" "$ip_version" "$IPBASE_URL?ip=$(external_ip "$ip_version")" '.data.location.country.alpha2 // empty'
+}
+
+check_geoip_ipquery_io() {
+  local ip_version="$1"
+
+  check_geoip_json ipquery.io "$ip_version" "$ip_version" "$IPQUERY_URL/$(external_ip "$ip_version")" '.location.country_code // empty'
+}
+
+check_geoip_ipwho_is() {
+  local ip_version="$1"
+
+  check_geoip_json ipwho.is "$ip_version" "$ip_version" "$IPWHO_URL/$(external_ip "$ip_version")" '.country_code // empty'
+}
+
+check_geoip_ip_api_com() {
+  local ip_version="$1"
+
+  check_geoip_json ip-api.com "$ip_version" "$IPV4_TRANSPORT" "$IP_API_URL/$(external_ip "$ip_version")?fields=countryCode" '.countryCode // empty' \
+    --header "Origin: $IP_API_ORIGIN"
+}
+
+check_platforms_json() {
+  local service="$1"
+  local ip_version="$2"
+  local url="$3"
+  local filter="$4"
+  shift 4
+
+  http_request "$ip_version" "$url" "$@"
+  print_country "$GROUP_PLATFORMS" "$service" "$ip_version" "$(json_value "$filter")"
+}
+
+check_platforms_pattern() {
+  local service="$1"
+  local ip_version="$2"
+  local url="$3"
+  local pattern="$4"
+  shift 4
+  local country=""
+
+  http_request "$ip_version" "$url" "$@"
+  if [[ "$HTTP_BODY" =~ $pattern ]]; then
+    country="${BASH_REMATCH[1]}"
+  fi
+
+  print_country "$GROUP_PLATFORMS" "$service" "$ip_version" "$country"
+}
+
+check_platforms_google() {
+  local ip_version="$1"
+
+  check_platforms_pattern Google "$ip_version" "$GOOGLE_URL" "$GOOGLE_COUNTRY_PATTERN" --user-agent "$USER_AGENT"
+}
+
+check_platforms_youtube() {
+  local ip_version="$1"
+  local country
+
+  http_request "$ip_version" "$YOUTUBE_URL"
+  country=$(jq -r '.[0][2][0][0][1] // empty' <<<"${HTTP_BODY#"$YOUTUBE_JSON_PREFIX"}" 2>/dev/null || true)
+  print_country "$GROUP_PLATFORMS" YouTube "$ip_version" "$country"
+}
+
+check_platforms_twitch() {
+  local ip_version="$1"
+
+  check_platforms_json Twitch "$ip_version" "$TWITCH_URL" '.[0].data.requestInfo.countryCode // empty' \
+    --header "Client-Id: $TWITCH_CLIENT_ID" --json "$TWITCH_QUERY"
+}
+
+check_platforms_chatgpt() {
+  local ip_version="$1"
+
+  check_platforms_pattern ChatGPT "$ip_version" "$CHATGPT_URL" "$CHATGPT_COUNTRY_PATTERN" \
+    --request POST --header "Statsig-Api-Key: $CHATGPT_STATSIG_API_KEY"
+}
+
+check_platforms_claude() {
+  local ip_version="$1"
+
+  check_platforms_json Claude "$ip_version" "$CLAUDE_URL" '.statsig.user.country // empty' \
+    --user-agent "$CLAUDE_USER_AGENT" --header "$CLAUDE_PLATFORM_HEADER"
+}
+
+check_platforms_netflix() {
+  local ip_version="$1"
+
+  check_platforms_json Netflix "$ip_version" "$NETFLIX_URL" '.client.location.country // empty'
+}
+
+check_platforms_spotify() {
+  local ip_version="$1"
+
+  check_platforms_json Spotify "$ip_version" "$SPOTIFY_URL" '.country // empty' --header "X-Client-Id: $SPOTIFY_CLIENT_ID"
+}
+
+check_platforms_reddit() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$REDDIT_NOT_FOUND_URL" --user-agent "$USER_AGENT"
+  if [[ "$HTTP_CODE" == "$HTTP_FORBIDDEN" ]]; then
+    print_result "$GROUP_PLATFORMS" Reddit "$ip_version" "" "$STATUS_IPBLOCK" "$(http_failure_reason)"
+    return
+  fi
+
+  check_platforms_pattern Reddit "$ip_version" "$REDDIT_NOT_FOUND_URL" "$REDDIT_COUNTRY_PATTERN" --user-agent "$USER_AGENT"
+}
+
+check_platforms_disney_plus() {
+  local ip_version="$1"
+
+  check_platforms_json Disney+ "$ip_version" "$DISNEY_PLUS_URL" '.extensions.sdk.session.location.countryCode // empty' \
+    --header "Authorization: Bearer $DISNEY_PLUS_API_KEY" --json "$DISNEY_PLUS_QUERY"
+}
+
+check_platforms_tiktok() {
+  local ip_version="$1"
+
+  check_platforms_json TikTok "$ip_version" "$TIKTOK_URL" '.body.appProps.region // empty'
+}
+
+check_platforms_apple() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$APPLE_URL"
+  print_country "$GROUP_PLATFORMS" Apple "$ip_version" "$HTTP_BODY"
+}
+
+check_platforms_steam() {
+  local ip_version="$1"
+
+  check_platforms_pattern Steam "$ip_version" "$STEAM_URL" "$STEAM_COUNTRY_PATTERN" --head
+}
+
+check_platforms_microsoft() {
+  local ip_version="$1"
+
+  check_platforms_pattern Microsoft "$ip_version" "$MICROSOFT_URL" "$MICROSOFT_COUNTRY_PATTERN"
+}
+
+check_platforms_ookla() {
+  local ip_version="$1"
+
+  check_platforms_json Ookla "$ip_version" "$OOKLA_URL" '.location.countryCode // empty'
+}
+
+check_platforms_jetbrains() {
+  local ip_version="$1"
+
+  check_platforms_json JetBrains "$ip_version" "$JETBRAINS_URL" '.code // empty'
+}
+
+check_platforms_playstation() {
+  local ip_version="$1"
+
+  check_platforms_pattern PlayStation "$ip_version" "$PLAYSTATION_URL" "$PLAYSTATION_COUNTRY_PATTERN" --head
+}
+
+print_edge() {
+  local service="$1"
+  local ip_version="$2"
+  local country="$3"
+  local iata="$4"
+  local node="$5"
+
+  print_country "$GROUP_CDN" "$service" "$ip_version" "$country" |
+    jq -c --arg iata "$iata" --arg node "$node" '. + {iata: $iata, node: $node}'
+}
+
+iata_country() {
+  local iata="$1"
+
+  if [[ -z "$iata" ]]; then
+    return
+  fi
+
+  http_request "$IPV4_TRANSPORT" "$AIRPORT_CODES_URL" \
+    --header "APC-Auth: $AIRPORT_CODES_KEY" --header "Referer: $AIRPORT_CODES_REFERER" --data "iata=$iata"
+  json_value '.airport.country.iso // empty'
+}
+
+youtube_node_iata() {
+  local node="$1"
+
+  if [[ "$node" =~ $GOOGLE_NODE_PATTERN || "$node" =~ $ISP_NODE_PATTERN || "$node" =~ $GGC_NODE_PATTERN ]]; then
+    printf '%s' "${BASH_REMATCH[1]^^}"
+  fi
+}
+
+check_cdn_cloudflare() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$CLOUDFLARE_SPEED_META_URL" --header "Referer: $CLOUDFLARE_SPEED_REFERER"
+  print_edge Cloudflare "$ip_version" "$(json_value '.colo.cca2 // empty')" "$(json_value '.colo.iata // empty')" ""
+}
+
+check_cdn_youtube() {
+  local ip_version="$1"
+  local node=""
+  local iata
+
+  http_request "$ip_version" "$YOUTUBE_CDN_MAPPING_URL"
+  if [[ "$HTTP_BODY" =~ $YOUTUBE_CDN_NODE_PATTERN ]]; then
+    node="${BASH_REMATCH[1]}"
+  fi
+
+  iata=$(youtube_node_iata "$node")
+  print_edge YouTube "$ip_version" "$(iata_country "$iata")" "$iata" "$node"
+}
+
+check_cdn_netflix() {
+  local ip_version="$1"
+  local node=""
+  local iata=""
+
+  http_request "$ip_version" "$NETFLIX_URL"
+  if [[ "$(json_value '.targets[0].url // empty')" =~ $NETFLIX_CDN_URL_PATTERN ]]; then
+    node="${BASH_REMATCH[1]}"
+    iata="${BASH_REMATCH[2]^^}"
+  fi
+
+  print_edge Netflix "$ip_version" "$(json_value '.targets[0].location.country // empty')" "$iata" "$node"
+}
+
+youtube_premium_status() {
+  if [[ "$HTTP_CODE" != "$HTTP_OK" ]]; then
+    return
+  fi
+
+  if [[ "$HTTP_BODY" == *"$YOUTUBE_PREMIUM_PURCHASE_MARKER"* ]]; then
+    printf '%s' "$STATUS_YES"
+    return
+  fi
+
+  printf '%s' "$STATUS_NO"
+}
+
+check_availability_youtube_premium() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$YOUTUBE_INNERTUBE_BROWSE_URL" --json "$YOUTUBE_PREMIUM_QUERY"
+  print_status "$GROUP_AVAILABILITY" "YouTube Premium" "$ip_version" "$(youtube_premium_status)"
+}
+
+youtube_no_ads_status() {
+  if [[ "$HTTP_CODE" != "$HTTP_OK" || "$HTTP_BODY" != *"$YOUTUBE_PLAYER_RESPONSE_MARKER"* ]]; then
+    return
+  fi
+
+  if [[ "$HTTP_BODY" == *"$YOUTUBE_VIDEO_AD_MARKER"* ]]; then
+    printf '%s' "$STATUS_NO"
+    return
+  fi
+
+  printf '%s' "$STATUS_YES"
+}
+
+# YouTube serves ads only to a visitor with cookies, so the first load just collects them.
+check_availability_youtube_no_ads() {
+  local ip_version="$1"
+  local cookie_jar="$WORK_DIR/$YOUTUBE_COOKIE_JAR_PREFIX$ip_version"
+  local service="$YOUTUBE_NO_ADS_SERVICE_PREFIX ${YOUTUBE_LANG^^}"
+  local viewer_cookie="$YOUTUBE_VIEWER_COOKIE_PREFIX$YOUTUBE_LANG"
+  local accept_language="$ACCEPT_LANGUAGE_PREFIX$YOUTUBE_LANG"
+  local status
+
+  http_request "$ip_version" "$YOUTUBE_WATCH_URL" --user-agent "$USER_AGENT" \
+    --header "$viewer_cookie" --header "$accept_language" --cookie-jar "$cookie_jar"
+  http_request "$ip_version" "$YOUTUBE_WATCH_URL" --user-agent "$USER_AGENT" \
+    --header "$viewer_cookie" --header "$accept_language" --cookie "$cookie_jar"
+  status=$(youtube_no_ads_status)
+  if [[ "$status" == "$STATUS_NO" ]]; then
+    print_result "$GROUP_AVAILABILITY" "$service" "$ip_version" "" "$STATUS_NO" "$REASON_VIDEO_ADS"
+    return
+  fi
+
+  print_status "$GROUP_AVAILABILITY" "$service" "$ip_version" "$status"
+}
+
+spotify_signup_status() {
+  if [[ "$(json_value '.status')" =~ $SPOTIFY_SIGNUP_BLOCKED_STATUS_PATTERN ]]; then
+    printf '%s' "$STATUS_NO"
+    return
+  fi
+
+  case "$(json_value '.is_country_launched')" in
+    true) printf '%s' "$STATUS_YES" ;;
+    false) printf '%s' "$STATUS_NO" ;;
+  esac
+}
+
+check_availability_spotify_signup() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$SPOTIFY_URL" --header "X-Client-Id: $SPOTIFY_CLIENT_ID"
+  print_status "$GROUP_AVAILABILITY" "Spotify Signup" "$ip_version" "$(spotify_signup_status)"
+}
+
+disney_plus_status() {
+  case "$(json_value '.extensions.sdk.session.inSupportedLocation')" in
+    true)
+      printf '%s' "$STATUS_YES"
+      return
+      ;;
+    false)
+      printf '%s' "$STATUS_NO"
+      return
+      ;;
+  esac
+
+  if [[ "$(json_value '.errors[0].message // empty')" == *"$DISNEY_PLUS_FORBIDDEN_MARKER"* ]]; then
+    printf '%s' "$STATUS_NO"
+  fi
+}
+
+check_availability_disney_plus() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$DISNEY_PLUS_URL" \
+    --header "Authorization: Bearer $DISNEY_PLUS_API_KEY" --json "$DISNEY_PLUS_QUERY"
+  print_status "$GROUP_AVAILABILITY" Disney+ "$ip_version" "$(disney_plus_status)"
+}
+
+reddit_guest_status() {
+  case "$HTTP_CODE" in
+    "$HTTP_OK") printf '%s' "$STATUS_YES" ;;
+    "$HTTP_FORBIDDEN") printf '%s' "$STATUS_IPBLOCK" ;;
+  esac
+}
+
+check_availability_reddit_guest() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$REDDIT_GUEST_URL" --user-agent "$USER_AGENT"
+  print_status "$GROUP_AVAILABILITY" "Reddit Guest" "$ip_version" "$(reddit_guest_status)"
+}
+
+is_google_search_captcha() {
+  [[ "$HTTP_REDIRECT_URL" == *"$GOOGLE_SEARCH_CAPTCHA_PATH"* || "$HTTP_CODE" == "$HTTP_TOO_MANY_REQUESTS" ]]
+}
+
+google_search_status() {
+  if [[ "$HTTP_CODE" == "$HTTP_OK" && "$HTTP_BODY" == *"$GOOGLE_SEARCH_NO_JS_MARKER"* ]]; then
+    printf '%s' "$STATUS_YES"
+  fi
+}
+
+check_availability_google_search() {
+  local ip_version="$1"
+
+  http_request "$ip_version" "$GOOGLE_SEARCH_URL" \
+    --user-agent "$USER_AGENT" --header "$GOOGLE_SOCS_COOKIE" --header "$ACCEPT_LANGUAGE_ENGLISH"
+  if is_google_search_captcha; then
+    print_result "$GROUP_AVAILABILITY" "Google Search" "$ip_version" "" "$STATUS_IPBLOCK" "$REASON_CAPTCHA"
+    return
+  fi
+
+  print_status "$GROUP_AVAILABILITY" "Google Search" "$ip_version" "$(google_search_status)"
+}
+
+gemini_status() {
+  local country="$1"
+  local regions="$2"
+
+  jq -r --arg code "$country" --argjson regions "$regions" --arg yes "$STATUS_YES" --arg no "$STATUS_NO" \
+    "$GEMINI_MATCH_FILTER" <<<"$HTTP_BODY" 2>/dev/null || true
+}
+
+check_ai_gemini() {
+  local service="$1"
+  local ip_version="$2"
+  local regions_url="$3"
+  local regions_filter="$4"
+  local regions
+  local country=""
+
+  http_request "$ip_version" "$regions_url"
+  regions=$(jq -Rsc "$regions_filter | select(length > 0)" <<<"$HTTP_BODY" 2>/dev/null || true)
+  if [[ -z "$regions" ]]; then
+    print_status "$GROUP_AI" "$service" "$ip_version" ""
+    return
+  fi
+
+  http_request "$ip_version" "$GOOGLE_URL" --user-agent "$USER_AGENT"
+  if [[ "$HTTP_BODY" =~ $GOOGLE_COUNTRY_PATTERN ]]; then
+    country="${BASH_REMATCH[1]}"
+  fi
+
+  if [[ ! "$country" =~ $COUNTRY_CODE_PATTERN ]]; then
+    print_status "$GROUP_AI" "$service" "$ip_version" ""
+    return
+  fi
+
+  http_request "$ip_version" "$CLDR_TERRITORIES_URL"
+  print_status "$GROUP_AI" "$service" "$ip_version" "$(gemini_status "$country" "$regions")"
+}
+
+check_ai_gemini_web() {
+  local ip_version="$1"
+
+  check_ai_gemini "Gemini Web" "$ip_version" "$GEMINI_WEB_REGIONS_URL" "$GEMINI_WEB_REGIONS_FILTER"
+}
+
+check_ai_gemini_api() {
+  local ip_version="$1"
+
+  check_ai_gemini "Gemini API" "$ip_version" "$GEMINI_API_REGIONS_URL" "$GEMINI_API_REGIONS_FILTER"
+}
+
+ai_api_status() {
+  local region_blocked_marker="$1"
+
+  if [[ "$HTTP_CODE" == "$HTTP_UNAUTHORIZED" ]]; then
+    printf '%s' "$STATUS_YES"
+    return
+  fi
+
+  if [[ "$HTTP_CODE" != "$HTTP_FORBIDDEN" ]]; then
+    return
+  fi
+
+  if [[ "$HTTP_BODY" == *"$region_blocked_marker"* ]]; then
+    printf '%s' "$STATUS_NO"
+    return
+  fi
+
+  printf '%s' "$STATUS_IPBLOCK"
+}
+
+check_ai_api() {
+  local service="$1"
+  local ip_version="$2"
+  local url="$3"
+  local region_blocked_marker="$4"
+
+  http_request "$ip_version" "$url"
+  print_status "$GROUP_AI" "$service" "$ip_version" "$(ai_api_status "$region_blocked_marker")"
+}
+
+check_ai_openai_api() {
+  local ip_version="$1"
+
+  check_ai_api "OpenAI API" "$ip_version" "$OPENAI_API_URL" "$OPENAI_API_REGION_BLOCKED_MARKER"
+}
+
+check_ai_anthropic_api() {
+  local ip_version="$1"
+
+  check_ai_api "Anthropic API" "$ip_version" "$ANTHROPIC_API_URL" "$ANTHROPIC_API_REGION_BLOCKED_MARKER"
+}
+
+check_ai_grok_api() {
+  local ip_version="$1"
+
+  check_ai_api "Grok API" "$ip_version" "$GROK_API_URL" "$GROK_API_REGION_BLOCKED_MARKER"
+}
+
+reachability_status() {
+  if [[ "$HTTP_CODE" == "$HTTP_UNAUTHORIZED" ]]; then
+    printf '%s' "$STATUS_YES"
+  fi
+}
+
+check_ai_reachability() {
+  local service="$1"
+  local ip_version="$2"
+  local url="$3"
+
+  http_request "$ip_version" "$url"
+  print_status "$GROUP_AI" "$service" "$ip_version" "$(reachability_status)"
+}
+
+check_ai_qwen_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "Qwen API" "$ip_version" "$QWEN_API_URL"
+}
+
+check_ai_qwen_cn_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "Qwen CN API" "$ip_version" "$QWEN_CN_API_URL"
+}
+
+check_ai_kimi_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "Kimi API" "$ip_version" "$KIMI_API_URL"
+}
+
+check_ai_kimi_cn_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "Kimi CN API" "$ip_version" "$KIMI_CN_API_URL"
+}
+
+check_ai_glm_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "GLM API" "$ip_version" "$GLM_API_URL"
+}
+
+check_ai_glm_cn_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "GLM CN API" "$ip_version" "$GLM_CN_API_URL"
+}
+
+check_ai_minimax_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "MiniMax API" "$ip_version" "$MINIMAX_API_URL"
+}
+
+check_ai_minimax_cn_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "MiniMax CN API" "$ip_version" "$MINIMAX_CN_API_URL"
+}
+
+check_ai_doubao_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "Doubao API" "$ip_version" "$DOUBAO_API_URL"
+}
+
+check_ai_siliconflow_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "SiliconFlow API" "$ip_version" "$SILICONFLOW_API_URL"
+}
+
+check_ai_deepseek_api() {
+  local ip_version="$1"
+
+  check_ai_reachability "DeepSeek API" "$ip_version" "$DEEPSEEK_API_URL"
+}
+
+start_checks() {
+  local check
+
+  for check in "$@"; do
+    if is_check_selected "$check"; then
+      start_check "$check"
+    fi
+  done
+}
+
+wait_for_jobs() {
+  while (($(count_running_jobs) > 0)); do
+    draw_progress
+    sleep "$JOB_POLL_INTERVAL"
+  done
+
+  clear_progress
+}
+
+collect_results() {
+  if ((JOB_COUNT == 0)); then
+    RESULTS="[]"
+    return
+  fi
+
+  RESULTS=$(jq -cs . "$WORK_DIR/$RESULT_FILE_PREFIX"*)
+}
+
+compute_verdict() {
+  local -a leaders
+
+  mapfile -t leaders < <(
+    jq -r \
+      --arg yes "$STATUS_YES" \
+      --arg platforms "$GROUP_PLATFORMS" \
+      --arg geoip "$GROUP_GEOIP" \
+      "$VERDICT_FILTER" <<<"$RESULTS"
+  )
+
+  VERDICT=""
+  VERDICT_TIED_COUNTRIES=()
+  if ((${#leaders[@]} > 1)); then
+    VERDICT_TIED_COUNTRIES=("${leaders[@]}")
+    return
+  fi
+
+  VERDICT="${leaders[0]:-}"
+}
+
+collect_attention() {
+  ATTENTION=$(
+    jq -c \
+      --arg verdict "$VERDICT" \
+      --arg yes "$STATUS_YES" \
+      --arg none "$STATUS_NONE" \
+      --arg cdn "$GROUP_CDN" \
+      --arg geoip "$GROUP_GEOIP" \
+      --arg different_country "$REASON_DIFFERENT_COUNTRY" \
+      --arg video_ads "$REASON_VIDEO_ADS" \
+      --arg daily_limit "$REASON_DAILY_LIMIT" \
+      --argjson collapse_min "$ATTENTION_COLLAPSE_MIN" \
+      "$ATTENTION_FILTER" <<<"$RESULTS"
+  )
+}
+
+first_ip_version() {
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    printf '4'
+    return
+  fi
+
+  printf '6'
+}
+
+count_abnormal_checks() {
+  jq \
+    --arg verdict "$VERDICT" \
+    --arg yes "$STATUS_YES" \
+    --arg none "$STATUS_NONE" \
+    --arg cdn "$GROUP_CDN" \
+    --arg geoip "$GROUP_GEOIP" \
+    --arg video_ads "$REASON_VIDEO_ADS" \
+    --arg daily_limit "$REASON_DAILY_LIMIT" \
+    "$ABNORMAL_CHECKS_FILTER" <<<"$RESULTS"
+}
+
+count_checks() {
+  CHECKS_TOTAL=$(jq --arg cdn "$GROUP_CDN" '[.[] | select(.group != $cdn) | [.group, .service]] | unique | length' <<<"$RESULTS")
+  CHECKS_NORMAL=$((CHECKS_TOTAL - $(count_abnormal_checks)))
+}
+
+checks_health() {
+  local percent
+
+  if ((CHECKS_TOTAL == 0)); then
+    printf '%s' "$CHECKS_GOOD"
+    return
+  fi
+
+  percent=$((CHECKS_NORMAL * 100 / CHECKS_TOTAL))
+  if ((percent >= CHECKS_GOOD_PERCENT)); then
+    printf '%s' "$CHECKS_GOOD"
+  elif ((percent >= CHECKS_FAIR_PERCENT)); then
+    printf '%s' "$CHECKS_FAIR"
   else
-    display_name="$service"
-    handler_func="${CUSTOM_SERVICES_HANDLERS[$service]}"
-    group="custom"
+    printf '%s' "$CHECKS_POOR"
   fi
+}
 
-  if [[ -z "$handler_func" ]]; then
-    log "$LOG_WARN" "Unknown service handler: $service"
+checks_bar_color() {
+  case "$(checks_health)" in
+    "$CHECKS_GOOD") printf '%s' "$C_BAR" ;;
+    "$CHECKS_FAIR") printf '%s' "$C_BAR_FAIR" ;;
+    "$CHECKS_POOR") printf '%s' "$C_BAR_POOR" ;;
+  esac
+}
+
+checks_badge_color() {
+  case "$(checks_health)" in
+    "$CHECKS_GOOD") printf '%s' "$C_BADGE" ;;
+    "$CHECKS_FAIR") printf '%s' "$C_BADGE_FAIR" ;;
+    "$CHECKS_POOR") printf '%s' "$C_BADGE_POOR" ;;
+  esac
+}
+
+print_bar() {
+  local color="$1"
+  local filled_parts="$2"
+  local total_parts="$3"
+  local width="$4"
+  local filled_width
+
+  if ((total_parts == 0)); then
     return
   fi
 
-  if can_use_ipv4; then
-    log "$LOG_INFO" "Checking $display_name via IPv4"
-    run_async ipv4_fd "$handler_func" 4
-  fi
-
-  if can_use_ipv6; then
-    log "$LOG_INFO" "Checking $display_name via IPv6"
-    run_async ipv6_fd "$handler_func" 6
-  fi
-
-  read_async ipv4_result "$ipv4_fd"
-  read_async ipv6_result "$ipv6_fd"
-  print_result_fields "$group" "$display_name" "$ipv4_result" "$ipv6_result"
+  filled_width=$((width * filled_parts / total_parts))
+  printf '%s%s%s%s%s' "$color" "$(repeat_char "$SUMMARY_BAR_CHAR" "$filled_width")" "$C_DIM" \
+    "$(repeat_char "$SUMMARY_BAR_REST_CHAR" "$((width - filled_width))")" "$C_RESET"
 }
 
-print_result_fields() {
-  printf '%s\0' "$@"
+has_protocol_columns() {
+  local group="$1"
+
+  is_dual_stack && ! is_checked_once "$group"
 }
 
-is_excluded_service() {
-  local service="$1"
-  local excluded
+country_name() {
+  local country="$1"
 
-  for excluded in "${EXCLUDED_SERVICES[@]}"; do
-    if [[ "$excluded" == "$service" ]]; then
+  http_request "$(first_ip_version)" "$CLDR_TERRITORIES_URL"
+  json_value ".main.en.localeDisplayNames.territories.$country // empty"
+}
+
+group_rows() {
+  local group="$1"
+
+  jq -r \
+    --arg group "$group" \
+    --arg yes "$STATUS_YES" \
+    --arg unknown "$STATUS_UNKNOWN" \
+    --arg daily_limit "$REASON_DAILY_LIMIT" \
+    --arg limit "$MAXMIND_LIMIT_CELL" \
+    "$GROUP_ROWS_FILTER" <<<"$RESULTS"
+}
+
+cdn_edge_rows() {
+  jq -r --arg cdn "$GROUP_CDN" --arg unknown "$STATUS_UNKNOWN" "$CDN_ROWS_FILTER" <<<"$RESULTS"
+}
+
+geoip_majority() {
+  jq -r --arg geoip "$GROUP_GEOIP" --arg yes "$STATUS_YES" "$GEOIP_MAJORITY_FILTER" <<<"$RESULTS"
+}
+
+format_network() {
+  local ip_version="$1"
+  local asn="${REGISTRATION_ASN[$ip_version]:-}"
+  local organization="${REGISTRATION_ORG[$ip_version]:-}"
+
+  if [[ -z "$asn" ]]; then
+    printf '%s' "$organization"
+    return
+  fi
+
+  printf 'AS%s%s' "$asn" "${organization:+ $organization}"
+}
+
+build_header_columns() {
+  HEADER_IP_VERSIONS=()
+  HEADER_IP_VALUES=()
+  HEADER_NETWORKS=()
+  HEADER_EXIT_LABEL=""
+
+  if [[ -n "$EXTERNAL_IPV4" ]]; then
+    HEADER_IP_VERSIONS+=(4)
+    HEADER_IP_VALUES+=("$(mask_ipv4 "$EXTERNAL_IPV4")")
+    HEADER_NETWORKS+=("$(format_network 4)")
+  fi
+
+  if [[ -n "$EXTERNAL_IPV6" ]]; then
+    HEADER_IP_VERSIONS+=(6)
+    HEADER_IP_VALUES+=("$(mask_ipv6 "$EXTERNAL_IPV6")")
+    HEADER_NETWORKS+=("$(format_network 6)")
+  fi
+
+  if [[ -n "$PROXY_ADDR" ]]; then
+    HEADER_EXIT_LABEL="proxy"
+  elif [[ -n "$INTERFACE_NAME" ]]; then
+    HEADER_EXIT_LABEL="$INTERFACE_NAME interface"
+  fi
+
+  HEADER_VALUE_WIDTH=$(($(max_length "${HEADER_IP_VALUES[@]}" "$HEADER_EXIT_LABEL") + NAME_GAP))
+  HEADER_NETWORK_WIDTH=$(($(max_length "${HEADER_NETWORKS[@]}") + NAME_GAP))
+}
+
+print_ip_line() {
+  local ip_version="$1"
+  local masked_ip="$2"
+  local network="$3"
+  local country="${REGISTRATION_COUNTRY[$ip_version]:-$SYMBOL_UNKNOWN}"
+
+  printf ' '
+  pad_cell "" "IPv$ip_version" "$HEADER_LABEL_WIDTH"
+  pad_cell "$C_VALUE" "$masked_ip" "$HEADER_VALUE_WIDTH"
+  pad_cell "" "$network" "$HEADER_NETWORK_WIDTH"
+  printf '%s %s\n' "$(paint "$C_DIM" "$REGISTERED_NOTE")" "$(paint "$C_VALUE" "$(label_country "$country")")"
+}
+
+is_maxmind_limit_used_up() {
+  local failure
+
+  for failure in "${REGISTRATION_MAXMIND_FAILURE[@]}"; do
+    if [[ "$failure" == "$REASON_DAILY_LIMIT" ]]; then
       return 0
     fi
   done
@@ -1605,787 +3368,741 @@ is_excluded_service() {
   return 1
 }
 
-get_display_name() {
-  local service="$1"
+has_maxmind_failure() {
+  local failure
 
-  if [[ -n "${PRIMARY_SERVICES[$service]}" ]]; then
-    echo "${PRIMARY_SERVICES[$service]%%|*}"
+  for failure in "${REGISTRATION_MAXMIND_FAILURE[@]}"; do
+    if [[ -n "$failure" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+maxmind_header_note() {
+  if is_maxmind_limit_used_up; then
+    printf '%s' "$MAXMIND_LIMIT_HEADER_NOTE"
     return
   fi
 
-  echo "${CUSTOM_SERVICES[$service]:-${CDN_SERVICES[$service]:-$service}}"
+  if has_maxmind_failure; then
+    printf '%s' "$MAXMIND_FAILURE_HEADER_NOTE"
+  fi
 }
 
-run_service() {
-  local group="$1"
-  local service="$2"
+print_ip_lines() {
+  local i note
 
-  if [[ "$group" == "primary" ]]; then
-    process_service "$service"
+  for i in "${!HEADER_IP_VERSIONS[@]}"; do
+    print_ip_line "${HEADER_IP_VERSIONS[i]}" "${HEADER_IP_VALUES[i]}" "${HEADER_NETWORKS[i]}"
+  done
+
+  note=$(maxmind_header_note)
+  if [[ -n "$note" ]]; then
+    printf ' %s%s\n' "$(pad "" "$HEADER_LABEL_WIDTH")" "$(paint "$C_DIM" "$note")"
+  fi
+}
+
+print_verdict_line() {
+  local country="$1"
+  local note="$2"
+  local name
+
+  name=$(country_name "$country")
+  printf ' '
+  pad_cell "" "$(paint "$(checks_badge_color)" " $country ")" "$HEADER_LABEL_WIDTH"
+  pad_cell "$C_VALUE" "${name:-$country}" "$HEADER_VALUE_WIDTH"
+  printf '%s\n' "${note:+$(paint "$C_DIM" "$note")}"
+}
+
+print_verdict_lines() {
+  local -a countries=("${VERDICT_TIED_COUNTRIES[@]}")
+  local note="$TIE_NOTE"
+  local country
+
+  if [[ -n "$VERDICT" ]]; then
+    countries=("$VERDICT")
+    note="$VERDICT_NOTE"
+  fi
+
+  if ((${#countries[@]} == 0)); then
     return
   fi
 
-  process_custom_service "$service"
-}
-
-format_pending_labels() {
-  local -n summary=$1
-  local hidden=0
-  local label
-
-  shift
-  summary=""
-
-  for label in "$@"; do
-    if [[ -z "$summary" ]]; then
-      summary="$label"
-    elif ((hidden == 0 && ${#summary} + ${#label} + 2 <= PROGRESS_LABELS_WIDTH)); then
-      summary+=", $label"
-    else
-      hidden=$((hidden + 1))
-    fi
-  done
-
-  if ((hidden > 0)); then
-    summary+=" +$hidden"
-  fi
-}
-
-wait_with_progress() {
-  local -n job_pids=$1
-  local -n job_labels=$2
-  local start=$SECONDS
-  local pending=()
-  local pending_summary
-  local i
-
-  while true; do
-    pending=()
-
-    for i in "${!job_pids[@]}"; do
-      if kill -0 "${job_pids[$i]}" 2>/dev/null; then
-        pending+=("${job_labels[$i]}")
-      fi
-    done
-
-    if ((${#pending[@]} == 0)); then
-      break
-    fi
-
-    format_pending_labels pending_summary "${pending[@]}"
-    spinner_update "[$((${#job_pids[@]} - ${#pending[@]}))/${#job_pids[@]}] $pending_summary ($((SECONDS - start))s)"
-    pause "$PROGRESS_POLL_INTERVAL"
-  done
-
-  if ((${#job_pids[@]} > 0)); then
-    wait "${job_pids[@]}"
-  fi
-}
-
-run_service_groups() {
-  local groups=("$@")
-  local pids=()
-  local labels=()
-  local job_dir group services_array service_name i fields
-
-  job_dir=$(mktemp -d "${REQUEST_CACHE_DIR:-${TMPDIR:-/tmp}}/ipregion_jobs_XXXXXX")
-
-  for group in "${groups[@]}"; do
-    log "$LOG_INFO" "Running $group group services"
-    read -ra services_array <<<"${SERVICE_GROUPS[$group]}"
-
-    for service_name in "${services_array[@]}"; do
-      if is_excluded_service "$service_name"; then
-        log "$LOG_INFO" "Skipping service: $service_name"
-        continue
-      fi
-
-      run_service "$group" "$service_name" >"$job_dir/${#pids[@]}" &
-      pids+=("$!")
-      labels+=("$(get_display_name "$service_name")")
-    done
-  done
-
-  wait_with_progress pids labels
-
-  for i in "${!pids[@]}"; do
-    mapfile -d '' -t fields <"$job_dir/$i"
-
-    if ((${#fields[@]} == 4)); then
-      add_result "${fields[@]}"
-    fi
-  done
-
-  rm -rf "$job_dir"
-}
-
-run_all_services() {
-  local service_name
-
-  for func in $(declare -F | awk '{print $3}' | grep_wrapper '^lookup_'); do
-    service_name=${func#lookup_}
-    service_name_uppercase=${service_name^^}
-
-    if printf "%s\n" "${EXCLUDED_SERVICES[@]}" | grep_wrapper -Fxq "$service_name_uppercase"; then
-      log "$LOG_INFO" "Skipping service: $service_name_uppercase"
-      continue
-    fi
-
-    if [[ -n "${CUSTOM_SERVICES[$service_name_uppercase]}" ]]; then
-      process_service "$service_name_uppercase" true
-      continue
-    fi
-
-    "$func"
+  printf '\n'
+  for country in "${countries[@]}"; do
+    print_verdict_line "$country" "$note"
+    note=""
   done
 }
 
-finalize_json() {
-  local t_primary t_custom t_cdn
-  local IFS=$'\n'
-
-  if ((${#ARR_PRIMARY[@]} > 0)); then
-    t_primary=$(printf '%s\n' "${ARR_PRIMARY[@]//|||/$'\t'}")
+print_checks_bar() {
+  if ((CHECKS_TOTAL == 0)); then
+    return
   fi
 
-  if ((${#ARR_CUSTOM[@]} > 0)); then
-    t_custom=$(printf '%s\n' "${ARR_CUSTOM[@]//|||/$'\t'}")
-  fi
-
-  if ((${#ARR_CDN[@]} > 0)); then
-    t_cdn=$(printf '%s\n' "${ARR_CDN[@]//|||/$'\t'}")
-  fi
-
-  # TODO: Add registered country to the JSON output
-  RESULT_JSON=$(
-    jq -n \
-      --rawfile p <(printf "%s" "$t_primary") \
-      --rawfile c <(printf "%s" "$t_custom") \
-      --rawfile d <(printf "%s" "$t_cdn") \
-      --arg ipv4 "$EXTERNAL_IPV4" \
-      --arg ipv6 "$EXTERNAL_IPV6" \
-      --arg version "1" '
-        def lines_to_array($raw):
-          if ($raw | length) == 0 then [] else
-          ($raw | split("\n"))
-          | map(select(length > 0))
-          | map(
-              (split("\t")) as $f
-              | {
-                  service: $f[0],
-                  ipv4: ( ($f[1] // "") | if length>0 then . else null end ),
-                  ipv6: ( ($f[2] // "") | if length>0 then . else null end )
-                }
-            )
-          end;
-
-        {
-          version: ($version|tonumber),
-          ipv4: ($ipv4 | select(length > 0) // null),
-          ipv6: ($ipv6 | select(length > 0) // null),
-          results: {
-            primary: lines_to_array($p),
-            custom:  lines_to_array($c),
-            cdn:     lines_to_array($d)
-          }
-        }
-      '
-  )
+  printf ' %s  %s\n' "$(print_bar "$(checks_bar_color)" "$CHECKS_NORMAL" "$CHECKS_TOTAL" "$CHECKS_BAR_WIDTH")" \
+    "$(paint "$C_DIM" "$CHECKS_NORMAL/$CHECKS_TOTAL $CHECKS_PASSED_NOTE")"
 }
 
-add_result() {
-  local group="$1"
-  local service="$2"
-  local ipv4="$3"
-  local ipv6="$4"
+format_exits() {
+  if is_dual_stack; then
+    printf '%s' "$DUAL_STACK_EXITS"
+    return
+  fi
 
-  ipv4=${ipv4//$'\n'/}
-  ipv4=${ipv4//$'\t'/ }
-  ipv6=${ipv6//$'\n'/}
-  ipv6=${ipv6//$'\t'/ }
-
-  case "$group" in
-    primary) ARR_PRIMARY+=("$service|||$ipv4|||$ipv6") ;;
-    custom) ARR_CUSTOM+=("$service|||$ipv4|||$ipv6") ;;
-    cdn) ARR_CDN+=("$service|||$ipv4|||$ipv6") ;;
-  esac
+  printf 'IPv%s only' "$(first_ip_version)"
 }
 
-print_table_group() {
-  local group="$1"
-  local group_title="$2"
-  local na="N/A"
-  local show_ipv4=0
-  local show_ipv6=0
-  local separator=$'\t'
-  local -n group_rows="ARR_${group^^}"
-  local row s v4 v6
-
-  if can_use_ipv4; then
-    show_ipv4=1
+print_exits_line() {
+  if [[ -z "$HEADER_EXIT_LABEL" ]]; then
+    return
   fi
 
-  if can_use_ipv6; then
-    show_ipv6=1
-  fi
+  printf ' '
+  pad_cell "" "" "$HEADER_LABEL_WIDTH"
+  pad_cell "$C_VALUE" "$HEADER_EXIT_LABEL" "$HEADER_VALUE_WIDTH"
+  printf '%s %s\n' "$(paint "$C_DIM" "$EXITS_NOTE")" "$(paint "$C_VALUE" "$(format_exits)")"
+}
 
-  color HEADER "$group_title"
-  printf "\n\n"
-
-  {
-    color TABLE_HEADER 'Service'
-
-    if [[ $show_ipv4 -eq 1 ]]; then
-      printf "%s" "$separator"
-      color TABLE_HEADER 'IPv4'
-    fi
-
-    if [[ $show_ipv6 -eq 1 ]]; then
-      printf "%s" "$separator"
-      color TABLE_HEADER 'IPv6'
-    fi
-
-    printf "\n"
-
-    for row in "${group_rows[@]}"; do
-      s=${row%%|||*}
-      v6=${row##*|||}
-      v4=${row#*|||}
-      v4=${v4%|||*}
-
-      color SERVICE "$s"
-
-      if [[ $show_ipv4 -eq 1 ]]; then
-        if [[ "$v4" == "null" || -z "$v4" ]]; then
-          v4="$na"
-        fi
-        printf "%s" "$separator"
-        format_value "$v4"
-      fi
-
-      if [[ $show_ipv6 -eq 1 ]]; then
-        if [[ "$v6" == "null" || -z "$v6" ]]; then
-          v6="$na"
-        fi
-        printf "%s" "$separator"
-        format_value "$v6"
-      fi
-
-      printf "\n"
-    done
-  } | column -t -s "$separator"
+print_host_lines() {
+  printf ' %s\n' "$(paint "$C_DIM" "Made with $(paint "$C_NO" "<3")${C_DIM} by $AUTHOR ·") ${SCRIPT_URL#https://}"
+  printf '\n'
+  print_ip_lines
+  print_exits_line
 }
 
 print_header() {
-  printf "%s\n%s\n\n" "$(color URL "Made with ")$(color HEART "<3")$(color URL " by vernette")" "$(color URL "$SCRIPT_URL")"
-
-  # TODO: Get registered country while initializing
-  if [[ -n "$EXTERNAL_IPV4" ]]; then
-    printf "%s: %s, %s %s\n" "$(color HEADER 'IPv4')" "$(bold "$(mask_ipv4 "$EXTERNAL_IPV4")")" "registered in" "$(bold "$(get_registered_country 4)")"
-  fi
-
-  if [[ -n "$EXTERNAL_IPV6" ]]; then
-    printf "%s: %s, %s %s\n" "$(color HEADER 'IPv6')" "$(bold "$(mask_ipv6 "$EXTERNAL_IPV6")")" "registered in" "$(bold "$(get_registered_country 6)")"
-  fi
-
-  printf "%s: %s\n\n" "$(color HEADER 'ASN')" "$(bold "AS$asn $asn_name")"
+  build_header_columns
+  {
+    print_host_lines
+    print_verdict_lines
+    print_checks_bar
+  } | print_bar_block
 }
 
-print_results() {
-  if [[ "$JSON_OUTPUT" == true ]]; then
-    finalize_json
-    echo "$RESULT_JSON" | jq
+set_card_widths() {
+  LEFT_CARD_WIDTH="$1"
+  RIGHT_CARD_WIDTH="$2"
+  FULL_CARD_WIDTH=$((LEFT_CARD_WIDTH + CARD_GAP + RIGHT_CARD_WIDTH))
+  # The Issue / Node column of a full-width card starts where the paired right card's content starts
+  RIGHT_COLUMN_START=$((LEFT_CARD_WIDTH + CARD_GAP + 1))
+  RIGHT_COLUMN_WIDTH=$((FULL_CARD_WIDTH - CARD_SIDES_WIDTH - CARD_CONTENT_INDENT - CARD_TRAILING_GAP - RIGHT_COLUMN_START))
+  GEOIP_LINE_WIDTH=$((FULL_CARD_WIDTH - CARD_SIDES_WIDTH - 2 * CARD_CONTENT_INDENT - 2 * CARD_TRAILING_GAP))
+  CHECKS_BAR_WIDTH=$((FULL_CARD_WIDTH - CHECKS_BAR_MARGIN))
+}
+
+is_service_report() {
+  ((${#SELECTED_GROUPS[@]} == 0))
+}
+
+has_group_results() {
+  local group="$1"
+
+  jq -e --arg group "$group" 'any(.group == $group)' <<<"$RESULTS" >/dev/null
+}
+
+is_geoip_list_shown() {
+  [[ "$GEOIP_BREAKDOWN" == true || "${SELECTED_GROUPS[*]}" == "$GROUP_GEOIP" ]] || is_service_report
+}
+
+is_geoip_list_split_by_protocol() {
+  has_group_results "$GROUP_GEOIP" && has_protocol_columns "$GROUP_GEOIP" && is_geoip_list_shown
+}
+
+set_report_widths() {
+  if has_protocol_columns "$GROUP_PLATFORMS" || is_geoip_list_split_by_protocol; then
+    set_card_widths "$WIDE_LEFT_CARD_WIDTH" "$WIDE_RIGHT_CARD_WIDTH"
     return
   fi
 
-  print_header
+  set_card_widths $((WIDE_LEFT_CARD_WIDTH - LEFT_GRID_CELL)) $((WIDE_RIGHT_CARD_WIDTH - RIGHT_GRID_CELL))
+}
 
-  case "$GROUPS_TO_SHOW" in
-    primary)
-      print_table_group "primary" "GeoIP services"
-      ;;
-    custom)
-      print_table_group "custom" "Popular services"
-      ;;
-    cdn)
-      print_table_group "cdn" "CDN services"
-      ;;
-    *)
-      print_table_group "custom" "Popular services"
-      printf "\n"
-      print_table_group "cdn" "CDN services"
-      printf "\n"
-      print_table_group "primary" "GeoIP services"
-      ;;
+report_columns() {
+  local group="$1"
+
+  if is_checked_once "$group"; then
+    printf '%s\n' "$PROXY_IP_VERSION"
+    return
+  fi
+
+  if is_dual_stack; then
+    printf '4\n6\n'
+    return
+  fi
+
+  printf '%s\n' "$(first_ip_version)"
+}
+
+column_title() {
+  case "$1" in
+    4) printf 'IPv4' ;;
+    6) printf 'IPv6' ;;
+    "$PROXY_IP_VERSION") printf 'Proxy' ;;
   esac
 }
 
-lookup_maxmind() {
-  process_service "MAXMIND"
-}
+attention_value() {
+  local country="$1"
+  local status="$2"
 
-lookup_ripe() {
-  process_service "RIPE"
-}
-
-lookup_ip2location_io() {
-  process_service "IP2LOCATION_IO"
-}
-
-lookup_ipinfo_io() {
-  process_service "IPINFO_IO"
-}
-
-lookup_ipregistry() {
-  process_service "IPREGISTRY"
-}
-
-lookup_ipapi_co() {
-  process_service "IPAPI_CO"
-}
-
-lookup_cloudflare() {
-  process_service "CLOUDFLARE"
-}
-
-lookup_ifconfig_co() {
-  process_service "IFCONFIG_CO"
-}
-
-lookup_iplocation_com() {
-  local transport="$1"
-  local ip_version="$2"
-  local ip="$EXTERNAL_IPV4"
-  local ipv6_not_supported="IPV6_NOT_SUPPORTED"
-  local response country_code
-
-  if [[ "$ip_version" == "6" ]]; then
-    ip="$EXTERNAL_IPV6"
-  fi
-
-  response=$(curl_wrapper POST "https://iplocation.com" --ip-version "$transport" --user-agent "$USER_AGENT" --data "ip=$ip")
-  country_code=$(process_json "$response" ".country_code")
-
-  if [[ "$country_code" == "$ipv6_not_supported" ]]; then
-    country_code="$STATUS_NA"
-  fi
-
-  echo "$country_code"
-}
-
-lookup_google() {
-  local ip_version="$1"
-  local response
-
-  response=$(curl_wrapper GET "https://accounts.google.com/v3/signin/identifier?flowName=GlifSetupAndroid" \
-    --user-agent "$USER_AGENT" \
-    --ip-version "$ip_version")
-
-  grep_wrapper --perl 'name="region" value="\K[^"]*' <<<"$response"
-}
-
-lookup_gemini_supported() {
-  local ip_version="$1"
-  local country_code api_name territories regions_md available color_name
-
-  country_code=$(lookup_google "$ip_version")
-
-  if [[ -z "$country_code" ]]; then
-    echo ""
+  if [[ -n "$country" ]]; then
+    printf '%s' "$country"
     return
   fi
 
-  regions_md=$(curl_wrapper GET "$GEMINI_REGIONS_URL" --ip-version "$(preferred_ip_version)")
+  printf '%s' "${status:-$STATUS_UNKNOWN}"
+}
 
-  if [[ -z "$regions_md" ]] || is_status_string "$regions_md"; then
-    echo ""
+attention_cell() {
+  local value="$1"
+
+  if [[ -z "$value" ]]; then
+    paint "$C_DIM" "$(pad "$ATTENTION_EMPTY_CELL" "$LEFT_GRID_CELL")"
     return
   fi
 
-  territories=$(curl_wrapper GET "$CLDR_TERRITORIES_URL" --ip-version "$(preferred_ip_version)")
-  api_name=$(curl_wrapper GET "https://countries.dev/alpha/${country_code}" \
-    --ip-version "$(preferred_ip_version)")
-  api_name=$(process_json "$api_name" ".name" 2>/dev/null)
+  format_cell "$value" "$LEFT_GRID_CELL"
+}
 
-  if jq -en \
-    --arg code "$country_code" \
-    --arg md "$regions_md" \
-    --arg cldr_raw "$territories" \
-    --arg api_name "$api_name" \
-    "$GEMINI_MATCH_FILTER" >/dev/null; then
-    available="Yes"
-    color_name="SERVICE"
-  else
-    available="No"
-    color_name="HEART"
+wrap_words() {
+  local -n wrapped_words=$1
+  local width="$2"
+  local text="$3"
+  local -a parts=()
+  local part line=""
+
+  read -ra parts <<<"$text"
+  wrapped_words=()
+  for part in "${parts[@]}"; do
+    if [[ -n "$line" ]] && ((${#line} + 1 + ${#part} > width)); then
+      wrapped_words+=("$line")
+      line=""
+    fi
+    line+="${line:+ }$part"
+  done
+  wrapped_words+=("$line")
+}
+
+wrap_services() {
+  local -n wrapped_services=$1
+  local width="$2"
+  shift 2
+  local total=$#
+  local reserved=$((3 + ${#total}))
+  local line=""
+  local shown=0
+  local service budget
+
+  wrapped_services=()
+  for service in "$@"; do
+    budget="$width"
+    if ((${#wrapped_services[@]} == ATTENTION_LIST_LINES - 1)); then
+      budget=$((width - reserved))
+    fi
+    if [[ -n "$line" ]] && ((${#line} + 3 + ${#service} > budget)); then
+      wrapped_services+=("$line,")
+      line=""
+      if ((${#wrapped_services[@]} == ATTENTION_LIST_LINES)); then
+        break
+      fi
+    fi
+    line+="${line:+, }$service"
+    shown=$((shown + 1))
+  done
+
+  if [[ -n "$line" ]] && ((${#wrapped_services[@]} < ATTENTION_LIST_LINES)); then
+    wrapped_services+=("$line")
   fi
 
-  print_value_or_colored "$available" "$color_name"
+  if ((shown < total)); then
+    wrapped_services[-1]="${wrapped_services[-1]%,}, +$((total - shown))"
+  fi
 }
 
-lookup_youtube() {
-  local ip_version="$1"
-  local response json_result
+append_card_titles() {
+  local -n card_titles=$1
+  local group="$2"
+  local name_width="$3"
+  local cell_width="$4"
+  local -a columns=()
+  local line column
 
-  response=$(curl_wrapper GET "https://www.youtube.com/sw.js_data" --ip-version "$ip_version")
-
-  json_result=$(tail -n +3 <<<"$response")
-  process_json "$json_result" ".[0][2][0][0][1]"
+  mapfile -t columns < <(report_columns "$group")
+  line=" $(pad_cell "$C_DIM" Service "$name_width")"
+  for column in "${columns[@]}"; do
+    line+="$(pad_cell "$C_DIM" "$(column_title "$column")" "$cell_width")"
+  done
+  card_titles+=("$line")
 }
 
-lookup_twitch() {
-  local ip_version="$1"
-  local response
+append_attention_titles() {
+  local -n titles=$1
 
-  response=$(curl_wrapper POST "https://gql.twitch.tv/gql" \
-    --header "Client-Id: $TWITCH_CLIENT_ID" \
-    --json '[{"operationName":"VerifyEmail_CurrentUser","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f9e7dcdf7e99c314c82d8f7f725fab5f99d1df3d7359b53c9ae122deec590198"}}}]' \
-    --ip-version "$ip_version")
-  process_json "$response" ".[0].data.requestInfo.countryCode"
+  append_card_titles titles "$GROUP_PLATFORMS" "$LEFT_GRID_NAME" "$LEFT_GRID_CELL"
+  titles[-1]="$(pad "${titles[-1]}" "$RIGHT_COLUMN_START")$(paint "$C_DIM" Issue)"
 }
 
-lookup_chatgpt() {
-  local ip_version="$1"
-  local response
+append_attention_row() {
+  local -n attention_rows=$1
+  local name="$2" ip_version="$3" value="$4" reason="$5"
+  local -a columns=() issue_lines=()
+  local line column issue
 
-  response=$(curl_wrapper POST "https://ab.chatgpt.com/v1/initialize" --ip-version "$ip_version" \
-    --header "Statsig-Api-Key: $CHATGPT_STATSIG_API_KEY" \
-    --extract "$CHATGPT_DERIVED_FIELDS_PATTERN")
-  process_json "${response#"$CHATGPT_DERIVED_FIELDS_PREFIX"}" ".country"
+  mapfile -t columns < <(report_columns "$GROUP_PLATFORMS")
+  line=" $(pad_cell "$C_VALUE" "$name" "$LEFT_GRID_NAME")"
+  for column in "${columns[@]}"; do
+    if ((${#columns[@]} == 1)) || [[ "$ip_version" == "$column" || "$ip_version" == "$BOTH_IP_VERSION" ]]; then
+      line+="$(attention_cell "$value")"
+    else
+      line+="$(attention_cell "")"
+    fi
+  done
+
+  wrap_words issue_lines "$RIGHT_COLUMN_WIDTH" "$reason"
+  attention_rows+=("$(pad "$line" "$RIGHT_COLUMN_START")${issue_lines[0]}")
+  for issue in "${issue_lines[@]:1}"; do
+    attention_rows+=("$(printf '%*s' "$RIGHT_COLUMN_START" '')$issue")
+  done
 }
 
-lookup_netflix() {
-  local ip_version="$1"
-  local response country
+append_attention_services() {
+  local -n attention_lines=$1
+  shift
+  local -a service_lines=()
+  local line
 
-  response=$(curl_wrapper GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=$NETFLIX_API_KEY&urlCount=1" --ip-version "$ip_version")
+  wrap_services service_lines "$RIGHT_COLUMN_WIDTH" "$@"
+  for line in "${service_lines[@]}"; do
+    attention_lines+=("$(printf '%*s' "$RIGHT_COLUMN_START" '')$(paint "$C_DIM" "$line")")
+  done
+}
 
-  if country=$(jq -r ".client.location.country" 2>/dev/null <<<"$response"); then
-    echo "$country"
+print_attention() {
+  local -a fields rows=() services=()
+  local i count value
+
+  if [[ "$SHOW_ATTENTION" == false ]] || is_service_report; then
     return
   fi
 
-  echo "$response"
-}
-
-lookup_spotify() {
-  local ip_version="$1"
-  local response
-
-  response=$(curl_wrapper GET "https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=$SPOTIFY_API_KEY" \
-    --header "X-Client-Id: $SPOTIFY_CLIENT_ID" \
-    --ip-version "$ip_version")
-
-  process_json "$response" ".country"
-}
-
-lookup_reddit() {
-  local ip_version="$1"
-  local basic_access_token="Basic $REDDIT_BASIC_ACCESS_TOKEN"
-  local user_agent="Reddit/Version 2025.29.0/Build 2529021/Android 13"
-  local response access_token
-
-  response=$(curl_wrapper POST "https://www.reddit.com/auth/v2/oauth/access-token/loid" \
-    --ip-version "$ip_version" \
-    --user-agent "$user_agent" \
-    --header "Authorization: $basic_access_token" \
-    --json '{"scopes":["email"]}')
-
-  access_token=$(process_json "$response" ".access_token")
-
-  response=$(curl_wrapper POST "https://gql-fed.reddit.com" \
-    --ip-version "$ip_version" \
-    --user-agent "$user_agent" \
-    --header "Authorization: Bearer $access_token" \
-    --json '{"operationName":"UserLocation","variables":{},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"f07de258c54537e24d7856080f662c1b1268210251e5789c8c08f20d76cc8ab2"}}}')
-
-  process_json "$response" ".data.userLocation.countryCode"
-}
-
-lookup_disney_plus() {
-  local ip_version="$1"
-  local response
-
-  response=$(curl_wrapper POST "https://disney.api.edge.bamgrid.com/graph/v1/device/graphql" \
-    --header "Authorization: Bearer $DISNEY_PLUS_API_KEY" \
-    --json "$DISNEY_PLUS_JSON_BODY" \
-    --ip-version "$ip_version")
-
-  process_json "$response" ".extensions.sdk.session.location.countryCode"
-}
-
-lookup_reddit_guest_access() {
-  local ip_version="$1"
-  local response is_available color_name
-
-  response=$(curl_wrapper GET "https://www.reddit.com" --ip-version "$ip_version" --user-agent "$USER_AGENT")
-
-  if [[ "$response" != "Denied" ]]; then
-    is_available="Yes"
-    color_name="SERVICE"
-  else
-    is_available="No"
-    color_name="HEART"
-  fi
-
-  print_value_or_colored "$is_available" "$color_name"
-}
-
-lookup_youtube_premium() {
-  local ip_version="$1"
-  local response is_available
-
-  response=$(curl_wrapper GET "https://www.youtube.com/premium" \
-    --ip-version "$ip_version" \
-    --user-agent "$USER_AGENT" \
-    --header "Cookie: SOCS=$YOUTUBE_SOCS_COOKIE" \
-    --header "Accept-Language: en-US,en;q=0.9")
-
-  if [[ -z "$response" ]]; then
-    echo ""
+  mapfile -t fields < <(jq -r '.[] | .ip_version, .country, .status, .reason, (.services | length), .services[]' <<<"$ATTENTION")
+  if ((${#fields[@]} == 0)); then
     return
   fi
 
-  is_available=$(grep_wrapper -io "youtube premium is not available in your country" <<<"$response")
+  append_attention_titles rows
+  for ((i = 0; i < ${#fields[@]}; i += ATTENTION_ENTRY_FIELDS + count)); do
+    count="${fields[i + 4]}"
+    services=("${fields[@]:i+ATTENTION_ENTRY_FIELDS:count}")
+    value=$(attention_value "${fields[i + 1]}" "${fields[i + 2]}")
+    if ((count == 1)); then
+      append_attention_row rows "${services[0]}" "${fields[i]}" "$value" "${fields[i + 3]}"
+      continue
+    fi
+    append_attention_row rows "$count services" "${fields[i]}" "$value" "${fields[i + 3]}:"
+    append_attention_services rows "${services[@]}"
+  done
 
-  if [[ -z "$is_available" ]]; then
-    is_available="Yes"
-    color_name="SERVICE"
-  else
-    is_available="No"
-    color_name="HEART"
-  fi
-
-  print_value_or_colored "$is_available" "$color_name"
+  printf '%s\n' "${rows[@]}" | print_titled_card "$C_WARN" Attention "$FULL_CARD_WIDTH" 0
 }
 
-lookup_google_search_captcha() {
-  local ip_version="$1"
-  local response is_captcha color_name
+print_card_rows() {
+  local group="$1"
+  local name_width="$2"
+  local cell_width="$3"
+  shift 3
+  local -a rows=("$@") card_lines=()
+  local i line
 
-  response=$(curl_wrapper GET "https://www.google.com/search?q=cats" --ip-version "$ip_version" \
-    --user-agent "$USER_AGENT" \
-    --header "Accept-Language: en-US,en;q=0.9")
+  append_card_titles card_lines "$group" "$name_width" "$cell_width"
+  for ((i = 0; i < ${#rows[@]}; i += GROUP_ROW_FIELDS)); do
+    line=" $(pad_cell "" "${rows[i]}" "$name_width")$(format_cell "${rows[i + 1]}" "$cell_width")"
+    if has_protocol_columns "$group"; then
+      line+="$(format_cell "${rows[i + 2]}" "$cell_width")"
+    fi
+    card_lines+=("$line")
+  done
+  printf '%s\n' "${card_lines[@]}"
+}
 
-  if [[ -z "$response" ]]; then
-    echo ""
+print_group_card_lines() {
+  local group="$1"
+  local name_width="$2"
+  local cell_width="$3"
+  local -a fields
+
+  mapfile -t fields < <(group_rows "$group")
+  if ((${#fields[@]} == 0)); then
     return
   fi
 
-  is_captcha=$(grep_wrapper -iE "unusual traffic from|is blocked|unaddressed abuse" <<<"$response")
-
-  if [[ -z "$is_captcha" ]]; then
-    is_captcha="No"
-    color_name="SERVICE"
-  else
-    is_captcha="Yes"
-    color_name="HEART"
-  fi
-
-  print_value_or_colored "$is_captcha" "$color_name"
+  print_card_rows "$group" "$name_width" "$cell_width" "${fields[@]}"
 }
 
-lookup_spotify_signup() {
-  local ip_version="$1"
-  local response status is_country_launched available color_name
+print_halves() {
+  local group="$1"
+  local -a fields left_half=() right_half=()
+  local half i
 
-  response=$(curl_wrapper GET "https://spclient.wg.spotify.com/signup/public/v1/account/?validate=1&key=$SPOTIFY_API_KEY" \
-    --header "X-Client-Id: $SPOTIFY_CLIENT_ID" \
-    --ip-version "$ip_version")
-
-  {
-    read -r status
-    read -r is_country_launched
-  } < <(process_json "$response" ".status, .is_country_launched")
-
-  if [[ "$status" == "120" || "$status" == "320" || "$is_country_launched" == "false" ]]; then
-    available="No"
-    color_name="HEART"
-  else
-    available="Yes"
-    color_name="SERVICE"
-  fi
-
-  print_value_or_colored "$available" "$color_name"
-}
-
-lookup_disney_plus_access() {
-  local ip_version="$1"
-  local response errors_count in_supported_location is_available color_name
-
-  response=$(curl_wrapper POST "https://disney.api.edge.bamgrid.com/graph/v1/device/graphql" \
-    --header "Authorization: Bearer $DISNEY_PLUS_API_KEY" \
-    --json "$DISNEY_PLUS_JSON_BODY" \
-    --ip-version "$ip_version")
-
-  {
-    read -r errors_count
-    read -r in_supported_location
-  } < <(process_json "$response" "(.errors | length), .extensions.sdk.session.inSupportedLocation")
-
-  if [[ "$errors_count" == "0" && "$in_supported_location" == "true" ]]; then
-    is_available="Yes"
-    color_name="SERVICE"
-  else
-    is_available="No"
-    color_name="HEART"
-  fi
-
-  print_value_or_colored "$is_available" "$color_name"
-}
-
-lookup_apple() {
-  local ip_version="$1"
-  curl_wrapper GET "https://gspe1-ssl.ls.apple.com/pep/gcc" --ip-version "$ip_version"
-}
-
-lookup_steam() {
-  local ip_version="$1"
-  local response
-
-  response=$(curl_wrapper HEAD "https://store.steampowered.com" --ip-version "$ip_version")
-  grep_wrapper --perl 'steamCountry=\K[^%;]*' <<<"$response"
-}
-
-lookup_tiktok() {
-  local ip_version="$1"
-  local response
-
-  response=$(curl_wrapper GET "https://www.tiktok.com/api/v1/web-cookie-privacy/config?appId=1988" --ip-version "$ip_version")
-  process_json "$response" ".body.appProps.region"
-}
-
-lookup_cloudflare_cdn() {
-  local ip_version="$1"
-  local response iata location
-
-  response=$(curl_wrapper GET "https://speed.cloudflare.com/meta" \
-    --header "Referer: https://speed.cloudflare.com" \
-    --ip-version "$ip_version")
-
-  iata=$(process_json "$response" ".colo.iata")
-  location=$(get_iata_location "$iata")
-  echo "$location ($iata)"
-}
-
-parse_youtube_cdn_iata() {
-  local node="$1"
-  local google_node_regex='^([a-z]{3})[0-9]'
-  local isp_iata_regex='^[a-z]+-([a-z]{3})[0-9]'
-  local ggc_node_regex='^[a-z]{2}([a-z]{3})[a-z]-[a-z0-9]+$'
-
-  if [[ "$node" =~ $google_node_regex || "$node" =~ $isp_iata_regex || "$node" =~ $ggc_node_regex ]]; then
-    echo "${BASH_REMATCH[1]^^}"
-  fi
-}
-
-lookup_youtube_cdn() {
-  local ip_version="$1"
-  local response iata location
-
-  response=$(curl_wrapper GET "https://redirector.googlevideo.com/report_mapping?di=no" --ip-version "$ip_version")
-  iata=$(parse_youtube_cdn_iata "$(awk '{print $3}' <<<"$response")")
-
-  if [[ -z "$iata" ]]; then
-    echo ""
+  mapfile -t fields < <(group_rows "$group")
+  if ((${#fields[@]} == 0)); then
     return
   fi
 
-  location=$(get_iata_location "$iata")
-  echo "$location ($iata)"
+  half=$((${#fields[@]} / GROUP_ROW_FIELDS))
+  half=$(((half + 1) / 2))
+  half=$((half * GROUP_ROW_FIELDS))
+  mapfile -t left_half < <(print_card_rows "$group" "$LEFT_GRID_NAME" "$LEFT_GRID_CELL" "${fields[@]:0:half}")
+  if ((${#fields[@]} > half)); then
+    mapfile -t right_half < <(print_card_rows "$group" "$RIGHT_GRID_NAME" "$RIGHT_GRID_CELL" "${fields[@]:half}")
+  fi
+
+  for i in "${!left_half[@]}"; do
+    if [[ -z "${right_half[i]:-}" ]]; then
+      printf '%s\n' "${left_half[i]}"
+      continue
+    fi
+    printf '%s%s\n' "$(pad "${left_half[i]}" "$RIGHT_COLUMN_START")" "${right_half[i]# }"
+  done
 }
 
-lookup_netflix_cdn() {
-  local ip_version="$1"
-  local response
+print_halves_card() {
+  local group="$1"
+  local title="$2"
+  local halves
 
-  response=$(curl_wrapper GET "https://api.fast.com/netflix/speedtest/v2?https=true&token=$NETFLIX_API_KEY&urlCount=1" --ip-version "$ip_version")
+  halves=$(print_halves "$group")
+  if [[ -z "$halves" ]]; then
+    return
+  fi
 
-  jq -r ".targets[0].location.country" 2>/dev/null <<<"$response" || true
+  printf '%s\n' "$halves" | print_titled_card "$C_TITLE" "$title" "$FULL_CARD_WIDTH" 0
 }
 
-lookup_ookla_speedtest() {
-  local ip_version="$1"
-  local response
-
-  response=$(curl_wrapper GET "https://www.speedtest.net/api/js/config-sdk" --ip-version "$ip_version")
-  process_json "$response" ".location.countryCode"
+print_availability() {
+  print_halves_card "$GROUP_AVAILABILITY" Availability
 }
 
-lookup_jetbrains() {
-  local ip_version="$1"
-  local response
+print_platforms_and_ai() {
+  local platforms ai
 
-  response=$(curl_wrapper GET "https://data.services.jetbrains.com/geo" --ip-version "$ip_version")
-  process_json "$response" ".code"
+  platforms=$(print_group_card_lines "$GROUP_PLATFORMS" "$LEFT_GRID_NAME" "$LEFT_GRID_CELL")
+  ai=$(print_group_card_lines "$GROUP_AI" "$RIGHT_GRID_NAME" "$RIGHT_GRID_CELL")
+  if [[ -n "$platforms" && -n "$ai" ]]; then
+    print_titled_card_pair Platforms AI "$platforms" "$ai"
+    return
+  fi
+
+  print_halves_card "$GROUP_PLATFORMS" Platforms
+  print_halves_card "$GROUP_AI" AI
 }
 
-lookup_playstation() {
-  local ip_version="$1"
-  local response
+append_geoip_deviation() {
+  local -n deviation_lines=$1
+  local country="$2"
+  local ip_version="$3"
+  shift 3
+  local country_width=$((GEOIP_COUNTRY_WIDTH + COUNTRY_EXTRA))
+  local protocol=""
+  local service_list=""
+  local -a service_lines=()
+  local service line
 
-  response=$(curl_wrapper HEAD "https://www.playstation.com" --ip-version "$ip_version")
-  grep_wrapper --perl 'country=\K[^;]*' <<<"$response" | head -n1
+  if has_protocol_columns "$GROUP_GEOIP"; then
+    protocol="v$ip_version"
+  fi
+
+  for service in "$@"; do
+    service_list+="${service_list:+, }$service"
+  done
+  wrap_words service_lines $((GEOIP_LINE_WIDTH - country_width - ${#protocol} - 1)) "$service_list"
+  line="$(format_country "$country" "$country_width")$(pad "${service_lines[0]}" $((GEOIP_LINE_WIDTH - country_width - ${#protocol})))"
+  deviation_lines+=(" $line$(paint "$C_DIM" "$protocol")")
+  for line in "${service_lines[@]:1}"; do
+    deviation_lines+=(" $(printf '%*s' "$country_width" '')$line")
+  done
 }
 
-lookup_microsoft() {
-  local ip_version="$1"
-  local response
+print_geoip_deviations() {
+  local reference="$1"
+  local -a fields lines=()
+  local i count
 
-  response=$(curl_wrapper GET "https://login.live.com" --ip-version "$ip_version")
-  grep_wrapper --perl '"sRequestCountry":"\K[^"]*' <<<"$response"
+  mapfile -t fields < <(jq -r --arg geoip "$GROUP_GEOIP" --arg yes "$STATUS_YES" --arg reference "$reference" "$GEOIP_DEVIATIONS_FILTER" <<<"$RESULTS")
+  for ((i = 0; i < ${#fields[@]}; i += GEOIP_DEVIATION_FIELDS + count)); do
+    count="${fields[i + 2]}"
+    append_geoip_deviation lines "${fields[i]}" "${fields[i + 1]}" "${fields[@]:i+GEOIP_DEVIATION_FIELDS:count}"
+  done
+
+  if ((${#lines[@]} > 0)); then
+    printf '%s\n' "${lines[@]}"
+  fi
+}
+
+print_geoip_agreement() {
+  local emoji=""
+
+  if [[ "$SHOW_EMOJI" == true ]]; then
+    emoji="$GEOIP_AGREEMENT_EMOJI "
+  fi
+
+  printf ' %s%s\n' "$emoji" "$(paint "$C_YES" "$GEOIP_AGREEMENT_NOTE")"
+}
+
+print_geoip_lines() {
+  local reference="$1"
+  local agree="$2"
+  local total="$3"
+  local limited="$4"
+
+  printf ' %s\n' "$(print_bar "$C_BAR" "$agree" "$total" "$GEOIP_LINE_WIDTH")"
+  if is_geoip_list_shown; then
+    print_halves "$GROUP_GEOIP"
+    return
+  fi
+
+  print_geoip_deviations "$reference"
+  if ((agree == total)); then
+    print_geoip_agreement
+  fi
+  if [[ "$limited" == true ]]; then
+    printf ' %s\n' "$(paint "$C_DIM" "$MAXMIND_LIMIT_SUMMARY_NOTE")"
+  fi
+}
+
+print_geoip() {
+  local reference summary
+  local -a agreement
+
+  if is_service_report; then
+    print_halves_card "$GROUP_GEOIP" GeoIP
+    return
+  fi
+
+  reference="${VERDICT:-$(geoip_majority)}"
+  mapfile -t agreement < <(jq -r --arg geoip "$GROUP_GEOIP" --arg yes "$STATUS_YES" --arg reference "$reference" \
+    --arg daily_limit "$REASON_DAILY_LIMIT" "$GEOIP_AGREEMENT_FILTER" <<<"$RESULTS")
+  if ((agreement[1] == 0)) && [[ "${agreement[2]}" != true ]]; then
+    return
+  fi
+
+  summary="$(paint "$C_VALUE" "$(label_country "${reference:-$SYMBOL_UNKNOWN}")") $(paint "$C_DIM" "${agreement[0]}/${agreement[1]}")"
+  print_geoip_lines "$reference" "${agreement[@]}" | print_titled_card "$C_TITLE" GeoIP "$FULL_CARD_WIDTH" 0 "$summary"
+}
+
+print_cards() {
+  local cards
+
+  cards=$(
+    print_attention
+    print_platforms_and_ai
+    print_availability
+    print_geoip
+  )
+  if [[ -z "$cards" ]]; then
+    return
+  fi
+
+  printf '%s\n\n' "$cards"
+}
+
+cdn_cell() {
+  local status="$1"
+  local country="$2"
+
+  if [[ "$status" != "$STATUS_YES" ]]; then
+    format_status "$status" "$LEFT_GRID_CELL"
+    return
+  fi
+
+  paint "$C_VALUE" "$(pad "$(label_country "$country")" "$LEFT_GRID_CELL")"
+}
+
+cdn_node() {
+  local status="$1"
+  local iata="$3"
+  local node="$4"
+
+  if [[ "$status" != "$STATUS_YES" ]]; then
+    paint "$C_DIM" "$SYMBOL_UNKNOWN"
+    return
+  fi
+
+  paint "$C_VALUE" "${node:-$iata}"
+}
+
+append_cdn_row() {
+  local -n cdn_rows=$1
+  local name="$2"
+  local -a v4_edge=("${@:3:4}") v6_edge=("${@:7:4}")
+  local cells nodes
+
+  cells="$(cdn_cell "${v4_edge[@]:0:2}")"
+  nodes="$(cdn_node "${v4_edge[@]}")"
+  if has_protocol_columns "$GROUP_CDN"; then
+    cells+="$(cdn_cell "${v6_edge[@]:0:2}")"
+    nodes+=" $(paint "$C_DIM" "·") $(cdn_node "${v6_edge[@]}")"
+  fi
+
+  cdn_rows+=("$(pad " $(pad_cell "" "$name" "$LEFT_GRID_NAME")$cells" "$RIGHT_COLUMN_START")$nodes")
+}
+
+print_cdn() {
+  local -a fields rows=()
+  local i
+
+  mapfile -t fields < <(cdn_edge_rows)
+  if ((${#fields[@]} == 0)); then
+    return
+  fi
+
+  rows+=(" $(paint "$C_TITLE" "$(label_group CDN)")")
+  append_card_titles rows "$GROUP_CDN" "$LEFT_GRID_NAME" "$LEFT_GRID_CELL"
+  rows[-1]="$(pad "${rows[-1]}" "$RIGHT_COLUMN_START")$(paint "$C_DIM" Node)"
+  for ((i = 0; i < ${#fields[@]}; i += CDN_ROW_FIELDS)); do
+    append_cdn_row rows "${fields[@]:i:CDN_ROW_FIELDS}"
+  done
+
+  printf '%s\n' "${rows[@]}" | print_bar_block
+}
+
+print_legend() {
+  local separator legend
+
+  if jq -e --arg cdn "$GROUP_CDN" 'all(.group == $cdn)' <<<"$RESULTS" >/dev/null; then
+    return
+  fi
+
+  separator=" $(paint "$C_DIM" "·") "
+  legend="$(paint "$C_YES" "$SYMBOL_YES") $(paint "$C_DIM" available)$separator"
+  legend+="$(paint "$C_NO" "$SYMBOL_NO") $(paint "$C_DIM" "region blocked")$separator"
+  legend+="$(paint "$C_NO" "$SYMBOL_IPBLOCK") $(paint "$C_DIM" "IP blocked")$separator"
+  legend+="$(paint "$C_DIM" "$SYMBOL_UNKNOWN unknown")"
+  if has_protocol_columns "$GROUP_PLATFORMS"; then
+    legend+="$separator$(paint "$C_DIM" "$SYMBOL_NONE no IPv6")"
+  fi
+
+  printf '%*s%s\n' "$LEGEND_INDENT" '' "$legend"
+  if is_checked_once "$GROUP_PLATFORMS"; then
+    printf '%*s%s\n' "$LEGEND_INDENT" '' "$(paint "$C_DIM" "$PROXY_CHECKED_ONCE_NOTE")"
+  fi
+  printf '\n'
+}
+
+fetch_verdict_country_names() {
+  if [[ -z "$VERDICT" ]] && ((${#VERDICT_TIED_COUNTRIES[@]} == 0)); then
+    return
+  fi
+
+  http_request "$(first_ip_version)" "$CLDR_TERRITORIES_URL"
+}
+
+print_report() {
+  set_report_widths
+  fetch_verdict_country_names
+  print_header
+  print_cards
+  print_cdn
+  print_legend
+}
+
+print_service_report() {
+  set_report_widths
+  build_header_columns
+  print_host_lines | print_bar_block
+  print_cards
+  print_cdn
+  print_legend
+}
+
+print_json_array() {
+  jq -cn '$ARGS.positional' --args "$@"
+}
+
+print_address_json() {
+  local ip_version="$1"
+  local ip
+
+  ip=$(external_ip "$ip_version")
+  if [[ -z "$ip" ]]; then
+    printf 'null'
+    return
+  fi
+
+  jq -cn \
+    --arg ip "$ip" \
+    --arg asn "${REGISTRATION_ASN[$ip_version]:-}" \
+    --arg org "${REGISTRATION_ORG[$ip_version]:-}" \
+    --arg registered "${REGISTRATION_COUNTRY[$ip_version]:-}" \
+    --arg maxmind_failure "${REGISTRATION_MAXMIND_FAILURE[$ip_version]:-}" \
+    "$JSON_ADDRESS_FILTER"
+}
+
+print_json() {
+  jq \
+    --arg schema "$JSON_SCHEMA_URL" \
+    --argjson version "$JSON_VERSION" \
+    --argjson ipv4 "$(print_address_json 4)" \
+    --argjson ipv6 "$(print_address_json 6)" \
+    --arg verdict "$VERDICT" \
+    --argjson tied "$(print_json_array "${VERDICT_TIED_COUNTRIES[@]}")" \
+    --argjson attention "$ATTENTION" \
+    --argjson groups "$(print_json_array "${SERVICE_GROUPS[@]}")" \
+    --arg availability "$GROUP_AVAILABILITY" \
+    --arg ai "$GROUP_AI" \
+    --arg yes "$STATUS_YES" \
+    --arg none "$STATUS_NONE" \
+    --arg proxy "$PROXY_IP_VERSION" \
+    "$JSON_REPORT_FILTER" <<<"$RESULTS"
+}
+
+print_output() {
+  if [[ "$JSON_OUTPUT" == true ]]; then
+    print_json
+    return
+  fi
+
+  if is_service_report; then
+    print_service_report
+    return
+  fi
+
+  print_report
 }
 
 main() {
-  parse_arguments "$@"
-
-  setup_debug
-
-  trap cleanup EXIT
-  trap interrupt_cleanup INT TERM
-
-  detect_distro
-  install_dependencies
-  create_request_cache
-
-  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" ]]; then
-    spinner_start
-  fi
-
-  if ipv4_enabled; then
-    check_ip_support 4
-    IPV4_SUPPORTED=$?
-  fi
-
-  if ipv6_enabled; then
-    check_ip_support 6
-    IPV6_SUPPORTED=$?
-  fi
-
+  use_utf8_locale
+  parse_args "$@"
+  validate_args
+  ignore_ip_version_with_proxy
+  detect_main_interface
+  log_interface
+  log_proxy
+  limit_ip_versions_to_main_interface
+  install_missing_dependencies
+  resolve_selected_groups
+  resolve_selected_checks
+  create_work_dir
+  start_debug_trace "$@"
+  create_job_slots
   discover_external_ips
-  get_asn
-
-  case "$GROUPS_TO_SHOW" in
-    primary | custom | cdn)
-      run_service_groups "$GROUPS_TO_SHOW"
-      ;;
-    *)
-      run_service_groups "primary" "custom" "cdn"
-      ;;
-  esac
-
-  if [[ "$JSON_OUTPUT" != "true" && "$VERBOSE" != "true" ]]; then
-    spinner_stop
-  fi
-
-  print_results
-
-  cleanup_debug
-  remove_request_cache
-
-  trap - EXIT INT TERM
+  lookup_ip_registrations
+  start_checks "${PLATFORMS_CHECKS[@]}"
+  start_checks "${CDN_CHECKS[@]}"
+  start_checks "${AVAILABILITY_CHECKS[@]}"
+  start_checks "${AI_CHECKS[@]}"
+  start_checks "${GEOIP_CHECKS[@]}"
+  wait_for_jobs
+  collect_results
+  compute_verdict
+  collect_attention
+  count_checks
+  print_output
 }
 
-if ! (return 0 2>/dev/null); then
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
   main "$@"
 fi

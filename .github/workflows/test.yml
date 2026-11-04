@@ -2,8 +2,15 @@ name: Test
 
 on:
   push:
+    branches:
+      - dev
+      - master
     paths:
+      - "ipregion.sh"
       - "tests/**"
+      - "schema/**"
+      - ".github/workflows/test.yml"
+  pull_request:
   workflow_call:
   workflow_dispatch:
 
@@ -15,5 +22,46 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run tests
-        run: bash tests/test_ipregion.sh
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y shfmt bats && pipx install check-jsonschema
+
+      - name: shellcheck
+        run: shellcheck ipregion.sh tests/*.bats tests/fake-curl.sh
+
+      - name: shfmt
+        run: shfmt --diff ipregion.sh tests/
+
+      - name: bats
+        run: bats tests/
+
+  install:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:12
+          - image: ubuntu:24.04
+          - image: fedora:41
+          - image: rockylinux:9
+          - image: almalinux:8
+          - image: archlinux:latest
+          - image: opensuse/leap:15.6
+          - image: alpine:3.20
+            prepare: apk add --no-cache bash >&2
+          - image: ghcr.io/void-linux/void-glibc:latest
+            prepare: (xbps-install -Syu xbps && xbps-install -Sy bash) >&2
+
+    name: install (${{ matrix.image }})
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install curl and jq, print json
+        run: |
+          docker run --rm -v "$PWD/ipregion.sh:/ipregion.sh:ro" "${{ matrix.image }}" sh -c '
+            ${{ matrix.prepare }}
+            bash /ipregion.sh --yes --json --service cdn/cloudflare
+          ' | jq -e '.version == 2'
