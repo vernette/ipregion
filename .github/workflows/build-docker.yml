@@ -35,4 +35,4 @@ jobs:
           file: Dockerfile
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/ipregion:latest
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
