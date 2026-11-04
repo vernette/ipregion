@@ -279,7 +279,7 @@ curl_calls() {
   require_bash_version 4 4
   require_bash_version 5 0
 
-  run require_bash_version 4 3
+  OSTYPE=linux-gnu run require_bash_version 4 3
   [[ "$status" -eq 1 ]]
   [[ "$output" == "Error: bash 4.4+ is required, this is bash 4.3" ]]
 
@@ -398,6 +398,9 @@ print_yes_color() {
 }
 
 @test "colors are on only on a terminal without NO_COLOR" {
+  if [[ "$OSTYPE" == darwin* ]]; then
+    skip "BSD script has no -c to run a command in a pty"
+  fi
   export SCRIPT
   export -f print_yes_color
 
