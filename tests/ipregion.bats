@@ -58,7 +58,7 @@ add_ipv6_default_route() {
 use_fake_bsd_route() {
   local route_dir="$BATS_TEST_TMPDIR/route"
 
-  OSTYPE=darwin25
+  rmdir "$IPREGION_PROC_NET_DIR"
   mkdir "$route_dir"
   cat >"$BATS_TEST_TMPDIR/bin/route" <<EOF
 #!/usr/bin/env bash

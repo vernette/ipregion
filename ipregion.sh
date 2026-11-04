@@ -1082,7 +1082,7 @@ print_bsd_default_route() {
 print_default_routes() {
   local ip_version="$1"
 
-  if [[ "$OSTYPE" == darwin* ]]; then
+  if [[ ! -d "$PROC_NET_DIR" ]]; then
     print_bsd_default_route "$ip_version"
     return
   fi
