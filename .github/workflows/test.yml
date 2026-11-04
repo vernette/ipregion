@@ -33,6 +33,22 @@ jobs:
       - name: bats
         run: bats tests/
 
+  macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: brew install bash bats-core jq
+
+      - name: bats
+        run: bats tests/
+
+      - name: Print json
+        run: bash ipregion.sh --json --service cdn/cloudflare | jq -e '.version == 2'
+
   install:
     runs-on: ubuntu-latest
 
