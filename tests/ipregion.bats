@@ -1203,6 +1203,8 @@ ipwho.is 4 SE yes
 ipwho.is 6 SE yes 
 ip-api.com 4 SE yes 
 ip-api.com 6 SE yes 
+vpndetection.io 4 SE yes 
+vpndetection.io 6 SE yes 
 ROWS
   )
   run result_rows
@@ -1218,6 +1220,7 @@ ROWS
   run_geoip_checks
 
   grep -q -- '-4 .*demo.ip-api.com/json/2001:db8:85a3::8a2e:370:7334' "$FAKE_CURL_LOG"
+  grep -q -- '-4 .*api.vpndetection.io/2001:db8:85a3::8a2e:370:7334$' "$FAKE_CURL_LOG"
   grep -q -- '-6 .*api.country.is/2001:db8:85a3::8a2e:370:7334$' "$FAKE_CURL_LOG"
   grep -q -- '-6 .*https://v6.ipinfo.io/widget/demo/2001:db8:85a3::8a2e:370:7334$' "$FAKE_CURL_LOG"
 }
@@ -1241,7 +1244,7 @@ ROWS
 
   run_geoip_checks
 
-  [[ "$(jq 'length' <<<"$RESULTS")" -eq 15 ]]
+  [[ "$(jq 'length' <<<"$RESULTS")" -eq 16 ]]
   [[ "$(jq '[.[].ip_version] | unique' -c <<<"$RESULTS")" == '["4"]' ]]
 }
 
