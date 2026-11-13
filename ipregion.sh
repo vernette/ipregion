@@ -280,6 +280,7 @@ readonly IPQUERY_URL="https://api.ipquery.io"
 readonly IPWHO_URL="https://ipwho.is"
 readonly IP_API_URL="https://demo.ip-api.com/json"
 readonly IP_API_ORIGIN="https://ip-api.com"
+readonly VPNDETECTION_URL="https://api.vpndetection.io"
 
 readonly USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 readonly GOOGLE_URL="https://accounts.google.com/v3/signin/identifier?flowName=GlifSetupAndroid"
@@ -482,6 +483,7 @@ readonly GEOIP_CHECKS=(
   check_geoip_ipquery_io
   check_geoip_ipwho_is
   check_geoip_ip_api_com
+  check_geoip_vpndetection_io
 )
 
 readonly ALL_CHECKS=(
@@ -2609,6 +2611,12 @@ check_geoip_ip_api_com() {
 
   check_geoip_json ip-api.com "$ip_version" "$IPV4_TRANSPORT" "$IP_API_URL/$(external_ip "$ip_version")?fields=countryCode" '.countryCode // empty' \
     --header "Origin: $IP_API_ORIGIN"
+}
+
+check_geoip_vpndetection_io() {
+  local ip_version="$1"
+
+  check_geoip_json vpndetection.io "$ip_version" "$IPV4_TRANSPORT" "$VPNDETECTION_URL/$(external_ip "$ip_version")" '.location.country // empty'
 }
 
 check_platforms_json() {
