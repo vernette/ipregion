@@ -270,7 +270,10 @@ readonly IPREGISTRY_ORIGIN="https://ipregistry.co"
 readonly IPAPI_CO_URL="https://ipapi.co"
 readonly IPAPI_CO_REFERER="https://ipapi.co/"
 readonly IFCONFIG_CO_URL="https://ifconfig.co/country-iso"
-readonly IP2LOCATION_URL="https://api.ip2location.io/"
+readonly IP2LOCATION_IO_URL="https://api.ip2location.io/"
+readonly IP2LOCATION_COM_URL="https://www.ip2location.com"
+readonly IP2LOCATION_COM_QUERY_URL="https://api.ip2location.io/query/"
+readonly IP2LOCATION_COM_TOKEN_PATTERN=$'(^|\n)[[:space:]]*t: ([0-9]+),[[:space:]]*token: \'([0-9a-f]+)\''
 readonly COUNTRY_IS_URL="https://api.country.is"
 readonly GEOAPIFY_URL="https://api.geoapify.com/v1/ipinfo"
 readonly GEOAPIFY_KEY="b8568cb9afc64fad861a69edbddb2658"
@@ -475,6 +478,7 @@ readonly GEOIP_CHECKS=(
   check_geoip_ipapi_co
   check_geoip_ifconfig_co
   check_geoip_ip2location_io
+  check_geoip_ip2location_com
   check_geoip_country_is
   check_geoip_geoapify_com
   check_geoip_geojs_io
@@ -2564,7 +2568,25 @@ check_geoip_ifconfig_co() {
 check_geoip_ip2location_io() {
   local ip_version="$1"
 
-  check_geoip_json ip2location.io "$ip_version" "$ip_version" "$IP2LOCATION_URL?ip=$(external_ip "$ip_version")" '.country_code // empty'
+  check_geoip_json ip2location.io "$ip_version" "$ip_version" "$IP2LOCATION_IO_URL?ip=$(external_ip "$ip_version")" '.country_code // empty'
+}
+
+check_geoip_ip2location_com() {
+  local ip_version="$1"
+  local timestamp
+  local token
+
+  http_request "$ip_version" "$IP2LOCATION_COM_URL"
+  if [[ ! "$HTTP_BODY" =~ $IP2LOCATION_COM_TOKEN_PATTERN ]]; then
+    print_failure "$GROUP_GEOIP" ip2location.com "$ip_version" "$(response_failure_reason)"
+    return
+  fi
+  timestamp="${BASH_REMATCH[2]}"
+  token="${BASH_REMATCH[3]}"
+
+  http_request "$ip_version" "$IP2LOCATION_COM_QUERY_URL" --request POST \
+    --data "ip=$(external_ip "$ip_version")" --data "t=$timestamp" --data "token=$token"
+  print_country "$GROUP_GEOIP" ip2location.com "$ip_version" "$(json_value '.countryCode // empty')"
 }
 
 check_geoip_country_is() {

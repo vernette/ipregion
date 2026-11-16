@@ -1189,6 +1189,8 @@ ifconfig.co 4 RU yes
 ifconfig.co 6 DE yes 
 ip2location.io 4 SE yes 
 ip2location.io 6 SE yes 
+ip2location.com 4 SE yes 
+ip2location.com 6 SE yes 
 country.is 4 SE yes 
 country.is 6 SE yes 
 geoapify.com 4 SE yes 
@@ -1222,6 +1224,46 @@ ROWS
   grep -q -- '-6 .*https://v6.ipinfo.io/widget/demo/2001:db8:85a3::8a2e:370:7334$' "$FAKE_CURL_LOG"
 }
 
+@test "geoip ip2location.com takes the token from the page and posts it with the ip" {
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+  lookup_ip_registrations
+  : >"$FAKE_CURL_LOG"
+
+  run_geoip_checks
+
+  grep -q -- '\(^\| \)-4 .* https://www.ip2location.com$' "$FAKE_CURL_LOG"
+  grep -q -- '\(^\| \)--data ip=203.0.113.7 --data t=1700000000 --data token=0123456789abcdef0123456789abcdef01234567 https://api.ip2location.io/query/$' "$FAKE_CURL_LOG"
+  grep -q -- '\(^\| \)--data ip=2001:db8:85a3::8a2e:370:7334 ' "$FAKE_CURL_LOG"
+}
+
+@test "geoip ip2location.com fails without a token on the page and does not post" {
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+  lookup_ip_registrations
+  add_fixture 4 www.ip2location.com '<html><body>maintenance</body></html>'
+  : >"$FAKE_CURL_LOG"
+
+  run_geoip_checks
+
+  run result_rows
+  [[ "$output" == *"ip2location.com 4   unexpected response"* ]]
+  run grep -c -- '--data ip=203.0.113.7 ' "$FAKE_CURL_LOG"
+  [[ "$output" -eq 0 ]]
+}
+
+@test "geoip ip2location.com treats a refused lookup as an unexpected response" {
+  use_host_fixtures dual-stack
+  set_dual_stack_ips
+  lookup_ip_registrations
+  add_fixture 4 api.ip2location.io_query_ '{"countryCode":"-","countryName":"-"}'
+
+  run_geoip_checks
+
+  run result_rows
+  [[ "$output" == *"ip2location.com 4   unexpected response"* ]]
+}
+
 @test "geoip maxmind reuses the header lookup" {
   use_host_fixtures dual-stack
   set_dual_stack_ips
@@ -1241,7 +1283,7 @@ ROWS
 
   run_geoip_checks
 
-  [[ "$(jq 'length' <<<"$RESULTS")" -eq 15 ]]
+  [[ "$(jq 'length' <<<"$RESULTS")" -eq 16 ]]
   [[ "$(jq '[.[].ip_version] | unique' -c <<<"$RESULTS")" == '["4"]' ]]
 }
 
