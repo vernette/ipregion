@@ -22,6 +22,7 @@
 - [JSON](#json)
 - [Country codes](#country-codes)
 - [Contributing](#contributing)
+- [Support the author](#support-the-author)
 
 ## Features
 
@@ -282,3 +283,11 @@ Just enter the code in the search box to get the full country name.
 Contributions are welcome! Feel free to submit pull requests to add new services or improve the script's functionality.
 
 ![Star History Chart](https://star-history.dera.page/svg?repos=vernette/ipregion&type=Date)
+
+## Support the author
+
+<p align="center">
+  <a href="https://pay.cloudtips.ru/p/327ef017"><img src="https://static.tildacdn.com/tild3465-3233-4263-b937-316135666261/Horiz.svg" height="40" alt="CloudTips"></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="https://nowpayments.io/donation/vernette"><img src="https://nowpayments.io/images/embeds/payments-button-white.svg" height="40" alt="NOWPayments"></a>
+</p>
